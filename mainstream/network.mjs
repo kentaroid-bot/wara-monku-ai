@@ -7,7 +7,7 @@ import {
   SYSVAR_CLOCK_PUBKEY,
 } from "@solana/web3.js";
 import bs58 from "bs58";
-import { assertDevnet } from "../app/protocol.mjs";
+import { assertDevnet, budgetInstructions } from "../app/protocol.mjs";
 import { pk, addr, mintFor, tok, ata, parseRow, quota } from "./protocol.mjs";
 import manifest from "../deployments/devnet.json" with { type: "json" };
 export const program = pk(manifest.program);
@@ -138,15 +138,20 @@ export async function submit(profile, wallet, ix, extra = []) {
     tx = new Transaction({
       feePayer: pk(profile.address),
       recentBlockhash: latest.blockhash,
-    }).add(...ix);
+    });
+  // Set the fee policy before any wallet or invite signature. Payments already
+  // supply their own, larger CU limit; Solana permits each budget type once.
+  const missingBudget = budgetInstructions().filter(
+    fee => !ix.some(i => i.programId.equals(fee.programId) && i.data[0] === fee.data[0]),
+  );
+  tx.add(...missingBudget, ...ix);
   if (extra.length) tx.partialSign(...extra);
   const before = tx.serializeMessage();
   const signed = await signer.signTransaction(tx);
-  if (
-    !Buffer.from(before).equals(signed.serializeMessage()) ||
-    !signed.verifySignatures()
-  )
-    throw Error("署名する取引が一致しません。");
+  if (!Buffer.from(before).equals(signed.serializeMessage()))
+    throw Error("署名時に取引内容が変わりました。送信を中止しました。");
+  if (!signed.verifySignatures())
+    throw Error("必要な署名を確認できません。送信を中止しました。");
   const raw = signed.serialize(),
     sig = bs58.encode(signed.signature);
   localStorage.setItem(
