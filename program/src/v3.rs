@@ -11,7 +11,7 @@ const OFFSET:i64=32400;
 fn pda(program:&Pubkey,seeds:&[&[u8]],account:&AccountInfo)->Result<u8,ProgramError>{
  let (id,bump)=Pubkey::find_program_address(seeds,program); require(id==*account.key,5)?;Ok(bump)
 }
-fn group<'a>(g:&AccountInfo<'a>,program:&Pubkey)->Result<(Pubkey,u8,Pubkey),ProgramError>{
+pub(super) fn group<'a>(g:&AccountInfo<'a>,program:&Pubkey)->Result<(Pubkey,u8,Pubkey),ProgramError>{
  require(g.owner==program,5)?;let d=g.try_borrow_data()?;
  require(d.len()>66&&d[0]==GROUP,5)?;
  Ok((Pubkey::new_from_array(d[1..33].try_into().unwrap()),d[33],Pubkey::new_from_array(d[34..66].try_into().unwrap())))

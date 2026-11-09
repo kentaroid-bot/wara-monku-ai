@@ -49,3 +49,39 @@ test('published token JSON keeps daily and demo identities distinct',()=>{
  assert.equal(daily.name,'WARA Devnet');assert.equal(demo.name,'WARA Devnet Demo');assert.notEqual(daily.symbol,demo.symbol);
  for(const m of [daily,demo]){assert(m.image.startsWith('https://raw.githubusercontent.com/kentaroid-bot/wara-monku-ai/'));assert.equal(m.properties.files[0].type,'image/png');}
 });
+
+test('community metadata belongs to its existing issuer and does not change the mint', {skip:!existsSync(metadataBinary)}, async () => {
+ const {createGroup,metadata,mintFor}=await import('../mainstream/protocol.mjs');
+ const {createCommunityMetadataInstruction}=await import('../scripts/token-metadata.mjs');
+ const svm=new LiteSVM(), program=Keypair.generate().publicKey;
+ svm.addProgramFromFile(String(program),'target/deploy/straw_protocol.so');
+ svm.addProgramFromFile(String(METADATA_PROGRAM),metadataBinary);
+ const owner=Keypair.generate(), other=Keypair.generate(), group=Keypair.generate(), second=Keypair.generate();
+ const send=(ix, ...signers)=>{
+   svm.expireBlockhash();
+   const tx=new Transaction({feePayer:signers[0].publicKey,recentBlockhash:svm.latestBlockhash()}).add(...ix);
+   tx.sign(...signers);
+   return svm.sendTransaction(getTransactionDecoder().decode(tx.serialize()));
+ };
+ for(const [signer,g] of [[owner,group],[other,second]]){
+   svm.airdrop(String(signer.publicKey),1000000000n);
+   const data=metadata('川辺の市場','地域のテスト','地域');
+   const result=send(createGroup(program,signer.publicKey,g.publicKey,0,signer.publicKey,data,Number(svm.minimumBalanceForRentExemption(66n+BigInt(data.length)))),signer,g);
+   assert(!(result instanceof FailedTransactionMetadata),result.toString());
+ }
+ const mint=mintFor(program,group.publicKey), before=Buffer.from(svm.getAccount(String(mint)).data);
+ const fields={name:'川辺の市場 WARA',symbol:'WARA',uri:'https://example.org/kawabe.json'};
+ const ix=(signer,g)=>createCommunityMetadataInstruction(program,g.publicKey,signer.publicKey,fields);
+ assert(send([ix(other,group)],other) instanceof FailedTransactionMetadata);
+ const swapped=ix(other,group);swapped.keys[1].pubkey=second.publicKey;
+ assert(send([swapped],other) instanceof FailedTransactionMetadata);
+ const result=send([ix(owner,group)],owner);
+ assert(!(result instanceof FailedTransactionMetadata),result.toString());
+ const md=svm.getAccount(String(metadataAddress(mint)));
+ assert.equal(md.programAddress,String(METADATA_PROGRAM));
+ const decoded=decodeMetadata(md.data);
+ assert.equal(decoded.mint,String(mint));assert.equal(decoded.name,fields.name);
+ assert.equal(decoded.updateAuthority,String(owner.publicKey));assert.equal(decoded.tokenStandard,2);
+ assert.deepEqual(Buffer.from(svm.getAccount(String(mint)).data),before);
+ assert(send([ix(owner,group)],owner) instanceof FailedTransactionMetadata);
+});

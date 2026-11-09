@@ -1,0 +1,16 @@
+{
+  "name": "川辺の市場 WARA",
+  "symbol": "WARA",
+  "description": "川辺の市場が発行するWARA。藁一本の約束のSolana Devnet用地域トークンです。",
+  "image": "https://raw.githubusercontent.com/kentaroid-bot/wara-monku-ai/main/assets/wara-avatar.png",
+  "external_url": "https://wara.monku.ai/communities/?id=4SuDmQR72DnjC5GZ78oDk7u4G2w5edNFuVGKFRfEZsLU",
+  "properties": {
+    "category": "image",
+    "files": [
+      {
+        "uri": "https://raw.githubusercontent.com/kentaroid-bot/wara-monku-ai/main/assets/wara-avatar.png",
+        "type": "image/png"
+      }
+    ]
+  }
+}

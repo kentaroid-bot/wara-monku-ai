@@ -41,3 +41,7 @@ Metaplexバイナリがない環境ではCPIテストは理由付きでskipす�
 名前・画像の登録は、Phantomの「認証済み」扱いや警告の解除を保証しない。ウォレット側の取得・キャッシュ・安全性判定によって表示に時間がかかる場合がある。登録結果とPhantomでの表示確認は分けて記録する。
 
 参照: [Phantomのトークン表示](https://docs.phantom.com/best-practices/tokens/token-display)、[SolanaのMetaplex説明](https://solana.com/docs/tokens/metaplex)、[Metaplex CreateV1](https://github.com/metaplex-foundation/mpl-token-metadata/blob/main/clients/rust/src/generated/instructions/create_v1.rs)。
+
+## 川辺の市場の地域WARA
+
+川辺の市場の既存Mint `BHW9Z1vnhzaXpqXWHvcpQtHk4xVMHrJeZzdMWxKoCrNC` に、表示名「川辺の市場 WARA」、記号「WARA」、金色の藁の輪を設定する。[地域用JSON](assets/kawabe-wara.json)。命令16は地域管理者の署名を検証し、地域Mint自身のPDAでMetaplexを呼ぶ。表示情報の更新権限は地域管理者が持つ。確認は `node scripts/register-kawabe-metadata.mjs`、初回登録時のみ `--apply` を付ける。

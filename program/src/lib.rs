@@ -138,7 +138,7 @@ pub fn process_instruction(program: &Pubkey, accounts: &[AccountInfo], data: &[u
         },
         // Add metadata to an EXISTING mint. Only its config creator may authorize this.
         // The mint PDA stays the mint authority; no supply/allowance/account changes.
-        3 => {
+        3 | 16 => {
             let input=MetadataInput::try_from_slice(rest).map_err(|_|err(5))?;
             require(!input.name.is_empty() && input.name.len()<=32 && !input.name.contains('\0'),5)?;
             require(!input.symbol.is_empty() && input.symbol.len()<=10 && !input.symbol.contains('\0'),5)?;
@@ -148,13 +148,21 @@ pub fn process_instruction(program: &Pubkey, accounts: &[AccountInfo], data: &[u
             let metadata=next_account_info(&mut it)?; let mpl=next_account_info(&mut it)?;
             let sys=next_account_info(&mut it)?; let instructions=next_account_info(&mut it)?;
             let token=next_account_info(&mut it)?;
-            signer(creator)?; let c=config(cfg,program)?;
-            require(*creator.key==c.creator,5)?;
+            signer(creator)?;
+            let seed: &[u8] = if op == 16 {
+                let (owner, _, _) = v3::group(cfg,program)?;
+                require(*creator.key==owner && mint.key==authority.key,5)?;
+                b"w3"
+            } else {
+                let c=config(cfg,program)?;
+                require(*creator.key==c.creator && *mint.key==c.mint,5)?;
+                b"authority"
+            };
             require(*mpl.key==mpl_token_metadata::ID && mpl.executable,5)?;
             require(*sys.key==system_program::id() && *token.key==spl_token::id(),5)?;
             require(*instructions.key==solana_program::sysvar::instructions::id(),5)?;
-            require(*mint.key==c.mint && mint.owner==token.key,5)?;
-            let (a,bump)=Pubkey::find_program_address(&[b"authority",cfg.key.as_ref()],program);
+            require(mint.owner==token.key,5)?;
+            let (a,bump)=Pubkey::find_program_address(&[seed,cfg.key.as_ref()],program);
             require(*authority.key==a,5)?;
             let m=Mint::unpack(&mint.try_borrow_data()?)?;
             require(m.mint_authority==COption::Some(a) && m.decimals==0 && m.freeze_authority==COption::None,5)?;
@@ -166,7 +174,7 @@ pub fn process_instruction(program: &Pubkey, accounts: &[AccountInfo], data: &[u
                 .spl_token_program(Some(token)).name(input.name).symbol(input.symbol).uri(input.uri)
                 .seller_fee_basis_points(0).primary_sale_happened(false).is_mutable(true)
                 .token_standard(mpl_token_metadata::types::TokenStandard::Fungible).decimals(0)
-                .invoke_signed(&[&[b"authority",cfg.key.as_ref(),&[bump]]])
+                .invoke_signed(&[&[seed,cfg.key.as_ref(),&[bump]]])
         },
         10..=15 => v3::process(program,accounts,op,rest),
         _ => Err(ProgramError::InvalidInstructionData),

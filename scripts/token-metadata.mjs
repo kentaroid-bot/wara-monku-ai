@@ -1,12 +1,20 @@
 // Minimal client for this program's creator-authorized metadata instruction.
 import {PublicKey,TransactionInstruction,SystemProgram,SYSVAR_INSTRUCTIONS_PUBKEY} from '@solana/web3.js';
 import {TOKEN_PROGRAM_ID} from '@solana/spl-token';
+import {mintFor} from '../mainstream/protocol.mjs';
 import {addresses} from '../app/protocol.mjs';
 export const METADATA_PROGRAM=new PublicKey('metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s');
 export const metadataAddress=mint=>PublicKey.findProgramAddressSync([Buffer.from('metadata'),METADATA_PROGRAM.toBuffer(),mint.toBuffer()],METADATA_PROGRAM)[0];
 const string=s=>{const b=Buffer.from(s),n=Buffer.alloc(4);n.writeUInt32LE(b.length);return Buffer.concat([n,b]);};
-export function createMetadataInstruction(program,config,creator,{name,symbol,uri}){
+export function createMetadataInstruction(program,config,creator,fields){
  const {mint,authority}=addresses(program,config,creator);
+ return metadataIx(3,program,config,creator,mint,authority,fields);
+}
+export function createCommunityMetadataInstruction(program,group,owner,fields){
+ const mint=mintFor(program,group);
+ return metadataIx(16,program,group,owner,mint,mint,fields);
+}
+function metadataIx(op,program,config,creator,mint,authority,{name,symbol,uri}){
  return new TransactionInstruction({programId:program,keys:[
   {pubkey:creator,isSigner:true,isWritable:true},
   {pubkey:config,isSigner:false,isWritable:false},
@@ -14,7 +22,7 @@ export function createMetadataInstruction(program,config,creator,{name,symbol,ur
   {pubkey:authority,isSigner:false,isWritable:false},
   {pubkey:metadataAddress(mint),isSigner:false,isWritable:true},
   ...[METADATA_PROGRAM,SystemProgram.programId,SYSVAR_INSTRUCTIONS_PUBKEY,TOKEN_PROGRAM_ID].map(pubkey=>({pubkey,isSigner:false,isWritable:false})),
- ],data:Buffer.concat([Buffer.from([3]),string(name),string(symbol),string(uri)])});
+ ],data:Buffer.concat([Buffer.from([op]),string(name),string(symbol),string(uri)])});
 }
 // Read the standard MetadataV1 prefix. Optional trailing collection fields are not used.
 export function decodeMetadata(bytes){
