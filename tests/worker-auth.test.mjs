@@ -509,3 +509,29 @@ test("Google phone sign-in is project-, number-, wallet- and challenge-bound", a
   assert.equal(res.status, 200);
   assert.deepEqual((await res.json()).profile, a.profile);
 });
+
+test("Google challenge retries refill one slot and a rejection consumes no slots", async () => {
+  const { default: worker } = await import("../worker/index.mjs");
+  const env = {
+    DB: db, AUTH_MODE: "google", AUTH_PEPPER: randomBytes(32).toString("hex"),
+    FIREBASE_PROJECT_ID: "wara-fixture", FIREBASE_APP_ID: "fixture", FIREBASE_WEB_API_KEY: "fixture",
+  };
+  const phoneHash = await phoneDigest("retry-fixture");
+  const issue = () => worker.fetch(new Request(origin + "/api/auth/challenge", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ phoneHash, action: "signin" }),
+  }), env);
+  const burst = await Promise.all(Array.from({ length: 6 }, issue));
+  assert.equal(burst.filter(r => r.status === 200).length, 5);
+  const blocked = burst.find(r => r.status === 429);
+  const message = (await blocked.json()).error;
+  const seconds = Number(message.match(/(\d+)秒後/)?.[1]);
+  assert.ok(seconds > 0 && seconds <= 60);
+  const state = () => db.prepare("SELECT bucket, expires FROM issue_limits WHERE bucket LIKE 'google-issue:%' ORDER BY bucket").all();
+  const before = await state();
+  assert.equal((await issue()).status, 429);
+  assert.deepEqual((await state()).results, before.results);
+  await db.prepare("UPDATE issue_limits SET expires = expires - 60 WHERE bucket LIKE 'google-issue:phone:%'").run();
+  assert.equal((await issue()).status, 200);
+  assert.equal((await issue()).status, 429);
+});

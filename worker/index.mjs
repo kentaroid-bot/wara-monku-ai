@@ -178,21 +178,41 @@ function googleConfig(env) {
     authDomain: env.FIREBASE_PROJECT_ID + ".firebaseapp.com",
   };
 }
+async function limitGoogleChallenge(db, ipKey, phoneKey, now) {
+  // Each expiry is the time the bucket will be full again. Reserve one slot
+  // from every bucket in the same transaction, or leave all three untouched.
+  const buckets = `WITH limits(bucket, capacity, seconds) AS (VALUES
+    (?1, 20, 10), (?2, 5, 60), ('google-issue:all', 30, 30)
+  ), slots AS (
+    SELECT bucket, seconds, MAX(?3, COALESCE(expires, ?3)) AS full_at, capacity
+    FROM limits LEFT JOIN issue_limits USING (bucket)
+  )`;
+  const wait = "SELECT MAX(0, MAX(full_at - (capacity - 1) * seconds - ?3)) FROM slots";
+  const bind = (sql) => db.prepare(buckets + sql)
+    .bind("google-issue:ip:" + ipKey, "google-issue:phone:" + phoneKey, now);
+  const [check] = await db.batch([
+    bind(`SELECT (${wait}) AS wait_seconds`),
+    bind(`INSERT INTO issue_limits(bucket, expires, count)
+      SELECT bucket, full_at + seconds, 1 FROM slots WHERE (${wait}) = 0
+      ON CONFLICT(bucket) DO UPDATE SET expires = excluded.expires`),
+  ]);
+  const retry = check.results[0].wait_seconds;
+  if (retry > 0) fail(429, `確認のリクエストが続いています。${retry}秒後にお試しください。`);
+}
 async function issue(env, key, phoneKey, req, action, now, phone) {
   if (!["activate", "signin"].includes(action)) bad();
   const google = env.AUTH_MODE === "google";
-  await limit(
-    env.DB,
-    "ip:" +
-      (await mac(key, "ip", req.headers.get("CF-Connecting-IP") || "local")),
-    now,
-    phone || google ? 10 : 60,
-  );
-  await limit(env.DB, "phone:" + phoneKey, now, phone || google ? 3 : 12);
+  const ipKey = await mac(key, "ip", req.headers.get("CF-Connecting-IP") || "local");
+  if (google) {
+    await limitGoogleChallenge(env.DB, ipKey, phoneKey, now);
+  } else {
+    await limit(env.DB, "ip:" + ipKey, now, phone ? 10 : 60);
+    await limit(env.DB, "phone:" + phoneKey, now, phone ? 3 : 12);
+    if (phone) await limit(env.DB, "sms:all", now, 30);
+  }
   const id = crypto.randomUUID();
   const expires = now + ttl;
   let verification, trialCode;
-  if (phone || google) await limit(env.DB, "sms:all", now, 30);
   if (google) {
     verification = "google";
   } else if (phone) {
