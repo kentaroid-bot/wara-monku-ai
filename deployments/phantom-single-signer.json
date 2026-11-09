@@ -1,0 +1,28 @@
+{
+  "cluster": "devnet",
+  "program": "B58EpKJJq6YFJbY7QTdVek6Dh2TPeTx1D2Pvnvvvi6V8",
+  "config": "8nsVkZeDMNHvuRvHj1H6YAenx7thRxog1DazdmCQRcLK",
+  "mint": "747UcNdcvMGB5U25DnR8reBtEf9wUWoajhLHHYWPCoa5",
+  "binarySha256": "cef2078a0232756b3e91707372a1a8595de4f884fac3e33f031a6bc3bc597663",
+  "checkedAt": "2026-11-07T08:35:11.525Z",
+  "client": "Brave + Phantom, localhost build",
+  "flow": "checkout QR image -> confirmation -> consumer signs once -> direct RPC send",
+  "consumer": "3kDeggn45EycVAitB2SBmnizCR9GGLxqMwJezjPx4RUd",
+  "recipient": "SsvuksJ7WoSwjRZ8SeRySD9GWi598vWR1aHPZQRcn75",
+  "signature": "3C55cuB9NgWGFVR6DhTDLgXR9NuWAebfo76njaBUovar16DuRLTUo1UMycbZt2w8XCn6Bg4itNnkXg8uZHbfeg5x",
+  "requiredSignatures": 1,
+  "amount": 10,
+  "remaining": 290,
+  "senderWara": 90,
+  "recipientWara": 10,
+  "result": "passed",
+  "waraTransfer": {
+    "signature": "4qY8EF3okvTHN4ZYLMsBHSN3rGdmYs7RpQgecVP8VyUzDST9LM4ykGovyMF1BWRVy7Za1Jqt4VRCJEk1TuwGVAD1",
+    "amount": 1,
+    "remaining": 290,
+    "senderWara": 89,
+    "recipientWara": 11,
+    "requiredSignatures": 1,
+    "result": "passed"
+  }
+}

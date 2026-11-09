@@ -1,0 +1,8 @@
+{
+  "name": "WARA Devnet Demo",
+  "symbol": "WARA-DEMO",
+  "description": "藁一本の約束。120秒を一日とする体験用の生産者クレジット。Solana Devnetの実験用トークンで、金銭的価値はありません。通常版WARA Devnetとは別の残高です。",
+  "image": "https://raw.githubusercontent.com/kentaroid-bot/wara-monku-ai/main/assets/wara-avatar.png",
+  "external_url": "https://wara.monku.ai/",
+  "properties": {"category": "image", "files": [{"uri": "https://raw.githubusercontent.com/kentaroid-bot/wara-monku-ai/main/assets/wara-avatar.png", "type": "image/png"}]}
+}

@@ -1,0 +1,8 @@
+{
+  "name": "WARA Devnet",
+  "symbol": "WARA",
+  "description": "藁一本の約束。取引で受け取る、翌日も残る生産者クレジット。Solana Devnetの実験用トークンで、金銭的価値はありません。通常版・日本時間の一日循環。",
+  "image": "https://raw.githubusercontent.com/kentaroid-bot/wara-monku-ai/main/assets/wara-avatar.png",
+  "external_url": "https://wara.monku.ai/",
+  "properties": {"category": "image", "files": [{"uri": "https://raw.githubusercontent.com/kentaroid-bot/wara-monku-ai/main/assets/wara-avatar.png", "type": "image/png"}]}
+}

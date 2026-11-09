@@ -1,0 +1,5 @@
+# 藁一本の約束 v0.3
+
+Main app: https://wara.monku.ai/
+Concept and original offline mock: https://github.com/kentaroid-bot/emergency-straw-protocol
+README.md and protocol.json describe the current model. One wallet has 10 Kusa per JST day across communities. Each Kusa mints 90 WARA to the shop and 10 to the buyer. Issuer-specific mints persist. SMS is simulated; signed settlement is on Solana Devnet. /devnet/ and LEGACY-v02.md document the older independent 300-limit system.

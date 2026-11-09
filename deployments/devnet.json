@@ -1,0 +1,26 @@
+{
+  "cluster": "devnet",
+  "rpc": "https://api.devnet.solana.com",
+  "program": "B58EpKJJq6YFJbY7QTdVek6Dh2TPeTx1D2Pvnvvvi6V8",
+  "instances": {
+    "daily": {
+      "config": "8nsVkZeDMNHvuRvHj1H6YAenx7thRxog1DazdmCQRcLK",
+      "mint": "747UcNdcvMGB5U25DnR8reBtEf9wUWoajhLHHYWPCoa5",
+      "periodSeconds": 86400,
+      "offsetSeconds": 32400,
+      "initializationSignature": "5auYru57VS24jaqmnTAxQ5dLzVpDThU3KrRNoKzuYsbj4Ri3qcH2Mdb7GAKVehT1tCk1kLunxhXZmj9UQF17zazm"
+    },
+    "demo": {
+      "config": "E6Y4vkqECWstNiR7o83P6QNSaSzC5LczVEfnRKncv5ac",
+      "mint": "7JG3TRXjq4JdaJRZJe1CiA8cXCe7fDWiFmZhi1Kv5Ppa",
+      "periodSeconds": 120,
+      "offsetSeconds": 0,
+      "initializationSignature": "3uhD3K9r4pQ3hHg1ijwdvwuKfncLAyjJrnEApunVPNkVW236nPCZ4ZzC5wDAd68MTWpCyrYk2KBW7u9iKYtDTPC7"
+    }
+  },
+  "status": "deployed",
+  "deploymentSignature": "3auirsaQ1w6UwFngDNzZo9rzSK6RKRpZjFR1jq85ayjMFN7qRJUmq4kYtvrHfynTs43MFNLEu2CRy5QdCsJjfKBL",
+  "binarySha256": "121b36a0c7801314db46b9897be32279a9d2bc9760e055cf092dc334510158c7",
+  "upgradeAuthority": "HfmUvjg2iq4QeUErKD2yN74SvNzomeCveoQV97gkNiEq",
+  "updatedAt": "2026-11-08T11:10:10.485Z"
+}

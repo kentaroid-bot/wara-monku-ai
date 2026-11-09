@@ -1,0 +1,41 @@
+{
+  "cluster": "devnet",
+  "program": "B58EpKJJq6YFJbY7QTdVek6Dh2TPeTx1D2Pvnvvvi6V8",
+  "config": "8nsVkZeDMNHvuRvHj1H6YAenx7thRxog1DazdmCQRcLK",
+  "mint": "747UcNdcvMGB5U25DnR8reBtEf9wUWoajhLHHYWPCoa5",
+  "startedAt": "2026-11-08T01:06:52.582Z",
+  "funding": "5rDHTFexHpMF12rJrHrarHPAdnKYUWvLivLust2vFNbRo6KQyjtAsyKpzYH5Wm6wm553pnzBSW221SqzbYvNTDAH",
+  "enroll": "3sPjntog9AEXmMoMfft2ZwHwbf35rxgn7pL9LDQLuoT8vSuP71NuGG2jvf4QpfQPodT3bXQxwU4ZCPmD5dJutbFu",
+  "checks": [
+    "daily: exact receipt matched; other reference/amount rejected; daily spending=100",
+    "credit: exact receipt matched; other reference/amount rejected; daily spending=100",
+    "merchant browser automatically displayed 100 WARA received for both methods without manual refresh",
+    "new same-amount QR remained waiting despite prior confirmed receipt",
+    "disconnect clears the active receipt watcher and received status"
+  ],
+  "payments": [
+    {
+      "signature": "62oiLDmaVgDWocvJdv3TWxp9EEw153Q4EzcZ8GfenTH72mrJfDzYZq2q1T4HGZK9EjSw6PTUAazhmorHSF9QALRS",
+      "amount": "100",
+      "payer": "G5girzLvokLYfwFyG8segbUDzB3Yv515N4WGxTtrj1i2",
+      "method": "daily",
+      "slot": 519850300,
+      "reference": "8fgnvJPm9Us9RGMmZN2j3Nf3DN3TQAZtXhQ3AbZ2kfqy",
+      "recipient": "Bt9rpu5jGr7h2ipv9zBYqPyS7qvesJN1HMaaJHQv5Xfo",
+      "requiredSignatures": 1
+    },
+    {
+      "signature": "4acU6pqarEw5Z9vSKy7RfjgtMwBavqhjGjxWxgQFPF463dLjcQo5h6AnP9v1PhFTMzsUtTP5qqGn4k7xeRz3C4Ci",
+      "amount": "100",
+      "payer": "Bt9rpu5jGr7h2ipv9zBYqPyS7qvesJN1HMaaJHQv5Xfo",
+      "method": "credit",
+      "slot": 519850604,
+      "reference": "3JBH3G1uyMU4fKKqFQCvXCnsNUhS5n8xXTsWu3acXx7S",
+      "recipient": "EDSxyMXxGJhfD9pM5ePW3MSRnAV93gSStFgi59EsHAvH",
+      "requiredSignatures": 1
+    }
+  ],
+  "ui": "local production bundle with read-only test-wallet connection stub; no Phantom signing test in this run",
+  "result": "passed",
+  "verificationDate": "2026-11-08"
+}

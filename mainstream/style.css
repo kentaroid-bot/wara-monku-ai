@@ -1,0 +1,159 @@
+:root {
+  font:
+    17px/1.6 system-ui,
+    sans-serif;
+  color: #173c2e;
+  background: #f5f4ed;
+}
+* {
+  box-sizing: border-box;
+}
+body {
+  margin: 0;
+}
+header,
+nav,
+main,
+footer {
+  max-width: 54rem;
+  margin: auto;
+  padding: 1rem;
+}
+header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+header span,
+small,
+footer {
+  font-size: 0.85rem;
+  color: #4a6054;
+}
+.brand {
+  font:
+    700 1.6rem/1.3 Georgia,
+    serif;
+  text-decoration: none;
+}
+nav {
+  display: flex;
+  gap: 0.9rem;
+  flex-wrap: wrap;
+  border-block: 1px solid #c4d1c2;
+  padding-block: 0.6rem;
+}
+a {
+  color: #1d563e;
+  text-underline-offset: 0.22em;
+}
+main {
+  min-height: 60vh;
+}
+h1,
+h2 {
+  line-height: 1.35;
+}
+section,
+article,
+form,
+.balance {
+  margin: 1rem 0;
+  padding: 1rem;
+  border: 1px solid #ced8cd;
+  border-radius: 0.7rem;
+  background: white;
+}
+form form {
+  border: 0;
+}
+label {
+  display: block;
+  margin: 0.65rem 0;
+}
+input:not([type="radio"]),
+select,
+textarea {
+  display: block;
+  max-width: 100%;
+  width: 30rem;
+  padding: 0.55rem;
+  border: 1px solid #798e7f;
+  border-radius: 0.4rem;
+  font: inherit;
+}
+button,
+.action {
+  display: inline-block;
+  text-decoration: none;
+  border: 0;
+  border-radius: 0.45rem;
+  background: #194d35;
+  color: #fff;
+  font: inherit;
+  cursor: pointer;
+  padding: 0.55rem 1rem;
+  margin: 0.25rem 0.3rem 0.25rem 0;
+}
+button:disabled {
+  opacity: 0.55;
+}
+button.secondary {
+  background: #f5f4ed;
+  color: #254534;
+}
+.amount {
+  font-size: 2.3rem;
+  font-weight: 700;
+}
+.leaves {
+  color: #537847;
+  letter-spacing: 0.16em;
+}
+#notice:not(:empty) {
+  padding: 0.8rem;
+  background: #fff1ca;
+  color: #44320d;
+  border-radius: 0.4rem;
+  overflow-wrap: anywhere;
+}
+code,
+.wrap {
+  overflow-wrap: anywhere;
+}
+ul {
+  padding-inline-start: 1.2rem;
+}
+.muted {
+  color: #536b5d;
+}
+img {
+  max-width: 100%;
+}
+footer {
+  border-top: 1px solid #ced8cd;
+}
+.card {
+  max-width: 24rem;
+  border: 2px solid #40613b;
+  padding: 1rem;
+  text-align: center;
+}
+.card img {
+  width: 170px;
+}
+@media print {
+  body > * {
+    display: none;
+  }
+  body main,
+  body main #screen {
+    display: block;
+  }
+  main #screen > *:not(.card),
+  main #notice,
+  .card button {
+    display: none !important;
+  }
+}

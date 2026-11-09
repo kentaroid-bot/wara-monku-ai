@@ -1,0 +1,32 @@
+{
+  "cluster": "devnet",
+  "checkedAt": "2026-11-08T02:39:47.998Z",
+  "checks": [
+    {
+      "wallet": "Bt9rpu5jGr7h2ipv9zBYqPyS7qvesJN1HMaaJHQv5Xfo",
+      "total": "110",
+      "count": 2,
+      "methods": [
+        "daily",
+        "daily"
+      ],
+      "signatures": [
+        "5PkFDAtEae6YQUkTxbso1AFP4qrmZFgFXebD9EGG5pnxUqE5d8Z28gxcFJqUKHoFHsrGiLM7HxKgXDbrPUwcGzut",
+        "62oiLDmaVgDWocvJdv3TWxp9EEw153Q4EzcZ8GfenTH72mrJfDzYZq2q1T4HGZK9EjSw6PTUAazhmorHSF9QALRS"
+      ]
+    },
+    {
+      "wallet": "EDSxyMXxGJhfD9pM5ePW3MSRnAV93gSStFgi59EsHAvH",
+      "total": "100",
+      "count": 1,
+      "methods": [
+        "credit"
+      ],
+      "signatures": [
+        "4acU6pqarEw5Z9vSKy7RfjgtMwBavqhjGjxWxgQFPF463dLjcQo5h6AnP9v1PhFTMzsUtTP5qqGn4k7xeRz3C4Ci"
+      ]
+    }
+  ],
+  "result": "passed",
+  "ui": "Production bundle on localhost with read-only test-wallet connection; reload restored 110/2, demo showed 0/0, daily restored 110/2. No new transactions or Phantom signing in this test."
+}

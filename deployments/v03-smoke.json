@@ -1,0 +1,12 @@
+{
+  "cluster": "devnet",
+  "program": "B58EpKJJq6YFJbY7QTdVek6Dh2TPeTx1D2Pvnvvvi6V8",
+  "test": "browser signup, on-chain membership, embedded-wallet signature, confirmed 5 Kusa payment",
+  "origin": "J9PGMWgkXXH2dhoZpdGtNyRA2xbtmLJPM4SnGWMvE3wC",
+  "shop": "3iFu4BMJMerD5amDWdFWYbruzMme5ZcvwxKx11gSfAfE",
+  "wallet": "Et9XaH6NakEA6nS4XPMgcu8xQCzrYXmvaBAMjVD1J6zc",
+  "signature": "MPx7cztjJjDQPTMRNF1GpPuoTvBig1xVYpPinCV2nY2rsWNt87HdAowEvesxCNqSuGRejDF9dZMzhchTtWno4yG",
+  "remainingKusa": 5,
+  "merchantWaraDelta": 450,
+  "buyerWaraDelta": 50
+}

@@ -1,0 +1,20 @@
+[package]
+name = "straw_protocol"
+version = "0.2.0"
+edition = "2021"
+license = "MIT"
+
+[lib]
+path = "program/src/lib.rs"
+crate-type = ["cdylib", "lib"]
+
+[dependencies]
+solana-program = "=2.3.0"
+spl-token = { version = "=8.0.0", features = ["no-entrypoint"] }
+borsh = { version = "=1.5.7", features = ["derive"] }
+mpl-token-metadata = "=5.1.1"
+
+[profile.release]
+overflow-checks = true
+lto = "fat"
+codegen-units = 1

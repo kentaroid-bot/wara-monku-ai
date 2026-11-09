@@ -1,0 +1,59 @@
+{
+  "cluster": "devnet",
+  "checkedAt": "2026-11-08T02:51:02.392Z",
+  "result": "passed",
+  "checks": [
+    {
+      "payer": "G5girzLvokLYfwFyG8segbUDzB3Yv515N4WGxTtrj1i2",
+      "total": "110",
+      "daily": "110",
+      "credit": "0",
+      "count": 2,
+      "entries": [
+        {
+          "id": "5PkFDAtEae6YQUkTxbso1AFP4qrmZFgFXebD9EGG5pnxUqE5d8Z28gxcFJqUKHoFHsrGiLM7HxKgXDbrPUwcGzut:3",
+          "signature": "5PkFDAtEae6YQUkTxbso1AFP4qrmZFgFXebD9EGG5pnxUqE5d8Z28gxcFJqUKHoFHsrGiLM7HxKgXDbrPUwcGzut",
+          "instructionIndex": 3,
+          "amount": "10",
+          "method": "daily",
+          "recipient": "Bt9rpu5jGr7h2ipv9zBYqPyS7qvesJN1HMaaJHQv5Xfo",
+          "reference": "2vqwHP8127EBozC2TU6fk2L5RK2FNQhHUnUVvMNnMzge",
+          "blockTime": 1794101130,
+          "slot": 519854810
+        },
+        {
+          "id": "62oiLDmaVgDWocvJdv3TWxp9EEw153Q4EzcZ8GfenTH72mrJfDzYZq2q1T4HGZK9EjSw6PTUAazhmorHSF9QALRS:3",
+          "signature": "62oiLDmaVgDWocvJdv3TWxp9EEw153Q4EzcZ8GfenTH72mrJfDzYZq2q1T4HGZK9EjSw6PTUAazhmorHSF9QALRS",
+          "instructionIndex": 3,
+          "amount": "100",
+          "method": "daily",
+          "recipient": "Bt9rpu5jGr7h2ipv9zBYqPyS7qvesJN1HMaaJHQv5Xfo",
+          "reference": "8fgnvJPm9Us9RGMmZN2j3Nf3DN3TQAZtXhQ3AbZ2kfqy",
+          "blockTime": 1794100049,
+          "slot": 519850300
+        }
+      ]
+    },
+    {
+      "payer": "Bt9rpu5jGr7h2ipv9zBYqPyS7qvesJN1HMaaJHQv5Xfo",
+      "total": "100",
+      "daily": "0",
+      "credit": "100",
+      "count": 1,
+      "entries": [
+        {
+          "id": "4acU6pqarEw5Z9vSKy7RfjgtMwBavqhjGjxWxgQFPF463dLjcQo5h6AnP9v1PhFTMzsUtTP5qqGn4k7xeRz3C4Ci:3",
+          "signature": "4acU6pqarEw5Z9vSKy7RfjgtMwBavqhjGjxWxgQFPF463dLjcQo5h6AnP9v1PhFTMzsUtTP5qqGn4k7xeRz3C4Ci",
+          "instructionIndex": 3,
+          "amount": "100",
+          "method": "credit",
+          "recipient": "EDSxyMXxGJhfD9pM5ePW3MSRnAV93gSStFgi59EsHAvH",
+          "reference": "3JBH3G1uyMU4fKKqFQCvXCnsNUhS5n8xXTsWu3acXx7S",
+          "blockTime": 1794100122,
+          "slot": 519850604
+        }
+      ]
+    }
+  ],
+  "ui": "Production bundle on localhost with read-only test wallets: daily 110/2 restored after reload; demo 0/0; WARA payment 100/1 with daily 0, alongside merchant receipts 110. No new transfers or Phantom signatures during these checks."
+}

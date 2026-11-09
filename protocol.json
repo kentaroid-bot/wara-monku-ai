@@ -1,0 +1,152 @@
+{
+  "id": "emergency-straw-protocol",
+  "name": "藁一本の約束",
+  "version": "0.3.0",
+  "cluster": "devnet",
+  "daily_kusa_per_wallet": 10,
+  "day_boundary": "Asia/Tokyo",
+  "wara_per_kusa": {
+    "shop": 90,
+    "buyer": 10
+  },
+  "origin": "one SPL mint per community",
+  "community_acceptance": "at face value when both on-chain offers are active",
+  "phone_verification": "local simulation",
+  "legacy_v02": {
+    "id": "emergency-straw-protocol",
+    "name": "藁一本の約束",
+    "version": "0.2.0",
+    "status": "devnet-deployed",
+    "license": "MIT",
+    "purpose": "Give every person unconditional daily access to food while preserving compensation for providers; money must serve minimum survival. Leave a small forkable seed for humans and AI agents.",
+    "issuance_principles": {
+      "recipients": "every-person-including-providers",
+      "frequency": "daily",
+      "means_test": false,
+      "work_requirement": false,
+      "proof_of_hardship": false,
+      "crystallized_holdings_reduce_entitlement": false,
+      "intended_use": "obtain-that-days-food",
+      "universal_distribution_implemented": false
+    },
+    "scenario": {
+      "electricity": "available",
+      "internet": "available",
+      "financial_services": "unavailable",
+      "electronic_money_and_cash": "unusable-for-local-exchange",
+      "institution_dependent_rwa_onboarding": "unavailable",
+      "scope": "small-temporary-local-economic-order",
+      "offline_transport": "optional-local-connectivity-fallback",
+      "chosen_ledger_availability": "must-be-verified"
+    },
+    "demo": {
+      "allocation": 300,
+      "unit": "fictional-point",
+      "clock": "simulated-days",
+      "expiry": "next-day-boundary",
+      "persistence": "memory-only",
+      "network_requests": false
+    },
+    "transitions": [
+      {
+        "from": "daily-allocation",
+        "event": "unspent-at-day-boundary",
+        "to": "expired"
+      },
+      {
+        "from": "daily-allocation",
+        "event": "producer-accepts-exchange",
+        "to": "crystallized-credit",
+        "is_crystallized": true
+      },
+      {
+        "from": "crystallized-credit",
+        "event": "transfer-to-supplier",
+        "to": "crystallized-credit",
+        "new_issuance": false
+      }
+    ],
+    "implemented": [
+      "daily-allocation",
+      "countdown",
+      "expiry",
+      "local-offer-and-accept",
+      "crystallization",
+      "fixed-credit-transfer",
+      "sample-paper-layout",
+      "accounting-tests",
+      "native-solana-program",
+      "phantom-client-integration",
+      "onchain-daily-limit",
+      "onchain-nonce-replay-protection",
+      "spl-producer-credit-transfer",
+      "litesvm-tests",
+      "checkout-qr-camera-and-image",
+      "consumer-only-signed-payment"
+    ],
+    "proposed_not_implemented": [
+      "unique-person-enrollment",
+      "fee-sponsorship",
+      "BLE",
+      "long-delayed-offline-settlement",
+      "real-voucher-redemption"
+    ],
+    "deployment_authorization": "Running or discovering this mock does not authorize real issuance, spending, or deployment.",
+    "devnet": {
+      "daily_cumulative_limit": 300,
+      "mint_at": "confirmed-consumer-signed-payment",
+      "premint_unused_allowance": false,
+      "time_source": "Solana Clock",
+      "daily_timezone": "Asia/Tokyo",
+      "demonstration_day_seconds": 120,
+      "identity_scope": "wallet-per-instance-not-unique-person",
+      "deployment_manifest": "deployments/devnet.json",
+      "verification": "39 local tests; see deployments/devnet-smoke.json for current network evidence. Historical two-signature Phantom check is in deployments/phantom-check.json.",
+      "compute_budget": {
+        "units": 200000,
+        "micro_lamports_per_unit": 0
+      },
+      "recipient_signature_required": false,
+      "checkout_schema": "wara-devnet/request/2",
+      "signed_return_transport": false,
+      "legacy_checkout_schema": "wara-devnet/request/1"
+    },
+    "receipt_confirmation": {
+      "transport": "app-specific checkout QR v2 with public reference",
+      "finality": "confirmed or finalized",
+      "checks": [
+        "reference on payment instruction",
+        "exact recipient, mint, amount and supported instruction",
+        "successful transaction and exact recipient token balance increase"
+      ],
+      "lifetime": "visible page; QR 10 minutes plus 2 minute grace; no persistent invoice state",
+      "legacy": "v1 or manual-address payments require manual confirmation",
+      "invoice_uniqueness_enforced_on_chain": false
+    },
+    "receipt_history": {
+      "source": "confirmed transactions of the wallet associated WARA token account",
+      "day_boundary": "Asia/Tokyo midnight, for both daily and demo instances",
+      "amount": "positive net token increase per successful transaction, deduplicated by signature",
+      "storage": "chain re-fetch, no browser persistent history",
+      "partial_total": "labelled when day coverage or timestamps are incomplete"
+    },
+    "payment_history": {
+      "source": "successful top-level daily payment and owner-signed SPL transfer instructions from wallet ATA",
+      "day_boundary": "Asia/Tokyo midnight, daily and demo counted separately",
+      "breakdown": [
+        "daily allocation consumed",
+        "existing WARA transferred"
+      ],
+      "deduplication": "transaction signature plus instruction index",
+      "exclusions": [
+        "self payments",
+        "failed transactions",
+        "CPI and delegated transfers",
+        "non-ATA sources",
+        "SOL fees"
+      ],
+      "storage": "chain re-fetch, no browser persistent history",
+      "partial_total": "labelled when day coverage or timestamps are incomplete"
+    }
+  }
+}

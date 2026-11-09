@@ -1,0 +1,46 @@
+{
+  "name": "wara-monku-ai",
+  "version": "0.3.0",
+  "private": true,
+  "description": "10 daily Kusa across communities, origin-preserving Devnet settlement and 90:10 WARA issuance.",
+  "license": "MIT",
+  "scripts": {
+    "start": "node serve.js",
+    "test": "node --test model.test.js tests/*.test.mjs",
+    "build": "node scripts/build-app.mjs",
+    "build:program": "cargo build-sbf",
+    "test:model": "node --test model.test.js",
+    "deploy:devnet": "node scripts/deploy-devnet.mjs",
+    "smoke:devnet": "node scripts/smoke-devnet.mjs",
+    "workers:build": "npm run build && wrangler deploy --dry-run",
+    "workers:dev": "wrangler dev --local --var AUTH_MODE:trial",
+    "workers:migrate:local": "wrangler d1 migrations apply DB --local"
+  },
+  "engines": {
+    "node": ">=24"
+  },
+  "keywords": [
+    "emergency",
+    "mutual-aid",
+    "daily-allocation",
+    "producer-credit",
+    "offline",
+    "concept",
+    "ai-agents"
+  ],
+  "dependencies": {
+    "@noble/curves": "1.9.7",
+    "@solana/spl-token": "0.4.15",
+    "@solana/web3.js": "1.99.0",
+    "bs58": "6.0.0",
+    "buffer": "6.0.3",
+    "jsqr": "1.4.0",
+    "qrcode": "1.5.4"
+  },
+  "devDependencies": {
+    "esbuild": "0.28.2",
+    "litesvm": "1.6.2",
+    "miniflare": "5.20261104.0-beta",
+    "wrangler": "4.158.0"
+  }
+}

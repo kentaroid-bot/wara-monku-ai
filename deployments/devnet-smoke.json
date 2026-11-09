@@ -1,0 +1,48 @@
+{
+  "cluster": "devnet",
+  "program": "B58EpKJJq6YFJbY7QTdVek6Dh2TPeTx1D2Pvnvvvi6V8",
+  "config": "E6Y4vkqECWstNiR7o83P6QNSaSzC5LczVEfnRKncv5ac",
+  "mint": "7JG3TRXjq4JdaJRZJe1CiA8cXCe7fDWiFmZhi1Kv5Ppa",
+  "binarySha256": "cef2078a0232756b3e91707372a1a8595de4f884fac3e33f031a6bc3bc597663",
+  "startedAt": "2026-11-07T08:26:25.307Z",
+  "consumer": "CxAhhZSo6CmJWEQ1hUn9rx4TFJtWpQv9U6XxRFnk3XEt",
+  "producer": "SsvuksJ7WoSwjRZ8SeRySD9GWi598vWR1aHPZQRcn75",
+  "supplier": "5vnubrky63CUtHc3nNYhWaJGRM9DXUT9AFx9C2quoJPk",
+  "transactions": [
+    {
+      "label": "fund-test-wallets",
+      "signature": "3bjR7rKg7245DVsY69JUHSB8M6WLaHLGKu47Qkj99uxNxQjZ1u2M3CNQ1FuPrtNzeTnUcMp9tymT8vts7jmUab2j"
+    },
+    {
+      "label": "enroll-no-mint",
+      "signature": "2PDsjMiCYeXC9eS7aDkEowvQXLYSudkXhT224MKyFpQUzNdB68Ae4RYCPHjkdo2YWy4DE4itHD4inMnKrkYzzfCa"
+    },
+    {
+      "label": "pay-300-consumer-only",
+      "signature": "gE62h1fJUvop3HA6VWHcfjvqYDuLqv1sGJxmwUsyXMyQ7E6dnDSVLqFLdZ9tfF8GYds2CWvoTeDb6JUp6zbUaMf",
+      "requiredSignatures": 1
+    },
+    {
+      "label": "transfer-persistent-credit",
+      "signature": "4GQCcoKMazHbVxLGeudRErDqfnCNcdKs7NDJiS23aHjDhLbPemX2yQRN9qufBmS3eLpGBeFQkvqTo6HxkVbUSLuw"
+    },
+    {
+      "label": "next-day-pay-100",
+      "signature": "5pEDrzPcPtLp6GJshnaW3JnjXoB8EtcVU65PqN6o5ckFvtLnhUMDp8bYb9q8LxJmebmJT4UTKuEa4R9jg3vXnYWD",
+      "requiredSignatures": 1
+    }
+  ],
+  "checks": [
+    "enrollment does not mint",
+    "consumer signature alone mints exactly 300",
+    "fresh transaction with consumed nonce rejected",
+    "301st unit rejected with limit error",
+    "new day refreshes rights without minting or expiring credit",
+    "credit remains transferable after day change",
+    "next day payment issues only 100",
+    "on-chain payment transactions each require exactly one signature"
+  ],
+  "completedAt": "2026-11-07T08:28:11.387Z",
+  "result": "passed",
+  "phantom": "not exercised by this script"
+}

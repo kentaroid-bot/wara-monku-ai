@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>藁一本の約束 — Emergency Straw Protocol</title>
+<meta name="description" content="藁一本の約束。今日を食べる枠を配り、食料を届けた人の対価を残す。日次受給枠と取引による固定化のインタラクティブ・モック。">
+<style>
+:root{color-scheme:light;--paper:#f5f2e9;--ink:#22372e;--muted:#617166;--line:#d6daca;--green:#215640;--gold:#b78428}*{box-sizing:border-box}body{margin:0;background:var(--paper);color:var(--ink);font:15px/1.7 system-ui,-apple-system,"Hiragino Kaku Gothic ProN",sans-serif}main{max-width:1120px;margin:auto;padding:32px 28px 48px}header{display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--line);padding-bottom:18px}.brand{font-weight:750;letter-spacing:.14em}.tag{font:11px ui-monospace,monospace;letter-spacing:.1em;color:var(--muted)}h1{font-family:Georgia,"Yu Mincho",serif;font-size:clamp(30px,4.5vw,52px);line-height:1.4;font-weight:500;margin:38px 0 14px;letter-spacing:.02em}.intro{color:var(--muted);max-width:690px;margin:0 0 30px}.toolbar{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:24px;padding:16px 0;border-top:1px solid var(--line);border-bottom:1px solid var(--line)}.clock{font:16px ui-monospace,monospace}.actions{display:flex;flex-wrap:wrap;gap:8px}button,select,input{font:inherit;border:1px solid var(--line);border-radius:7px;padding:9px 12px;background:#fff;color:var(--ink)}button{cursor:pointer}button:hover:enabled{background:#e7eddf}button:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid #b78428;outline-offset:2px}button:disabled{opacity:.45;cursor:not-allowed}.primary{background:var(--green);color:#fff;border-color:var(--green)}.primary:hover:enabled{background:#173d2c}.grid{display:grid;grid-template-columns:1fr 1fr;gap:24px}.card{padding:25px;background:#fffef9;border:1px solid var(--line);border-radius:16px}.producer{background:#eaf0e5}.eyebrow{font:11px ui-monospace,monospace;letter-spacing:.14em;color:var(--muted)}h2{margin:8px 0 18px;font-size:21px;font-weight:600}.number{font-size:64px;font-weight:450;letter-spacing:-.06em;line-height:1.15;font-variant-numeric:tabular-nums}.unit{font-size:17px;letter-spacing:0;margin-left:9px}.balance{display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:14px}.pill{font-size:12px;border-radius:20px;padding:4px 10px;background:#edf0e8}.consumer .pill{background:#f8ebcf;color:#765514}.bar{height:5px;background:#e8e5dd;border-radius:4px;overflow:hidden}.bar div{height:100%;width:100%;background:var(--gold);transition:width .2s}.small{font-size:13px;color:var(--muted)}form{margin-top:24px}.formrow{display:flex;gap:10px;margin:8px 0 12px}.formrow input{width:100%;min-width:0}.formrow select{max-width:160px}label{font-size:13px}form button{width:100%}.exchange{margin-top:24px;border-top:1px solid var(--line);padding-top:18px;min-height:165px}.exchange p{margin:8px 0}.supplier{border-top:1px solid var(--line);margin-top:21px;padding-top:18px}.supplier strong{font-variant-numeric:tabular-nums}.flow{display:flex;justify-content:center;gap:12px;flex-wrap:wrap;margin:24px 0;color:var(--muted);font-size:13px}.flow b{color:var(--green);font-weight:600}.bottom{display:grid;grid-template-columns:1.25fr 1fr;gap:24px}.panel{border-top:1px solid var(--line);padding-top:18px}.panel h2{font-size:16px;margin:0 0 12px}.events{max-height:185px;overflow:auto;font-size:13px;margin:0;padding-left:20px}.events li{margin-bottom:8px}.message{min-height:28px;margin:10px 0;color:var(--green);font-size:14px}.message.error{color:#9a301d}details{margin:12px 0}summary{cursor:pointer}pre{font:12px/1.6 ui-monospace,monospace;white-space:pre-wrap;overflow-wrap:anywhere;background:#ebece4;padding:14px;border-radius:8px}footer{margin-top:28px;display:flex;justify-content:space-between;gap:20px;color:var(--muted);font-size:12px}a{color:var(--green)}.print-only{display:none}.print-ticket{border:2px dashed #777;padding:20px}.sample{font-weight:800;font-size:22px;letter-spacing:.15em}.note{font-size:12px;color:var(--muted);margin-top:12px}
+@media(max-width:700px){main{padding:20px 18px}.grid,.bottom{grid-template-columns:1fr}.card{padding:22px}.number{font-size:56px}.tag{max-width:145px;text-align:right}.toolbar{align-items:flex-start}footer{flex-direction:column;gap:4px}h1{margin-top:28px}.flow{gap:8px}}
+@media print{body{background:white}main{display:none}.print-only{display:block;padding:25mm;font-size:16px}.sample{color:#555}.print-ticket{break-inside:avoid}}
+</style>
+</head>
+<body>
+<main>
+<header><span class="brand">藁一本の約束</span><span class="tag">A SMALL SEED FOR TOMORROW<br>CONCEPT MOCK · v0.1</span></header>
+<h1>今日を食べる枠。<br>届けた人に、残る対価。</h1>
+<p class="intro">ネットと電気は使える。でも金融系サーバーが止まったら。<br>地域の交換を支える、保険としての小さく暫定的な経済秩序。<br>毎日配る枠はその日限り。食料を渡した人の手元では、消えない対価に変わります。</p>
+<div class="toolbar"><div><span class="clock" id="clock">DAY 1 / 08:00:00</span><div class="small">デモの時計 · 実際の日付とは独立</div></div><div class="actions"><button id="hour">1時間進める</button><button id="tomorrow">翌朝へ</button><button id="reset">最初から</button></div></div>
+<div class="grid">
+<section class="card consumer" aria-labelledby="consumer-title"><div class="eyebrow">01 / DAILY ALLOCATION</div><h2 id="consumer-title">食べる人のウォレット</h2><div class="balance"><div class="number"><span id="daily">300</span><span class="unit">pt</span></div><span class="pill">今日だけ使える</span></div><div class="bar"><div id="remaining-bar"></div></div><p class="small">未使用分の失効まで <strong id="countdown">16:00:00</strong><br>新しい一日には、300 pt が配られます。</p>
+<form id="offer-form"><label for="amount">食料と交換する額</label><div class="formrow"><input id="amount" type="number" min="1" max="300" step="1" value="100" required><select id="transport" aria-label="模擬の受け渡し方法"><option value="QR">QRの想定</option><option value="BLE">Bluetoothの想定</option><option value="PAPER">紙券の想定</option></select></div><button class="primary" id="offer" type="submit">受け渡しを準備する</button></form><p class="note">単位は架空のポイント。QR読取・Bluetooth通信・署名はシミュレーションです。</p></section>
+<section class="card producer" aria-labelledby="producer-title"><div class="eyebrow">02 / CRYSTALLIZED CREDIT</div><h2 id="producer-title">食料を届ける人のウォレット</h2><div class="balance"><div class="number"><span id="fixed">0</span><span class="unit">pt</span></div><span class="pill">翌日も残る</span></div><p class="small">食料を提供して受け取った対価。<br>取引が成立した分だけ、ここに固定化されます。</p>
+<div class="exchange"><div id="offer-description">食べる人が受け渡しを準備すると、ここに届きます。</div><p class="small" id="receipt-id">取引を待っています</p><div class="actions"><button id="accept" class="primary" disabled>食料を渡して受領する</button><button id="cancel" disabled>取り消す</button></div></div>
+<div class="supplier"><label for="transfer-amount">残った対価で、次の生産へ</label><form id="transfer-form"><div class="formrow"><input id="transfer-amount" aria-label="資材店へ渡す額" type="number" min="1" step="1" value="50" required><button id="transfer" type="submit">資材店へ渡す</button></div></form><div class="small">資材店の固定残高 <strong id="supplier">0</strong> pt</div></div></section>
+</div>
+<p id="message" class="message" role="status" aria-live="polite">まず100 ptを準備して受領し、「翌朝へ」を押してみてください。</p>
+<div class="flow"><span>毎日の受給枠</span><span>→</span><b>食料の手渡し・受領</b><span>→</span><span>消えない対価</span></div>
+<div class="bottom"><section class="panel"><h2>この小さな経済で起きたこと</h2><ol id="events" class="events"></ol><p class="small" id="accounting"></p></section><section class="panel"><h2>次に拾う人と、AIへ</h2><p class="small">これはアイデアの動く見本です。Phantom・Solana・近距離通信は、次の実装のための候補として設計メモに残しています。</p><details><summary class="small">受け渡しデータの見本</summary><pre id="payload">受け渡しを準備すると表示されます。</pre></details><button id="print" disabled>紙券の見本を印刷</button><p class="note">全残高はこの画面内だけの模擬記録です。再読み込みで初期化されます。</p></section></div>
+<footer><span>使う日が来なければ、そのままでいい。</span><span><a href="app/index.html">Devnet版（サーバーから利用）</a> · <a href="README.md">README</a> · <a href="DESIGN.md">設計と次の一歩</a> · MIT</span></footer>
+<noscript>このモックの操作にはJavaScriptを有効にしてください。構想はREADME.mdでも読めます。</noscript>
+</main>
+<section class="print-only"><div class="print-ticket"><p class="sample">SAMPLE — 引換不可</p><h1>藁一本の約束 / 紙券の見本</h1><p id="ticket"></p><p>これはデザイン見本です。署名・消込・重複利用防止はありません。印刷しても受給枠は予約・消費されず、実際の物品や金銭には交換できません。</p></div></section>
+<script src="model.js"></script>
+<script>
+'use strict';
+let state = Straw.create();
+const $ = id => document.getElementById(id);
+const fmt = n => [Math.floor(n/3600),Math.floor(n%3600/60),n%60].map(x=>String(x).padStart(2,'0')).join(':');
+function render(){
+ $('clock').textContent=`DAY ${state.day} / ${fmt(state.seconds%Straw.DAY)}`;
+ $('countdown').textContent=fmt(Straw.DAY-state.seconds%Straw.DAY);
+ for(const id of ['daily','fixed','supplier']) $(id).textContent=state[id];
+ $('remaining-bar').style.width=(state.daily/300*100)+'%';
+ $('amount').max=state.daily;
+ $('offer').disabled=!!state.pending || state.daily===0;
+ $('accept').disabled=$('cancel').disabled=$('print').disabled=!state.pending;
+ $('transfer').disabled=state.fixed===0;
+ const p=state.pending;
+ $('offer-description').textContent=p?`${p.amount} pt を受け取る準備ができました。`:'食べる人が受け渡しを準備すると、ここに届きます。';
+ $('receipt-id').textContent=p?`${p.id} · ${p.transport}の模擬受け渡し · 未受領`:'取引を待っています';
+ $('payload').textContent=(p||state.lastReceipt)?JSON.stringify(p||state.lastReceipt,null,2):'受け渡しを準備すると表示されます。';
+ $('ticket').textContent=p?`DAY ${p.day} のみ / ${p.amount} pt / ${p.id} / 受取先: 生産者デモ`:'';
+ $('events').replaceChildren(...state.events.slice(0,30).map(text=>{const li=document.createElement('li');li.textContent=text;return li;}));
+ $('accounting').textContent=`発行 ${state.issued} = 今日の枠 ${state.daily} + 固定総額 ${state.fixed+state.supplier} + 失効 ${state.expired} pt`;
+}
+function run(fn,success){try{fn();$('message').textContent=success;$('message').className='message';}catch(e){$('message').textContent=e.message;$('message').className='message error';}render();}
+$('offer-form').addEventListener('submit',e=>{e.preventDefault();run(()=>Straw.offer(state,Number($('amount').value),$('transport').value),'受け渡しを準備しました。食料を渡した側で受領してください。');});
+$('accept').onclick=()=>run(()=>Straw.accept(state,state.pending?.id),'受領しました。食料を届けた人の対価は、翌日も残ります。');
+$('cancel').onclick=()=>run(()=>Straw.cancel(state),'取り消しました。今日の受給枠は減りません。');
+$('transfer-form').addEventListener('submit',e=>{e.preventDefault();run(()=>Straw.transfer(state,Number($('transfer-amount').value)),'資材店へ移りました。固定総額は同じです。');});
+$('hour').onclick=()=>run(()=>Straw.advance(state,3600),'デモの時計を1時間進めました。');
+$('tomorrow').onclick=()=>run(()=>Straw.advance(state,Straw.DAY-state.seconds%Straw.DAY+8*3600),'翌朝です。未使用分は失効し、今日の枠を配りました。固定残高はそのままです。');
+$('reset').onclick=()=>run(()=>{state=Straw.create();},'デモを最初の状態に戻しました。');
+$('print').onclick=()=>window.print();
+let lastTick=performance.now();
+setInterval(()=>{const now=performance.now();const elapsed=Math.floor((now-lastTick)/1000);if(elapsed>0){Straw.advance(state,elapsed);lastTick+=elapsed*1000;render();}},1000);
+render();
+</script>
+</body></html>

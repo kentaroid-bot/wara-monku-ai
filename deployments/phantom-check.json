@@ -1,0 +1,22 @@
+{
+  "cluster": "devnet",
+  "checkedAt": "2026-11-06T10:46:12.944Z",
+  "browser": "Brave with Phantom extension",
+  "instance": "daily",
+  "transportSchema": "straw-devnet/2",
+  "result": "passed",
+  "checks": [
+    "connect selected test account",
+    "enroll with Phantom signature: no credit minted",
+    "consumer partially signs 100, test producer countersigns and confirms",
+    "import canonical test payment, Phantom producer countersigns and receives 100",
+    "Phantom transfers 10 existing credits without new minting"
+  ],
+  "finalState": {
+    "dailySpent": 100,
+    "dailyRemaining": 200,
+    "producerCredit": 90,
+    "mintSupply": 200
+  },
+  "evidenceNote": "Browser actions and chain state verified. Personal test wallet addresses and transaction identifiers are kept out of this public record. Separate automated network evidence is in devnet-smoke.json."
+}
