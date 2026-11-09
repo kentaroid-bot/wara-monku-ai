@@ -1,0 +1,19 @@
+{
+  "cluster": "devnet",
+  "group": "4SuDmQR72DnjC5GZ78oDk7u4G2w5edNFuVGKFRfEZsLU",
+  "metadata": "3QGjz4RQHKNTdgXjHqYa2PV1DCC55BS2zjVYRwKPGnk6",
+  "updateAuthority": "J7E3WVh7PGsgHMf6THyaSXweoFUqNzHXF4UTCq5KE9vu",
+  "mint": "BHW9Z1vnhzaXpqXWHvcpQtHk4xVMHrJeZzdMWxKoCrNC",
+  "name": "川辺の市場 WARA",
+  "symbol": "WARA",
+  "uri": "https://raw.githubusercontent.com/kentaroid-bot/wara-monku-ai/main/assets/kawabe-wara.json",
+  "sellerFeeBasisPoints": 0,
+  "primarySaleHappened": 0,
+  "isMutable": 1,
+  "tokenStandard": 2,
+  "image": "https://raw.githubusercontent.com/kentaroid-bot/wara-monku-ai/main/assets/wara-avatar.png",
+  "signature": "5pBMeWRhB8jqFMJX3XGJd9jU3YKcvvyDrkvbycY5gi78Sqk95ZeYyve3LG1Nuff4BtTuSr93ELNSBNAhdKEhGnre",
+  "slot": 520268905,
+  "feeLamports": 5000,
+  "registrationLamportsIncludingFee": 13738800
+}
