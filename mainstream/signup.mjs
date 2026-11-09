@@ -15,6 +15,10 @@ export async function signup(el, info) {
     el.textContent = "再読み込みしてお試しください。";
     return;
   }
+  if(delivery!=="local" && sessionStorage.getItem("wara.access.version")==="3"){
+    const {memberSignup}=await import("./member-ui.mjs");
+    return memberSignup(el,info,delivery);
+  }
   const sms = delivery === "google" || delivery === "sms";
   const transferAvailable = delivery !== "local" && hasDeviceWallet();
 

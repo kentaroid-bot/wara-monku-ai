@@ -1,0 +1,178 @@
+import { Buffer } from "buffer";
+import {
+  Transaction,
+  SystemInstruction,
+  ComputeBudgetProgram,
+} from "@solana/web3.js";
+import {
+  join,
+  spend,
+  pk,
+  createGroup,
+  certify,
+  offer,
+  transfer,
+} from "../mainstream/protocol.mjs";
+import manifest from "../deployments/devnet.json" with { type: "json" };
+const program = pk(manifest.program);
+const price = () =>
+  ComputeBudgetProgram.setComputeUnitPrice({ microLamports: 0 });
+const limit = () => ComputeBudgetProgram.setComputeUnitLimit({ units: 200000 });
+
+// Rebuild the entire message, including fee policy and account metas. Never
+// trust the command name or an instruction picked out of a client transaction.
+export function ordinaryMessage(raw, address, scope, checkout) {
+  const tx = Transaction.from(raw);
+  const last = tx.instructions.at(-1);
+  if (!last?.programId.equals(program) || !tx.feePayer?.equals(pk(address)))
+    return false;
+  let instructions;
+  if (last.data[0] === 14 && last.data.length === 25) {
+    const n = last.data.readBigUInt64LE(1);
+    const group = last.keys[1].pubkey,
+      shop = last.keys[2].pubkey;
+    if (
+      n < 1n ||
+      n > 10n ||
+      (checkout &&
+        (checkout.group !== String(group) ||
+          checkout.store !== String(shop) ||
+          checkout.amount !== Number(n)))
+    )
+      return false;
+    instructions = [
+      price(),
+      ...spend(
+        program,
+        address,
+        group,
+        shop,
+        n,
+        last.data.readBigUInt64LE(9),
+        last.data.readBigUInt64LE(17),
+      ),
+    ];
+  } else if (scope === "session" && last.data[0] === 12 && last.data[1] === 0) {
+    instructions = [
+      limit(),
+      price(),
+      join(
+        program,
+        address,
+        last.keys[1].pubkey,
+        address,
+        false,
+        last.keys[5]?.pubkey,
+      ),
+    ];
+  } else return false;
+  const expected = new Transaction({
+    feePayer: pk(address),
+    recentBlockhash: tx.recentBlockhash,
+  }).add(...instructions);
+  return Buffer.from(expected.serializeMessage()).equals(tx.serializeMessage());
+}
+export function decodeTransaction(encoded, address) {
+  if (typeof encoded !== "string" || encoded.length > 1650) throw Error();
+  const raw = Buffer.from(encoded, "base64"),
+    tx = Transaction.from(raw);
+  if (!tx.feePayer?.equals(pk(address))) throw Error();
+  return { raw, message: tx.serializeMessage(), blockhash: tx.recentBlockhash };
+}
+export async function validBlockhash(blockhash) {
+  const response = await fetch(manifest.rpc, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      jsonrpc: "2.0",
+      id: 1,
+      method: "isBlockhashValid",
+      params: [blockhash, { commitment: "confirmed" }],
+    }),
+    signal: AbortSignal.timeout(8000),
+  });
+  return response.ok && (await response.json()).result?.value === true;
+}
+
+// A confirmation sheet authorizes WARA payments and the site's community
+// administration. It cannot turn this endpoint into an arbitrary SOL signer.
+export function confirmedMessage(raw, address) {
+  const tx = Transaction.from(raw),
+    ix = tx.instructions,
+    last = ix.at(-1);
+  if (!last?.programId.equals(program) || !tx.feePayer?.equals(pk(address)))
+    return false;
+  const data = last.data,
+    accounts = last.keys.map((k) => k.pubkey);
+  let expected;
+  switch (data[0]) {
+    case 10: {
+      const creation = SystemInstruction.decodeCreateAccount(ix.at(-2));
+      if (creation.lamports > 100_000_000 || data.length > 434) return false;
+      expected = [
+        limit(),
+        price(),
+        ...createGroup(
+          program,
+          address,
+          accounts[1],
+          data[1],
+          pk(data.subarray(2, 34)),
+          data.subarray(34),
+          creation.lamports,
+        ),
+      ];
+      break;
+    }
+    case 11:
+      expected = [
+        limit(),
+        price(),
+        certify(
+          program,
+          address,
+          accounts[1],
+          accounts[2],
+          data.subarray(1).toString("utf8"),
+        ),
+      ];
+      break;
+    case 12:
+      expected = [
+        limit(),
+        price(),
+        join(program, address, accounts[1], accounts[2], true),
+      ];
+      break;
+    case 13:
+      expected = [
+        limit(),
+        price(),
+        offer(program, address, accounts[1], accounts[2], data[1] === 1),
+      ];
+      break;
+    case 15: {
+      const lots = ix
+        .filter((i) => i.programId.equals(program) && i.data[0] === 15)
+        .map((i) => ({
+          origin: i.keys[2].pubkey,
+          amount: i.data.readBigUInt64LE(1),
+        }));
+      if (lots.some((l) => l.amount < 1n)) return false;
+      expected = [
+        price(),
+        ...transfer(program, address, accounts[1], accounts[3], lots),
+      ];
+      break;
+    }
+    default:
+      return false;
+  }
+  return new Transaction({
+    feePayer: pk(address),
+    recentBlockhash: tx.recentBlockhash,
+  })
+    .add(...expected)
+    .serializeMessage()
+    .equals(tx.serializeMessage());
+}

@@ -1,4 +1,5 @@
 import { verifiedPhoneEvent } from "./google-phone.mjs";
+import { memberRequest } from "./members.mjs";
 import bs58 from "bs58";
 import {
   fromBase64,
@@ -313,7 +314,7 @@ async function findWallet(env, key, phoneKey, phoneHash, allowTrial) {
   const stored = await lookup.bind(phoneKey).first();
   if (stored || !allowTrial || env.AUTH_MODE === "trial") return stored;
   const legacy = await lookup.bind(await mac(key, "phone", phoneHash)).first();
-  return legacy && { ...legacy, legacy: true };
+  return legacy && legacy.login_key !== "managed" ? { ...legacy, legacy: true } : null;
 }
 
 async function resolveWallet(env, key, b, phoneKey, now) {
@@ -332,6 +333,7 @@ async function resolveWallet(env, key, b, phoneKey, now) {
   if (changed.meta.changes !== 1) denied();
   const profile = stored && JSON.parse(stored.profile);
   return json({ action, challengeId, type: profile?.type ?? null,
+    ...(stored?.login_key === "managed" ? {managed:true} : {}),
     address: profile?.type === "phantom" ? profile.address : null });
 }
 
@@ -407,7 +409,7 @@ export default {
       if (url.pathname === "/api/auth/status" && req.method === "GET")
         return json({
           service: "wara-auth",
-          version: 2,
+          version: env.WALLET_ACCESS === "enabled" ? 3 : 2,
           mode:
             (env.AUTH_MODE === "sms" && !smsReady(env)) ||
             (google && !googleConfig(env))
@@ -417,7 +419,8 @@ export default {
       const action = url.pathname.match(
         /^\/api\/auth\/(challenge|resolve|activate|signin)$/,
       )?.[1];
-      if (!action) fail(404, "APIが見つかりません。");
+      const memberOp = env.WALLET_ACCESS === "enabled" && url.pathname.match(/^\/api\/member\/([a-z-]+)$/)?.[1];
+      if (!action && !memberOp) fail(404, "APIが見つかりません。");
       if (req.method !== "POST") fail(405, "POSTを使用してください。");
       const origin = req.headers.get("Origin");
       if (origin && origin !== url.origin)
@@ -432,6 +435,28 @@ export default {
       )
         fail(503, "この環境の認証APIは準備中です。");
       const b = await bodyOf(req, google ? 8192 : maxBody);
+      const key = await crypto.subtle.importKey(
+        "raw",
+        enc.encode(env.AUTH_PEPPER),
+        { name: "HMAC", hash: "SHA-256" },
+        false,
+        ["sign"],
+      );
+      if (memberOp) {
+        const ctx = {env, req, origin:url.origin, key, now:Math.floor(Date.now()/1000), mac, limit, fail, denied, bad, checkSignature};
+        if(memberOp === "legacy-vault") {
+          if(typeof b.phoneHash!=="string" || !/^[a-f0-9]{64}$/.test(b.phoneHash)) bad();
+          const phone=await mac(key,env.AUTH_MODE==="trial"?"phone":"sms-phone",b.phoneHash);
+          await reserveAttempt(env,key,"signin",{...b,walletStep:true},phone,ctx.now);
+          const stored=await findWallet(env,key,phone,b.phoneHash,true);
+          if(!stored || stored.login_key==="managed") denied();
+          await checkSignature(binary(stored.login_key,32),b.proof,transcript("signin",url.origin,b.phoneHash,b.challengeId));
+          return json({profile:JSON.parse(stored.profile)});
+        }
+        return json(await memberRequest(memberOp,b,ctx));
+      }
+      if(env.WALLET_ACCESS==="enabled" && ["activate","signin"].includes(action))
+        fail(409,"画面を再読み込みし、財布の暗証番号を使う手続きに進んでください。");
       const credential = google ? "idToken" : "code";
       const common = ["phoneHash", "challengeId", b?.walletStep === true ? "walletStep" : credential, "proof"];
       fields(
@@ -453,13 +478,6 @@ export default {
         !/^[a-f0-9]{64}$/.test(b.phoneHash)
       )
         bad();
-      const key = await crypto.subtle.importKey(
-        "raw",
-        enc.encode(env.AUTH_PEPPER),
-        { name: "HMAC", hash: "SHA-256" },
-        false,
-        ["sign"],
-      );
       const phoneKey = await mac(
           key,
           env.AUTH_MODE !== "trial" ? "sms-phone" : "phone",

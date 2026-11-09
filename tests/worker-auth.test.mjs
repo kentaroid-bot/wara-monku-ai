@@ -557,3 +557,113 @@ test("Google challenge retries refill one slot and a rejection consumes no slots
   assert.equal((await issue()).status, 200);
   assert.equal((await issue()).status, 429);
 });
+
+test("SMS-verified introduction, isolated child login, card scope and linking the same wallet", async t => {
+  const { default: worker }=await import("../worker/index.mjs");
+  const { walletMessage }=await import("../shared/member-wire.mjs");
+  const { spend, transfer, join }=await import("../mainstream/protocol.mjs");
+  const { budgetInstructions }=await import("../app/protocol.mjs");
+  const { Keypair, Transaction, SystemProgram }=await import("@solana/web3.js");
+  const {default:manifest}=await import("../deployments/devnet.json",{with:{type:"json"}});
+  const sql=await readFile(new URL("../migrations/0002_wallet_access.sql",import.meta.url),"utf8");
+  for(const statement of sql.trim().split(/;\s*(?=CREATE |$)/).filter(Boolean)) await db.prepare(statement).run();
+  const env={DB:db,AUTH_PEPPER:randomBytes(32).toString("hex"),AUTH_MODE:"sms",WALLET_ACCESS:"enabled",
+    TWILIO_VERIFY_SERVICE_SID:"VA"+"a".repeat(32),TWILIO_API_KEY:"SK"+"b".repeat(32),TWILIO_API_SECRET:"fixture"};
+  const sent=new Map();
+  t.mock.method(globalThis,"fetch",async (url,init)=>{
+    if(String(url)===manifest.rpc) return Response.json({result:{value:true}});
+    const params=init.body;
+    const issuing=String(url).endsWith("/Verifications");
+    const sid=issuing?"VE"+randomBytes(16).toString("hex"):params.get("VerificationSid");
+    if(issuing)sent.set(sid,params.get("To"));
+    if(!issuing && params.get("Code")!=="991105") return Response.json({},{status:404});
+    return Response.json({sid,to:sent.get(sid),channel:"sms",service_sid:env.TWILIO_VERIFY_SERVICE_SID,status:issuing?"pending":"approved"});
+  });
+  const request=async(path,body,status=200)=>{
+    const r=await worker.fetch(new Request(origin+"/api/"+path,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)}),env);
+    const result=await r.json();assert.equal(r.status,status,path+" "+(result.error||""));return result;
+  };
+  const call=(path,body,status)=>request("member/"+path,body,status);
+  async function verified(phone,action){
+    const phoneHash=await phoneDigest(phone),issued=await request("auth/challenge",{phone,action});
+    const step=await request("auth/resolve",{phoneHash,action,challengeId:issued.challengeId,code:"991105"});
+    return {phoneHash,challengeId:step.challengeId};
+  }
+  const secret=()=>bs58.encode(randomBytes(32)),cards=()=>({card:secret(),codes:Array.from({length:6},secret)});
+  // Seed legacy records through the old API, then migrate via the deployed API.
+  for (const [i,type] of ["phantom","embedded"].entries()) {
+    const legacy=account(type),phone="+1202555010"+i, hash=await phoneDigest(phone);
+    const init=await verified(phone,"activate");
+    const old=await worker.fetch(new Request(origin+"/api/auth/activate",{method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({...payload("activate",init,legacy),walletStep:true})}),{...env,WALLET_ACCESS:"disabled"});
+    assert.equal(old.status,201);
+    const step=await verified(phone,"signin");
+    const args={...step,pin:"002467",type,legacy:true};
+    if(type==="embedded"){
+      const proof=payload("signin",step,legacy).proof;
+      const vault=await call("legacy-vault",{...step,proof});assert.equal(vault.profile.address,legacy.profile.address);
+      await call("enroll",{...args,...cards(),seed:toBase64(randomBytes(32))},401);
+      Object.assign(args,cards(),{seed:toBase64(legacy.walletSeed)});
+    } else {
+      args.address=legacy.profile.address;
+      args.signature=toBase64(ed25519.sign(walletMessage(origin,"register",step.challengeId,args.address),legacy.walletSeed));
+    }
+    assert.equal((await call("enroll",args)).profile.address,legacy.profile.address);
+  }
+  const ph=account("phantom"),phone="+819012340811",pin="001472",childPin="004123";
+  const create=await verified(phone,"activate");
+  const parent=await call("enroll",{...create,pin,type:"phantom",address:ph.profile.address,
+    signature:toBase64(ed25519.sign(walletMessage(origin,"register",create.challengeId,ph.profile.address),ph.walletSeed))});
+  const step=await verified(phone,"signin");
+  await call("phone-login",{...step,pin:"999991"},401);
+  const pending=await call("phone-login",{...step,pin});
+  assert.equal(pending.session,undefined);
+  const msg=walletMessage(origin,"signin",pending.signatureTicket,ph.profile.address);
+  await call("signature",{ticket:pending.signatureTicket,signature:toBase64(ed25519.sign(msg,account("phantom").walletSeed))},401);
+  const second=pending;
+  const sg=toBase64(ed25519.sign(walletMessage(origin,"signin",second.signatureTicket,ph.profile.address),ph.walletSeed));
+  const freshParent=await call("signature",{ticket:second.signatureTicket,signature:sg});assert.equal(freshParent.profile.address,parent.profile.address);
+  const sheet=cards(),answers=["白山","鳥羽","名古屋","","",""],name="架空 太郎";
+  const registration={...sheet,pin:childPin,name,answers};
+  await call("introduce",registration,401);
+  const introduced=await call("introduce",{...registration,session:parent.session});
+  assert.deepEqual(Object.keys(introduced),["address"]);assert.notEqual(introduced.address,parent.profile.address);
+  async function quiz(){
+    const q=await call("questions",{name:"架空　太郎"});
+    assert.equal(new Set(q.ids).size,2);return {ticket:q.ticket,answers:q.ids.map(i=>answers[i])};
+  }
+  await call("name-login",{...await quiz(),pin:childPin,answers:["wrong","wrong"]},401);
+  const proof=await quiz();
+  const child=await call("name-login",{...proof,pin:childPin});
+  assert.equal(child.profile.address,introduced.address);
+  await call("name-login",{...proof,pin:childPin},401);
+  await call("introduce",{...registration,session:child.session},403);
+  await call("pin",{session:child.session,newPin:"884411"},401);
+  await call("card-info",{card:introduced.address},401);
+  const g=Keypair.generate().publicKey,store=Keypair.generate().publicKey, payer=new (await import("@solana/web3.js")).PublicKey(introduced.address);
+  const blockhash=String(Keypair.generate().publicKey);
+  const raw=ix=>new Transaction({feePayer:payer,recentBlockhash:blockhash}).add(...ix).serialize({requireAllSignatures:false,verifySignatures:false}).toString("base64");
+  const send=spend(manifest.program,payer,g,store,1,10,1);
+  const checkout={group:String(g),store:String(store),amount:1};
+  const cardBody={card:sheet.card,pin:childPin,checkout,tx:raw([budgetInstructions()[1],...send])};
+  const signed=await call("card-sign",cardBody);
+  assert.ok(ed25519.verify(Buffer.from(signed.signature,"base64"),Transaction.from(Buffer.from(cardBody.tx,"base64")).serializeMessage(),payer.toBytes()));
+  await call("card-sign",{...cardBody,checkout:{...checkout,amount:2}},401);
+  await call("card-sign",{...cardBody,tx:raw([SystemProgram.transfer({fromPubkey:payer,toPubkey:store,lamports:10}),...send])},401);
+  const pay=raw([budgetInstructions()[1],...transfer(manifest.program,payer,g,store,[{origin:g,amount:2n}])]);
+  await call("card-sign",{...cardBody,tx:pay},401);
+  await call("sign",{session:child.session,tx:pay},401);
+  await call("sign",{session:child.session,tx:pay,code:sheet.codes[0]});
+  await call("sign",{session:child.session,tx:pay,code:sheet.codes[0]},401);
+  await call("sign",{session:child.session,tx:raw([...budgetInstructions(),join(manifest.program,payer,g,payer)])});
+  const ownPhone="+819012340833";
+  await call("link",{...await verified(ownPhone,"activate"),session:child.session,code:sheet.codes[1]});
+  const linked=await call("phone-login",{...await verified(ownPhone,"signin"),pin:childPin});
+  assert.equal(linked.profile.address,introduced.address);
+  await call("introduce",{...registration,...cards(),session:parent.session});
+  await call("introduce",{...registration,...cards(),session:parent.session});
+  await call("introduce",{...registration,...cards(),session:parent.session},429);
+  const rotated=cards();await call("cards",{session:linked.session,code:sheet.codes.at(-1),...rotated});
+  await call("card-info",{card:sheet.card},401);
+  assert.equal((await call("card-info",{card:rotated.card})).address,introduced.address);
+});

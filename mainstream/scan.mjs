@@ -4,7 +4,7 @@ export function scannerBox(el, kind, accept) {
   const box = document.createElement("details");
   box.innerHTML =
     "<summary>" +
-    (kind === "store" ? "会計QRを読み取る" : "店舗の公開アドレスをQRから読む") +
+    (kind === "confirm" ? "大事な手続き用QRを読む" : kind === "kusa" ? "Kusaカードを読む" : kind === "store" ? "会計QRを読み取る" : "店舗の公開アドレスをQRから読む") +
     '</summary><button type="button">カメラを開く</button><button type="button" class="secondary">停止</button><label>QR画像を選ぶ<input type="file" accept="image/png,image/jpeg,image/webp"></label><video muted playsinline style="max-width:100%"></video><canvas hidden></canvas><p role="status"></p>';
   el.append(box);
   const stat = (t) => (box.querySelector("p").textContent = t);
@@ -13,7 +13,7 @@ export function scannerBox(el, kind, accept) {
     canvas: box.querySelector("canvas"),
     onStatus: stat,
     onStop() {},
-    onValue(value) {
+    async onValue(value) {
       if (kind === "store") {
         const u = new URL(value);
         if (
@@ -26,9 +26,14 @@ export function scannerBox(el, kind, accept) {
           clean.searchParams.set(k, String(pk(u.searchParams.get(k))));
         if (/^([1-9]|10)$/.test(u.searchParams.get("kusa")))
           clean.searchParams.set("kusa", u.searchParams.get("kusa"));
-        accept(clean.href);
+        await accept(clean.href);
+      } else if (kind === "confirm" || kind === "kusa") {
+        const prefix="wara:"+kind+":";
+        if(!value.startsWith(prefix) || !/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(value.slice(prefix.length)))
+          throw Error("用途の合う紙のQRを読み取ってください。");
+        await accept(value.slice(prefix.length));
       } else {
-        accept(String(pk(value.replace(/^wara:v3:/, ""))));
+        await accept(String(pk(value.replace(/^wara:v3:/, ""))));
         stat("受取アドレスを読み取りました。");
       }
     },
@@ -50,5 +55,5 @@ export function scannerBox(el, kind, accept) {
       window.removeEventListener("pagehide", stop);
     }
   });
-  observer.observe(el.parentElement ?? el, { childList: true, subtree: true });
+  observer.observe(document.body, { childList: true, subtree: true });
 }

@@ -23,3 +23,5 @@ migrations_dir = "migrations"
 [vars]
 # Select trial (onscreen code) or sms (Twilio Verify) explicitly at deploy time.
 AUTH_MODE = "disabled"
+
+WALLET_ACCESS = "enabled"

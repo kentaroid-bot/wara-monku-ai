@@ -84,14 +84,14 @@ function phantom() {
   if (!p?.isPhantom) throw Error("Phantomをこのブラウザで開いてください。");
   return p;
 }
-async function connectPhantom(address) {
+export async function connectPhantom(address) {
   const p = phantom();
   const { publicKey } = await p.connect();
   if (address && publicKey.toBase58() !== address)
     throw Error("登録したPhantomアカウントを選んでください。");
   return p;
 }
-async function openPair(profile, pass) {
+export async function openPair(profile, pass) {
   try {
     const { salt, iv, ct } = profile.vault;
     const raw = await crypto.subtle.decrypt(
@@ -144,7 +144,8 @@ export async function authMode() {
   });
   if (response.headers.get("X-Wara-Auth") === "1" && response.ok) {
     localStorage.setItem(prefix + "backend", "worker");
-    const { mode = "trial" } = await response.json();
+    const { mode = "trial", version } = await response.json();
+    sessionStorage.setItem("wara.access.version",String(version ?? 2));
     if (mode === "trial" || mode === "sms" || mode === "google") return mode;
     throw Error("この環境の登録・サインインは準備中です。");
   }
@@ -192,7 +193,7 @@ export async function beginAuth(phone, action, expectedMode) {
   return { backend: "worker", action, phoneHash, ...result };
 }
 
-async function recoverySigner(pass, phoneHash) {
+export async function recoverySigner(pass, phoneHash) {
   if (pass.length < 8)
     throw Error("ウォレット用パスワードを8文字以上で入力してください。");
   const key = await crypto.subtle.importKey(
@@ -363,7 +364,17 @@ export async function activate(phone, type, pass, proof, code) {
   sessionStorage.setItem(sessionKey, id);
   return profile;
 }
+export function managedSession() {
+  const data=JSON.parse(sessionStorage.getItem("wara.member") || "null");
+  if(data?.expires>Date.now()) return data;
+  sessionStorage.removeItem("wara.member");
+  return null;
+}
+export async function deviceProfile(phone) {
+  return JSON.parse(localStorage.getItem(prefix+"account."+await phoneId(phone)) || "null");
+}
 export function active() {
+  if(managedSession()) return managedSession().profile;
   const id = sessionStorage.getItem(sessionKey);
   if (!id) return null;
   try {
@@ -375,6 +386,9 @@ export function active() {
   }
 }
 export function signout() {
+  const token=managedSession()?.session;
+  sessionStorage.removeItem("wara.member");
+  if(token) void fetch("/api/member/logout",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({session:token}),keepalive:true}).catch(()=>{});
   sessionStorage.removeItem(sessionKey);
 }
 export const inviteSecret = () => bs58.encode(random(32));
