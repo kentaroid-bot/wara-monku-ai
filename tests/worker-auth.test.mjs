@@ -508,6 +508,28 @@ test("Google phone sign-in is project-, number-, wallet- and challenge-bound", a
   const res = await request("signin", { ...signin, idToken: fresh });
   assert.equal(res.status, 200);
   assert.deepEqual((await res.json()).profile, a.profile);
+
+  // An earlier client registered this wallet. A fresh client entering through
+  // registration must discover the sign-in step only after proving the phone.
+  const existing = await start("activate");
+  const resolve = (idToken) => request("resolve", { ...existing, action: "activate", idToken });
+  assert.equal((await resolve(await token({ phone_number: "+819000000001" }))).status, 401);
+  await new Promise(r => setTimeout(r, 1050));
+  const valid = await token();
+  const result = await resolve(valid);
+  assert.equal(result.status, 200);
+  const step = await result.json();
+  assert.equal(step.action, "signin");
+  assert.equal(step.type, "embedded");
+  assert.deepEqual(Object.keys(step).sort(), ["action", "address", "challengeId", "type"]);
+  assert.notEqual(step.challengeId, existing.challengeId);
+  assert.equal((await resolve(valid)).status, 401);
+  const finish = (signer, challengeId = step.challengeId) => request("signin",
+    payload("signin", { phoneHash, challengeId, walletStep: true }, signer));
+  assert.equal((await finish(a, existing.challengeId)).status, 401);
+  assert.equal((await finish(account())).status, 401);
+  assert.equal((await finish(a)).status, 200);
+  assert.equal((await finish(a)).status, 401);
 });
 
 test("Google challenge retries refill one slot and a rejection consumes no slots", async () => {

@@ -33,6 +33,7 @@ npm run workers:dev
 | API | 処理 |
 | --- | --- |
 | `POST /api/auth/challenge` | 試験時は番号ハッシュを受け取り、画面表示用コードを返す。実SMS時は正規化した番号へTwilio Verifyで送信し、ブラウザにはコードを返さない。各手続きは5分有効。 |
+| `POST /api/auth/resolve` | 電話番号の所持を確認し、登録状況と財布に合う次の手続き、署名用の一回限りのIDを返す。 |
 | `POST /api/auth/activate` | コードと署名を検証して、番号に対応する財布を一度だけ登録する。既存の登録は上書きできない。 |
 | `POST /api/auth/signin` | コードに加えてパスワード由来の鍵、または登録済み Phantom の署名を検証し、保存したプロフィールを返す。 |
 
@@ -78,5 +79,7 @@ wara.monku.ai の配備元は kentaroid-bot/wara-monku-ai の main。リポジ�
 Firebaseで専用プロジェクトにウェブアプリを登録し、Authenticationのログイン方法で電話番号を有効にします。承認済みドメインに `wara.monku.ai` を追加し、SMSリージョンで日本を許可します。実SMSには請求先（Blaze）の設定が必要です。公開環境では固定コードのテスト番号を登録しません。実際の送信はFirebase SDKからGoogleへ直接行うため、Google側でも割り当てと利用量を確認します。[電話認証の設定](https://firebase.google.com/docs/auth/web/phone-auth?hl=ja)
 
 ウェブアプリの設定の `projectId`、`apiKey`、`appId` を、それぞれWorkerの `FIREBASE_PROJECT_ID`、`FIREBASE_WEB_API_KEY`、`FIREBASE_APP_ID` に設定します。この3つはFirebaseが公開クライアント向けに発行する設定です。サービスアカウントの秘密鍵は使いません。Wranglerで配備時にダッシュボードの変数を維持する場合は `npx wrangler deploy --keep-vars --var AUTH_MODE:google` を使い、以後の再配備も同じモードを明示します。既存のD1とAUTH_PEPPERを使います。
+
+サインインでは6桁の入力後に登録済みの方式を判定します。Phantomは登録アドレスのメッセージ署名に進み、組み込み財布・紙カードはパスワードを入力します。端末内だけにある旧版の財布は、同じ番号のSMS確認後に引き継ぎを案内します。
 
 画面のGoogle利用案内を確認し、携帯で受け取った確認コードと財布のパスワード（Phantomは署名）で登録します。別端末で同じ番号に新しいSMSを送信し、同じ財布が開くことをアカウント画面の公開アドレスで照合します。認証結果はGoogleの公開鍵で署名・プロジェクト・電話番号・認証時刻を検証し、1回の電話認証を複数の手続きに使用できないようにしています。確認済み番号の財布は配信サービスを切り替えても同じ索引を使用します。

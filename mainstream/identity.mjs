@@ -276,6 +276,32 @@ async function registerRemote(profile, pass, proof, common) {
   });
 }
 
+export function hasDeviceWallet() {
+  const accounts = prefix + "account.";
+  for (let i = 0; i < localStorage.length; i++) {
+    const key = localStorage.key(i);
+    if (key?.startsWith(accounts) &&
+        localStorage.getItem(prefix + "source." + key.slice(accounts.length)) === "device") return true;
+  }
+  return false;
+}
+
+export async function resolveWallet(phone, proof, code) {
+  const id = await phoneId(phone);
+  const local = JSON.parse(localStorage.getItem(prefix + "account." + id) || "null");
+  let next;
+  if (proof.backend === "local") {
+    verify(proof.local, code);
+    next = { action: local ? "signin" : "activate", type: local?.type, address: local?.address };
+  } else {
+    const credential = proof.firebase ? { idToken: await proof.confirmPhone(code) } : { code };
+    next = await api("resolve", {
+      phoneHash: proof.phoneHash, challengeId: proof.challengeId, action: proof.action, ...credential,
+    });
+  }
+  return { ...proof, ...next, walletStep: true, deviceWallet: local && { type: local.type, address: local.address } };
+}
+
 export async function activate(phone, type, pass, proof, code) {
   if (!proof || proof.phoneHash !== (await phoneDigest(normalizePhone(phone))))
     throw Error("確認コードを発行し直してください。");
@@ -285,7 +311,8 @@ export async function activate(phone, type, pass, proof, code) {
   let profile = local;
   if (proof.backend === "local") {
     // Check the code now but consume it only when the local operation succeeds.
-    checkLocalCode(proof.local, code, Date.now());
+    if (!proof.walletStep) checkLocalCode(proof.local, code, Date.now());
+    else if (!proof.local.used || Date.now() >= proof.local.expires) throw Error("確認コードを発行し直してください。");
     if (proof.action === "signin") {
       if (!local) throw Error("このブラウザに登録がありません。");
       await unlock(local, pass);
@@ -299,17 +326,19 @@ export async function activate(phone, type, pass, proof, code) {
     const common = {
       phoneHash: proof.phoneHash,
       challengeId: proof.challengeId,
-      ...(proof.firebase
+      ...(proof.walletStep ? { walletStep: true } : proof.firebase
         ? { idToken: await proof.confirmPhone(code) }
         : { code }),
     };
     if (proof.action === "activate") {
+      if (proof.walletStep && proof.transfer && !local) throw Error("引き継ぐ財布がこの端末に見つかりません。");
+      if (proof.walletStep && local && !proof.transfer) throw Error("この端末にある財布を引き継いでください。");
       profile = local || (await makeProfile(type, pass));
       await registerRemote(profile, pass, proof, common);
     } else {
       const signer =
-        (local?.type ?? type) === "phantom"
-          ? await phantomSigner(local?.address)
+        (proof.walletStep ? proof.type : local?.type ?? type) === "phantom"
+          ? await phantomSigner(proof.walletStep ? proof.address : local?.address)
           : await recoverySigner(pass, proof.phoneHash);
       const message = transcript(
         "signin",
@@ -325,10 +354,12 @@ export async function activate(phone, type, pass, proof, code) {
         throw Error(
           "この端末には別の財布があります。元の財布を保護するため、別のブラウザで復元してください。",
         );
-      await unlock(profile, pass);
+      if (profile.type !== "phantom") await unlock(profile, pass);
     }
   }
   localStorage.setItem(key, JSON.stringify(profile));
+  const source = proof.backend === "local" || proof.trialCode ? "device" : "registered";
+  localStorage.setItem(prefix + "source." + id, source);
   sessionStorage.setItem(sessionKey, id);
   return profile;
 }

@@ -252,34 +252,91 @@ async function issue(env, key, phoneKey, req, action, now, phone) {
     audience: new URL(req.url).origin,
   });
 }
-async function redeem(env, key, origin, action, b, phoneKey, now) {
-  const google = env.AUTH_MODE === "google";
-  if (
-    typeof b.challengeId !== "string" ||
-    !/^[0-9a-f-]{36}$/.test(b.challengeId) ||
-    (google
-      ? typeof b.idToken !== "string"
-      : typeof b.code !== "string" || !/^\d{6}$/.test(b.code))
-  )
-    bad();
-  const args = [b.challengeId, phoneKey, action, now];
-  // Reserving an attempt in one statement caps concurrent guesses as well.
+async function reserveAttempt(env, key, action, b, phoneKey, now) {
+  if (!["activate", "signin"].includes(action) ||
+      typeof b.challengeId !== "string" || !/^[0-9a-f-]{36}$/.test(b.challengeId)) bad();
   const c = await env.DB.prepare(
     `UPDATE challenges SET attempts=attempts+1
-    WHERE id=? AND phone_key=? AND action=? AND expires>? AND attempts<5 RETURNING code_mac,expires`,
-  )
-    .bind(...args)
-    .first();
-  const sms = env.AUTH_MODE === "sms";
-  if (
-    !c ||
-    (google && c.code_mac !== "google") ||
-    (sms && !/^VE[0-9a-fA-F]{32}$/.test(c.code_mac)) ||
-    (!google &&
-      !sms &&
-      c.code_mac !== (await mac(key, "code", b.challengeId + ":" + b.code)))
-  )
-    denied();
+     WHERE id=? AND phone_key=? AND action=? AND expires>? AND attempts<5 RETURNING code_mac,expires`,
+  ).bind(b.challengeId, phoneKey, action, now).first();
+  if (!c) denied();
+  if (b.walletStep === true) {
+    if (c.code_mac !== "verified:" + env.AUTH_MODE) denied();
+    return c;
+  }
+  if (env.AUTH_MODE === "google") {
+    if (typeof b.idToken !== "string" || c.code_mac !== "google") denied();
+  } else {
+    if (typeof b.code !== "string" || !/^\d{6}$/.test(b.code)) bad();
+    if (env.AUTH_MODE === "sms" ? !/^VE[0-9a-fA-F]{32}$/.test(c.code_mac)
+      : c.code_mac !== await mac(key, "code", b.challengeId + ":" + b.code)) denied();
+  }
+  return c;
+}
+
+async function verifyDelivery(env, b, c, phoneKey, now) {
+  if (env.AUTH_MODE === "sms") {
+    const checked = await verifyRequest(env, "VerificationCheck", {
+      VerificationSid: c.code_mac,
+      Code: b.code,
+    });
+    if (
+      checked.status !== "approved" ||
+      checked.sid !== c.code_mac ||
+      checked.service_sid !== env.TWILIO_VERIFY_SERVICE_SID ||
+      checked.channel !== "sms" ||
+      typeof checked.to !== "string" ||
+      (await phoneDigest(checked.to)) !== b.phoneHash
+    )
+      denied();
+  }
+  if (env.AUTH_MODE === "google") {
+    const event = await verifiedPhoneEvent(
+      b.idToken,
+      env.FIREBASE_PROJECT_ID,
+      b.phoneHash,
+      c.expires - ttl,
+      now,
+    );
+    if (!event) denied();
+    const used = await env.DB.prepare(
+      "INSERT INTO issue_limits(bucket,expires,count) VALUES(?,?,1) ON CONFLICT(bucket) DO NOTHING",
+    )
+      .bind("google-auth:" + phoneKey + ":" + event, now + windowSeconds)
+      .run();
+    if (used.meta.changes !== 1) denied();
+  }
+}
+
+async function findWallet(env, key, phoneKey, phoneHash, allowTrial) {
+  const lookup = env.DB.prepare("SELECT profile,login_key FROM wallets WHERE phone_key=?");
+  const stored = await lookup.bind(phoneKey).first();
+  if (stored || !allowTrial || env.AUTH_MODE === "trial") return stored;
+  const legacy = await lookup.bind(await mac(key, "phone", phoneHash)).first();
+  return legacy && { ...legacy, legacy: true };
+}
+
+async function resolveWallet(env, key, b, phoneKey, now) {
+  const c = await reserveAttempt(env, key, b.action, b, phoneKey, now);
+  await verifyDelivery(env, b, c, phoneKey, now);
+  const stored = await findWallet(env, key, phoneKey, b.phoneHash, b.action === "signin");
+  const action = stored ? "signin" : "activate";
+  // Rotate the public SMS challenge to a private, one-use wallet challenge.
+  const challengeId = crypto.randomUUID();
+  const current = Math.floor(Date.now() / 1000);
+  const changed = await env.DB.prepare(
+    `UPDATE challenges SET id=?, action=?, code_mac=?, expires=?, attempts=0
+     WHERE id=? AND phone_key=? AND action=? AND code_mac=? AND expires>?`,
+  ).bind(challengeId, action, "verified:" + env.AUTH_MODE, current + ttl,
+    b.challengeId, phoneKey, b.action, c.code_mac, current).run();
+  if (changed.meta.changes !== 1) denied();
+  const profile = stored && JSON.parse(stored.profile);
+  return json({ action, challengeId, type: profile?.type ?? null,
+    address: profile?.type === "phantom" ? profile.address : null });
+}
+
+async function redeem(env, key, origin, action, b, phoneKey, now) {
+  const c = await reserveAttempt(env, key, action, b, phoneKey, now);
   let profile, loginKey, legacy;
   if (action === "activate") {
     const address = validateProfile(b.profile);
@@ -299,15 +356,8 @@ async function redeem(env, key, origin, action, b, phoneKey, now) {
     if (b.proof !== b.walletProof || toBase64(pub) !== toBase64(address))
       await checkSignature(pub, b.proof, msg);
   } else {
-    const lookup = env.DB.prepare(
-      "SELECT profile,login_key FROM wallets WHERE phone_key=?",
-    );
-    let stored = await lookup.bind(phoneKey).first();
-    if (!stored && (sms || google)) {
-      // A trial wallet can be adopted only with its original signer AND a live SMS.
-      stored = await lookup.bind(await mac(key, "phone", b.phoneHash)).first();
-      legacy = stored;
-    }
+    const stored = await findWallet(env, key, phoneKey, b.phoneHash, true);
+    legacy = stored?.legacy && stored;
     if (!stored) denied();
     await checkSignature(
       binary(stored.login_key, 32),
@@ -316,37 +366,7 @@ async function redeem(env, key, origin, action, b, phoneKey, now) {
     );
     profile = JSON.parse(stored.profile);
   }
-  if (sms) {
-    const checked = await verifyRequest(env, "VerificationCheck", {
-      VerificationSid: c.code_mac,
-      Code: b.code,
-    });
-    if (
-      checked.status !== "approved" ||
-      checked.sid !== c.code_mac ||
-      checked.service_sid !== env.TWILIO_VERIFY_SERVICE_SID ||
-      checked.channel !== "sms" ||
-      typeof checked.to !== "string" ||
-      (await phoneDigest(checked.to)) !== b.phoneHash
-    )
-      denied();
-  }
-  if (google) {
-    const event = await verifiedPhoneEvent(
-      b.idToken,
-      env.FIREBASE_PROJECT_ID,
-      b.phoneHash,
-      c.expires - ttl,
-      now,
-    );
-    if (!event) denied();
-    const used = await env.DB.prepare(
-      "INSERT INTO issue_limits(bucket,expires,count) VALUES(?,?,1) ON CONFLICT(bucket) DO NOTHING",
-    )
-      .bind("google-auth:" + phoneKey + ":" + event, now + windowSeconds)
-      .run();
-    if (used.meta.changes !== 1) denied();
-  }
+  if (b.walletStep !== true) await verifyDelivery(env, b, c, phoneKey, now);
   // Only the winner of this claim may register a wallet or receive ciphertext.
   const claim = await env.DB.prepare(
     "DELETE FROM challenges WHERE id=? AND phone_key=? AND action=? AND expires>? RETURNING id",
@@ -384,12 +404,6 @@ export default {
     if (!url.pathname.startsWith("/api/")) return env.ASSETS.fetch(req);
     try {
       const google = env.AUTH_MODE === "google";
-      const common = [
-        "phoneHash",
-        "challengeId",
-        google ? "idToken" : "code",
-        "proof",
-      ];
       if (url.pathname === "/api/auth/status" && req.method === "GET")
         return json({
           service: "wara-auth",
@@ -401,7 +415,7 @@ export default {
               : env.AUTH_MODE || "disabled",
         });
       const action = url.pathname.match(
-        /^\/api\/auth\/(challenge|activate|signin)$/,
+        /^\/api\/auth\/(challenge|resolve|activate|signin)$/,
       )?.[1];
       if (!action) fail(404, "APIが見つかりません。");
       if (req.method !== "POST") fail(405, "POSTを使用してください。");
@@ -418,10 +432,13 @@ export default {
       )
         fail(503, "この環境の認証APIは準備中です。");
       const b = await bodyOf(req, google ? 8192 : maxBody);
+      const credential = google ? "idToken" : "code";
+      const common = ["phoneHash", "challengeId", b?.walletStep === true ? "walletStep" : credential, "proof"];
       fields(
         b,
         action === "challenge"
           ? [env.AUTH_MODE === "sms" ? "phone" : "phoneHash", "action"]
+          : action === "resolve" ? ["phoneHash", "challengeId", "action", credential]
           : action === "activate"
             ? [...common, "profile", "loginKey", "walletProof"]
             : common,
@@ -449,6 +466,7 @@ export default {
           b.phoneHash,
         ),
         now = Math.floor(Date.now() / 1000);
+      if (action === "resolve") return await resolveWallet(env, key, b, phoneKey, now);
       return action === "challenge"
         ? await issue(env, key, phoneKey, req, b.action, now, b.phone)
         : await redeem(env, key, url.origin, action, b, phoneKey, now);

@@ -157,3 +157,14 @@ footer {
     display: none !important;
   }
 }
+
+[data-password][hidden] {
+  display: none;
+}
+
+#screen > form > fieldset {
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+  border: 0;
+}
