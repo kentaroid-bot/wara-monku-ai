@@ -70,3 +70,11 @@ wara.monku.ai の配備元は kentaroid-bot/wara-monku-ai の main。リポジ�
 ## 公開版の検証範囲
 
 2026-11-07：ビルド成功・18テスト成功。公開HTTPSで通常版のDevnet設定を読み込めることをブラウザで確認。公開ドメインでPhantomを接続し、前日のクレジット90を維持したまま新しい日の枠300を表示することを確認。登録・署名・受領・譲渡の実機検証は2026-11-06の同じプログラムと署名処理で実施済み。公開ドメインで新たな支払署名は行っていない。モバイル実機検証も別に扱う。
+
+### Googleの電話番号認証
+
+Firebaseで専用プロジェクトにウェブアプリを登録し、Authenticationのログイン方法で電話番号を有効にします。承認済みドメインに `wara.monku.ai` を追加し、SMSリージョンで日本を許可します。実SMSには請求先（Blaze）の設定が必要です。公開環境では固定コードのテスト番号を登録しません。実際の送信はFirebase SDKからGoogleへ直接行うため、Google側でも割り当てと利用量を確認します。[電話認証の設定](https://firebase.google.com/docs/auth/web/phone-auth?hl=ja)
+
+ウェブアプリの設定の `projectId`、`apiKey`、`appId` を、それぞれWorkerの `FIREBASE_PROJECT_ID`、`FIREBASE_WEB_API_KEY`、`FIREBASE_APP_ID` に設定します。この3つはFirebaseが公開クライアント向けに発行する設定です。サービスアカウントの秘密鍵は使いません。Wranglerで配備時にダッシュボードの変数を維持する場合は `npx wrangler deploy --keep-vars --var AUTH_MODE:google` を使い、以後の再配備も同じモードを明示します。既存のD1とAUTH_PEPPERを使います。
+
+画面のGoogle利用案内を確認し、携帯で受け取った確認コードと財布のパスワード（Phantomは署名）で登録します。別端末で同じ番号に新しいSMSを送信し、同じ財布が開くことをアカウント画面の公開アドレスで照合します。認証結果はGoogleの公開鍵で署名・プロジェクト・電話番号・認証時刻を検証し、1回の電話認証を複数の手続きに使用できないようにしています。確認済み番号の財布は配信サービスを切り替えても同じ索引を使用します。

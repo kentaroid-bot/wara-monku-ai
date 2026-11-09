@@ -145,7 +145,7 @@ export async function authMode() {
   if (response.headers.get("X-Wara-Auth") === "1" && response.ok) {
     localStorage.setItem(prefix + "backend", "worker");
     const { mode = "trial" } = await response.json();
-    if (mode === "trial" || mode === "sms") return mode;
+    if (mode === "trial" || mode === "sms" || mode === "google") return mode;
     throw Error("この環境の登録・サインインは準備中です。");
   }
   // Only a positively identified static host may create a device-local wallet.
@@ -299,7 +299,9 @@ export async function activate(phone, type, pass, proof, code) {
     const common = {
       phoneHash: proof.phoneHash,
       challengeId: proof.challengeId,
-      code,
+      ...(proof.firebase
+        ? { idToken: await proof.confirmPhone(code) }
+        : { code }),
     };
     if (proof.action === "activate") {
       profile = local || (await makeProfile(type, pass));

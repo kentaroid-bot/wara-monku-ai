@@ -1,3 +1,4 @@
+import { verifiedPhoneEvent } from "./google-phone.mjs";
 import bs58 from "bs58";
 import {
   fromBase64,
@@ -54,7 +55,7 @@ function binary(value, length) {
   } catch {}
   bad();
 }
-async function bodyOf(req) {
+async function bodyOf(req, maxBody) {
   if (
     req.headers.get("content-type")?.split(";")[0].trim() !== "application/json"
   )
@@ -163,21 +164,38 @@ async function verifyRequest(env, path, parameters) {
     );
   return res.json();
 }
+function googleConfig(env) {
+  if (
+    !/^[a-z][a-z0-9-]{4,28}[a-z0-9]$/.test(env.FIREBASE_PROJECT_ID ?? "") ||
+    !env.FIREBASE_WEB_API_KEY ||
+    !env.FIREBASE_APP_ID
+  )
+    return null;
+  return {
+    projectId: env.FIREBASE_PROJECT_ID,
+    appId: env.FIREBASE_APP_ID,
+    apiKey: env.FIREBASE_WEB_API_KEY,
+    authDomain: env.FIREBASE_PROJECT_ID + ".firebaseapp.com",
+  };
+}
 async function issue(env, key, phoneKey, req, action, now, phone) {
   if (!["activate", "signin"].includes(action)) bad();
+  const google = env.AUTH_MODE === "google";
   await limit(
     env.DB,
     "ip:" +
       (await mac(key, "ip", req.headers.get("CF-Connecting-IP") || "local")),
     now,
-    phone ? 10 : 60,
+    phone || google ? 10 : 60,
   );
-  await limit(env.DB, "phone:" + phoneKey, now, phone ? 3 : 12);
+  await limit(env.DB, "phone:" + phoneKey, now, phone || google ? 3 : 12);
   const id = crypto.randomUUID();
   const expires = now + ttl;
   let verification, trialCode;
-  if (phone) {
-    await limit(env.DB, "sms:all", now, 30);
+  if (phone || google) await limit(env.DB, "sms:all", now, 30);
+  if (google) {
+    verification = "google";
+  } else if (phone) {
     const started = await verifyRequest(env, "Verifications", {
       To: phone,
       Channel: "sms",
@@ -207,6 +225,7 @@ async function issue(env, key, phoneKey, req, action, now, phone) {
     ).bind(id, phoneKey, action, verification, expires),
   ]);
   return json({
+    ...(google ? { firebase: googleConfig(env) } : {}),
     challengeId: id,
     expires,
     trialCode,
@@ -214,25 +233,30 @@ async function issue(env, key, phoneKey, req, action, now, phone) {
   });
 }
 async function redeem(env, key, origin, action, b, phoneKey, now) {
+  const google = env.AUTH_MODE === "google";
   if (
     typeof b.challengeId !== "string" ||
     !/^[0-9a-f-]{36}$/.test(b.challengeId) ||
-    typeof b.code !== "string" ||
-    !/^\d{6}$/.test(b.code)
+    (google
+      ? typeof b.idToken !== "string"
+      : typeof b.code !== "string" || !/^\d{6}$/.test(b.code))
   )
     bad();
   const args = [b.challengeId, phoneKey, action, now];
   // Reserving an attempt in one statement caps concurrent guesses as well.
   const c = await env.DB.prepare(
     `UPDATE challenges SET attempts=attempts+1
-    WHERE id=? AND phone_key=? AND action=? AND expires>? AND attempts<5 RETURNING code_mac`,
+    WHERE id=? AND phone_key=? AND action=? AND expires>? AND attempts<5 RETURNING code_mac,expires`,
   )
     .bind(...args)
     .first();
   const sms = env.AUTH_MODE === "sms";
   if (
     !c ||
-    (!sms &&
+    (google && c.code_mac !== "google") ||
+    (sms && !/^VE[0-9a-fA-F]{32}$/.test(c.code_mac)) ||
+    (!google &&
+      !sms &&
       c.code_mac !== (await mac(key, "code", b.challengeId + ":" + b.code)))
   )
     denied();
@@ -259,7 +283,7 @@ async function redeem(env, key, origin, action, b, phoneKey, now) {
       "SELECT profile,login_key FROM wallets WHERE phone_key=?",
     );
     let stored = await lookup.bind(phoneKey).first();
-    if (!stored && sms) {
+    if (!stored && (sms || google)) {
       // A trial wallet can be adopted only with its original signer AND a live SMS.
       stored = await lookup.bind(await mac(key, "phone", b.phoneHash)).first();
       legacy = stored;
@@ -286,6 +310,22 @@ async function redeem(env, key, origin, action, b, phoneKey, now) {
       (await phoneDigest(checked.to)) !== b.phoneHash
     )
       denied();
+  }
+  if (google) {
+    const event = await verifiedPhoneEvent(
+      b.idToken,
+      env.FIREBASE_PROJECT_ID,
+      b.phoneHash,
+      c.expires - ttl,
+      now,
+    );
+    if (!event) denied();
+    const used = await env.DB.prepare(
+      "INSERT INTO issue_limits(bucket,expires,count) VALUES(?,?,1) ON CONFLICT(bucket) DO NOTHING",
+    )
+      .bind("google-auth:" + phoneKey + ":" + event, now + windowSeconds)
+      .run();
+    if (used.meta.changes !== 1) denied();
   }
   // Only the winner of this claim may register a wallet or receive ciphertext.
   const claim = await env.DB.prepare(
@@ -317,18 +357,26 @@ async function redeem(env, key, origin, action, b, phoneKey, now) {
   }
   return json({ profile });
 }
-const common = ["phoneHash", "challengeId", "code", "proof"];
+
 export default {
   async fetch(req, env) {
     const url = new URL(req.url);
     if (!url.pathname.startsWith("/api/")) return env.ASSETS.fetch(req);
     try {
+      const google = env.AUTH_MODE === "google";
+      const common = [
+        "phoneHash",
+        "challengeId",
+        google ? "idToken" : "code",
+        "proof",
+      ];
       if (url.pathname === "/api/auth/status" && req.method === "GET")
         return json({
           service: "wara-auth",
           version: 2,
           mode:
-            env.AUTH_MODE === "sms" && !smsReady(env)
+            (env.AUTH_MODE === "sms" && !smsReady(env)) ||
+            (google && !googleConfig(env))
               ? "disabled"
               : env.AUTH_MODE || "disabled",
         });
@@ -341,14 +389,15 @@ export default {
       if (origin && origin !== url.origin)
         fail(403, "同じサイトから操作してください。");
       if (
-        !["trial", "sms"].includes(env.AUTH_MODE) ||
+        !["trial", "sms", "google"].includes(env.AUTH_MODE) ||
+        (google && !googleConfig(env)) ||
         (env.AUTH_MODE === "sms" && !smsReady(env)) ||
         typeof env.AUTH_PEPPER !== "string" ||
         env.AUTH_PEPPER.length < 32 ||
         !env.DB
       )
         fail(503, "この環境の認証APIは準備中です。");
-      const b = await bodyOf(req);
+      const b = await bodyOf(req, google ? 8192 : maxBody);
       fields(
         b,
         action === "challenge"
@@ -376,7 +425,7 @@ export default {
       );
       const phoneKey = await mac(
           key,
-          env.AUTH_MODE === "sms" ? "sms-phone" : "phone",
+          env.AUTH_MODE !== "trial" ? "sms-phone" : "phone",
           b.phoneHash,
         ),
         now = Math.floor(Date.now() / 1000);

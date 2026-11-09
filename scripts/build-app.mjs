@@ -5,7 +5,8 @@ await rm('dist',{recursive:true,force:true});
 await mkdir('dist/devnet',{recursive:true});
 await mkdir('dist/mock',{recursive:true});
 await mkdir('dist/v3',{recursive:true});
-await build({entryPoints:['mainstream/main.mjs'],bundle:true,outfile:'dist/v3/main.js',platform:'browser',target:['es2022'],define:{global:'globalThis'},minify:true});
+await build({entryPoints:['mainstream/google-phone.mjs'],bundle:true,format:'esm',outfile:'dist/v3/google-phone.js',platform:'browser',target:['es2022'],minify:true});
+await build({external:['/v3/google-phone.js'],entryPoints:['mainstream/main.mjs'],bundle:true,outfile:'dist/v3/main.js',platform:'browser',target:['es2022'],define:{global:'globalThis'},minify:true});
 await copyFile('mainstream/style.css','dist/v3/style.css');
 for(const route of ['','user','signup','shop','support','account','communities','communities/new']){await mkdir(`dist/${route}`,{recursive:true});await copyFile('mainstream/index.html',`dist/${route}/index.html`);}
 await build({entryPoints:['app/main.mjs'],bundle:true,outfile:'dist/app.js',platform:'browser',target:['es2022'],define:{global:'globalThis'},sourcemap:false,minify:true});

@@ -1,4 +1,4 @@
-import { activate, authMode, beginAuth } from "./identity.mjs";
+import { activate, authMode, beginAuth, normalizePhone } from "./identity.mjs";
 
 export async function signup(el, info) {
   let delivery;
@@ -9,14 +9,15 @@ export async function signup(el, info) {
     el.textContent = "再読み込みしてお試しください。";
     return;
   }
-  const sms = delivery === "sms";
+  const google = delivery === "google";
+  const sms = google || delivery === "sms";
   el.innerHTML = `<h1>藁一本の約束をはじめる</h1>
     <p>毎日10枚のKusa。1枚で支払うと、お店に90 WARA、自分に10 WARAが届きます。</p>
     <form id="phoneForm"><h2>電話番号を確認</h2>
     <label>手続き<select name="intent"><option value="activate">新規登録・この端末の財布を引き継ぐ</option><option value="signin">サインイン</option></select></label>
-    <p>${sms ? "ご自身の携帯番号を入力してください。ボタンを押すとTwilio経由で確認コードをSMS送信します。" : "Devnet試験用です。架空の番号で試せます。確認コードはこの画面に表示します。"}</p>
+    <p>${google ? "番号の確認と不正利用防止のため、Googleが電話番号を受け取り、保存します。同意して、ご自身の携帯番号でSMSを受け取ってください。" : sms ? "ご自身の携帯番号を入力してください。ボタンを押すとTwilio経由で確認コードをSMS送信します。" : "Devnet試験用です。架空の番号で試せます。確認コードはこの画面に表示します。"}</p>
     <label>電話番号<input name="phone" type="tel" required placeholder="090-0000-0000"></label>
-    <button>${sms ? "SMSで確認コードを受け取る" : "確認コードを表示する"}</button></form><div id="second"></div>`;
+    <div id="phoneCaptcha"></div><button>${sms ? "SMSで確認コードを受け取る" : "確認コードを表示する"}</button></form><div id="second"></div>`;
   const first = el.querySelector("#phoneForm"),
     second = el.querySelector("#second");
   first.onsubmit = async (e) => {
@@ -27,6 +28,14 @@ export async function signup(el, info) {
     second.replaceChildren();
     try {
       const proof = await beginAuth(phone, intent, delivery);
+      if (google) {
+        const { sendPhoneCode } = await import("/v3/google-phone.js");
+        proof.confirmPhone = await sendPhoneCode(
+          proof.firebase,
+          normalizePhone(phone),
+          first.querySelector("#phoneCaptcha"),
+        );
+      }
       first.hidden = true;
       info("");
       const mode =

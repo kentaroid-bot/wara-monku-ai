@@ -410,3 +410,102 @@ test("SMS registration and fresh-device sign-in require the delivered code and w
   );
   await assert.rejects(use(second));
 });
+
+test("Google phone sign-in is project-, number-, wallet- and challenge-bound", async (t) => {
+  const { default: worker } = await import("../worker/index.mjs");
+  const { generateKeyPair, exportJWK, SignJWT } = await import("jose");
+  const { publicKey, privateKey } = await generateKeyPair("RS256");
+  const jwk = await exportJWK(publicKey);
+  t.mock.method(globalThis, "fetch", async (url) => {
+    assert.equal(
+      String(url),
+      "https://www.googleapis.com/service_accounts/v1/jwk/securetoken@system.gserviceaccount.com",
+    );
+    return Response.json({ keys: [{ ...jwk, alg: "RS256", kid: "test" }] });
+  });
+  const env = {
+    DB: db,
+    AUTH_PEPPER: randomBytes(32).toString("hex"),
+    AUTH_MODE: "google",
+    FIREBASE_PROJECT_ID: "wara-fixture",
+    FIREBASE_APP_ID: "app",
+    FIREBASE_WEB_API_KEY: "test",
+  };
+  async function request(action, data) {
+    return worker.fetch(
+      new Request(origin + "/api/auth/" + action, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+      }),
+      env,
+    );
+  }
+  const phone = "+819000000000",
+    phoneHash = await phoneDigest(phone),
+    a = account();
+  const start = async (action) => {
+    const res = await request("challenge", { phoneHash, action });
+    assert.equal(res.status, 200);
+    const info = await res.json();
+    assert.equal(info.trialCode, undefined);
+    assert.equal(info.firebase.projectId, env.FIREBASE_PROJECT_ID);
+    return { phoneHash, challengeId: info.challengeId };
+  };
+  const time = () => Math.floor(Date.now() / 1000);
+  async function token(overrides = {}) {
+    return new SignJWT({
+      sub: "user",
+      iss: "https://securetoken.google.com/wara-fixture",
+      aud: "wara-fixture",
+      phone_number: phone,
+      auth_time: time(),
+      firebase: { sign_in_provider: "phone" },
+      ...overrides,
+    })
+      .setIssuedAt()
+      .setExpirationTime("1h")
+      .setProtectedHeader({ alg: "RS256", kid: "test" })
+      .sign(privateKey);
+  }
+  const c = await start("activate"),
+    req = payload("activate", c, a);
+  for (const claims of [
+    { aud: "foreign" },
+    { phone_number: "+819000000001" },
+    { auth_time: time() - 600 },
+    { firebase: { sign_in_provider: "password" } },
+  ]) {
+    assert.equal(
+      (await request("activate", { ...req, idToken: await token(claims) }))
+        .status,
+      401,
+    );
+  }
+  const used = await token();
+  assert.equal(
+    (await request("activate", { ...req, idToken: used })).status,
+    201,
+  );
+  const second = await start("signin"),
+    signin = payload("signin", second, a);
+  assert.equal(
+    (await request("signin", { ...signin, idToken: used })).status,
+    401,
+  );
+  // Separate phone authentications have second-resolution timestamps.
+  await new Promise((resolve) => setTimeout(resolve, 1050));
+  const fresh = await token();
+  assert.equal(
+    (
+      await request("signin", {
+        ...payload("signin", second, account()),
+        idToken: fresh,
+      })
+    ).status,
+    401,
+  );
+  const res = await request("signin", { ...signin, idToken: fresh });
+  assert.equal(res.status, 200);
+  assert.deepEqual((await res.json()).profile, a.profile);
+});
