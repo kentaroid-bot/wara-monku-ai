@@ -151,7 +151,7 @@ footer {
   body main #screen {
     display: block;
   }
-  main #screen > *:not(.card),
+  main #screen > *:not(.card):not(.issued),
   main #notice,
   .card button {
     display: none !important;
@@ -168,3 +168,13 @@ footer {
   min-width: 0;
   border: 0;
 }
+
+dialog { width:min(24rem,90vw); border:1px solid #bbc8ba; border-radius:.8rem; padding:1.25rem; }
+dialog::backdrop { background:#10201999; }
+.pin-keys { display:grid; grid-template-columns:repeat(3,1fr); gap:.4rem; margin:.8rem 0; }
+.pin-keys button { margin:0; min-height:3rem; font-size:1.25rem; }
+.pin-dots { width:100%; text-align:center; font-size:1.5rem; letter-spacing:.35em; }
+.issued article { display:inline-block; padding:.6rem; break-inside:avoid; }
+@media print { body:has(.issued) .issued { display:block; } body:has(.issued) header,body:has(.issued) nav,body:has(.issued) button,body:has(.issued) footer {display:none;} }
+
+@media print { .separate-sheet { break-before: page; } }

@@ -376,6 +376,16 @@ export async function dashboard(ctx) {
             btn("WARAで支払う") +
             "</form>"),
     );
+    if (isShop && profile.managed) {
+      const checkout=document.createElement("form");
+      checkout.innerHTML='<h2>お客さんの紙カードで支払う</h2><label>金額（Kusa）<input name="amount" type="number" min="1" max="10" required></label><button>カードを読む</button>';
+      content.append(checkout);
+      action(checkout,async v=>{
+        const {payWithCard}=await import("./member-ui.mjs");
+        const sig=await payWithCard(g.id,store.to,Number(v.amount),store.name);
+        await refresh(true);info("紙カードの支払いが確定しました。 "+sig);
+      });
+    }
     if (isShop) showHistory(content, who, g.id, h, by);
     form("invoice", async (v) => {
       const u = new URL(register(g.id, store.to), location.origin);

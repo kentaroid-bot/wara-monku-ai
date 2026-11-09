@@ -1,6 +1,6 @@
 import { Buffer } from "buffer";
 import QRCode from "qrcode";
-import { active, signout, unlock } from "./identity.mjs";
+import { active, signout, unlock, managedSession, authMode } from "./identity.mjs";
 import { signup } from "./signup.mjs";
 globalThis.Buffer ??= Buffer;
 export const esc = (v) =>
@@ -29,6 +29,7 @@ export async function wallet() {
   if (!profile || active()?.address !== profile.address)
     throw Error("アカウントが切り替わりました。再度サインインしてください。");
   if (profile.type === "phantom") return unlock(profile, "");
+  if(profile.managed) return (await import("./member-ui.mjs")).siteSigner(profile);
   if (!signer) {
     const pass = prompt("この端末のウォレット用パスワード");
     if (pass === null) throw Error("署名を取り消しました。");
@@ -67,6 +68,12 @@ async function card() {
   box.querySelector("button").onclick = () => print();
 }
 async function render() {
+  if(profile?.managed) {
+    const expires=managedSession()?.expires || Date.now();
+    setTimeout(()=>{if(!managedSession()){signout();location.replace("/signup/");}},Math.max(0,expires-Date.now())+30);
+  } else if(profile && path!=="/signup" && await authMode()!=="local" && sessionStorage.getItem("wara.access.version")==="3") {
+    signout();location.replace("/signup/");return;
+  }
   if (path === "/signup") {
     signup(el, info);
     return;
@@ -90,7 +97,7 @@ async function render() {
     el.insertAdjacentHTML(
       "beforeend",
       path === "/support"
-        ? "<p>紙カードを発行する方は、登録方法で「地域窓口」を選んでください。</p>" +
+        ? "<p>携帯のない方の登録は、SMSでサインインした紹介者のアカウントから行えます。</p>" +
             welcome
         : welcome,
     );
@@ -116,6 +123,11 @@ async function render() {
       signout();
       location.assign("/");
     };
+    if(profile.managed) {
+      if(sessionStorage.getItem("wara.introduced")) { sessionStorage.removeItem("wara.introduced"); info("ご本人の財布を作りました。紙を本人に渡してください。今の画面は紹介者の財布です。"); }
+      el.querySelector(".card h2").textContent="公開アドレス";
+      (await import("./member-ui.mjs")).accountTools(el,info,await authMode());
+    }
     await card();
     return;
   }
