@@ -1,5 +1,10 @@
 import bs58 from "bs58";
-import { fromBase64, toBase64, transcript } from "../shared/auth-wire.mjs";
+import {
+  fromBase64,
+  phoneDigest,
+  toBase64,
+  transcript,
+} from "../shared/auth-wire.mjs";
 
 const ttl = 300,
   windowSeconds = 900,
@@ -127,40 +132,84 @@ async function limit(db, bucket, now, max) {
     .first();
   if (!row) fail(429, "確認の回数が上限に達しました。15分後にお試しください。");
 }
-async function issue(env, key, phoneKey, req, action, now) {
+function smsReady(env) {
+  return (
+    /^VA[0-9a-fA-F]{32}$/.test(env.TWILIO_VERIFY_SERVICE_SID || "") &&
+    /^SK[0-9a-fA-F]{32}$/.test(env.TWILIO_API_KEY || "") &&
+    Boolean(env.TWILIO_API_SECRET)
+  );
+}
+async function verifyRequest(env, path, parameters) {
+  const res = await fetch(
+    `https://verify.twilio.com/v2/Services/${env.TWILIO_VERIFY_SERVICE_SID}/${path}`,
+    {
+      method: "POST",
+      headers: {
+        Authorization:
+          "Basic " + btoa(env.TWILIO_API_KEY + ":" + env.TWILIO_API_SECRET),
+      },
+      body: new URLSearchParams(parameters),
+      redirect: "error",
+      signal: AbortSignal.timeout(10000),
+    },
+  );
+  if (res.status === 429)
+    fail(429, "SMSの利用が集中しています。時間をおいて再試行してください。");
+  if (path === "VerificationCheck" && [400, 404].includes(res.status)) denied();
+  if (!res.ok)
+    fail(
+      503,
+      "SMS認証を利用できません。番号を確認し、時間をおいて再試行してください。",
+    );
+  return res.json();
+}
+async function issue(env, key, phoneKey, req, action, now, phone) {
   if (!["activate", "signin"].includes(action)) bad();
   await limit(
     env.DB,
     "ip:" +
       (await mac(key, "ip", req.headers.get("CF-Connecting-IP") || "local")),
     now,
-    60,
+    phone ? 10 : 60,
   );
-  await limit(env.DB, "phone:" + phoneKey, now, 12);
+  await limit(env.DB, "phone:" + phoneKey, now, phone ? 3 : 12);
   const id = crypto.randomUUID();
-  let n;
-  do {
-    [n] = crypto.getRandomValues(new Uint32Array(1));
-  } while (n >= 4294000000);
-  const code = String(n % 1000000).padStart(6, "0"),
-    expires = now + ttl;
+  const expires = now + ttl;
+  let verification, trialCode;
+  if (phone) {
+    await limit(env.DB, "sms:all", now, 30);
+    const started = await verifyRequest(env, "Verifications", {
+      To: phone,
+      Channel: "sms",
+    });
+    if (
+      started.status !== "pending" ||
+      started.to !== phone ||
+      started.channel !== "sms" ||
+      started.service_sid !== env.TWILIO_VERIFY_SERVICE_SID ||
+      !/^VE[0-9a-fA-F]{32}$/.test(started.sid)
+    )
+      fail(503, "SMSの送信を確認できませんでした。");
+    verification = started.sid;
+  } else {
+    let n;
+    do {
+      [n] = crypto.getRandomValues(new Uint32Array(1));
+    } while (n >= 4294000000);
+    trialCode = String(n % 1000000).padStart(6, "0");
+    verification = await mac(key, "code", id + ":" + trialCode);
+  }
   await env.DB.batch([
     env.DB.prepare("DELETE FROM challenges WHERE expires<=?").bind(now),
     env.DB.prepare("DELETE FROM issue_limits WHERE expires<=?").bind(now),
     env.DB.prepare(
       "INSERT INTO challenges(id,phone_key,action,code_mac,expires) VALUES(?,?,?,?,?)",
-    ).bind(
-      id,
-      phoneKey,
-      action,
-      await mac(key, "code", id + ":" + code),
-      expires,
-    ),
+    ).bind(id, phoneKey, action, verification, expires),
   ]);
   return json({
     challengeId: id,
     expires,
-    trialCode: code,
+    trialCode,
     audience: new URL(req.url).origin,
   });
 }
@@ -180,12 +229,14 @@ async function redeem(env, key, origin, action, b, phoneKey, now) {
   )
     .bind(...args)
     .first();
+  const sms = env.AUTH_MODE === "sms";
   if (
     !c ||
-    c.code_mac !== (await mac(key, "code", b.challengeId + ":" + b.code))
+    (!sms &&
+      c.code_mac !== (await mac(key, "code", b.challengeId + ":" + b.code)))
   )
     denied();
-  let profile, loginKey;
+  let profile, loginKey, legacy;
   if (action === "activate") {
     const address = validateProfile(b.profile);
     profile = b.profile;
@@ -204,11 +255,15 @@ async function redeem(env, key, origin, action, b, phoneKey, now) {
     if (b.proof !== b.walletProof || toBase64(pub) !== toBase64(address))
       await checkSignature(pub, b.proof, msg);
   } else {
-    const stored = await env.DB.prepare(
+    const lookup = env.DB.prepare(
       "SELECT profile,login_key FROM wallets WHERE phone_key=?",
-    )
-      .bind(phoneKey)
-      .first();
+    );
+    let stored = await lookup.bind(phoneKey).first();
+    if (!stored && sms) {
+      // A trial wallet can be adopted only with its original signer AND a live SMS.
+      stored = await lookup.bind(await mac(key, "phone", b.phoneHash)).first();
+      legacy = stored;
+    }
     if (!stored) denied();
     await checkSignature(
       binary(stored.login_key, 32),
@@ -216,6 +271,21 @@ async function redeem(env, key, origin, action, b, phoneKey, now) {
       transcript(action, origin, b.phoneHash, b.challengeId),
     );
     profile = JSON.parse(stored.profile);
+  }
+  if (sms) {
+    const checked = await verifyRequest(env, "VerificationCheck", {
+      VerificationSid: c.code_mac,
+      Code: b.code,
+    });
+    if (
+      checked.status !== "approved" ||
+      checked.sid !== c.code_mac ||
+      checked.service_sid !== env.TWILIO_VERIFY_SERVICE_SID ||
+      checked.channel !== "sms" ||
+      typeof checked.to !== "string" ||
+      (await phoneDigest(checked.to)) !== b.phoneHash
+    )
+      denied();
   }
   // Only the winner of this claim may register a wallet or receive ciphertext.
   const claim = await env.DB.prepare(
@@ -237,6 +307,14 @@ async function redeem(env, key, origin, action, b, phoneKey, now) {
       );
     return json({ address: profile.address }, 201);
   }
+  if (legacy) {
+    const adopted = await env.DB.prepare(
+      "INSERT INTO wallets(phone_key,profile,login_key) VALUES(?,?,?) ON CONFLICT(phone_key) DO NOTHING",
+    )
+      .bind(phoneKey, legacy.profile, legacy.login_key)
+      .run();
+    if (adopted.meta.changes !== 1) denied();
+  }
   return json({ profile });
 }
 const common = ["phoneHash", "challengeId", "code", "proof"];
@@ -246,7 +324,14 @@ export default {
     if (!url.pathname.startsWith("/api/")) return env.ASSETS.fetch(req);
     try {
       if (url.pathname === "/api/auth/status" && req.method === "GET")
-        return json({ service: "wara-auth", version: 1 });
+        return json({
+          service: "wara-auth",
+          version: 2,
+          mode:
+            env.AUTH_MODE === "sms" && !smsReady(env)
+              ? "disabled"
+              : env.AUTH_MODE || "disabled",
+        });
       const action = url.pathname.match(
         /^\/api\/auth\/(challenge|activate|signin)$/,
       )?.[1];
@@ -256,7 +341,8 @@ export default {
       if (origin && origin !== url.origin)
         fail(403, "同じサイトから操作してください。");
       if (
-        env.AUTH_MODE !== "trial" ||
+        !["trial", "sms"].includes(env.AUTH_MODE) ||
+        (env.AUTH_MODE === "sms" && !smsReady(env)) ||
         typeof env.AUTH_PEPPER !== "string" ||
         env.AUTH_PEPPER.length < 32 ||
         !env.DB
@@ -266,11 +352,16 @@ export default {
       fields(
         b,
         action === "challenge"
-          ? ["phoneHash", "action"]
+          ? [env.AUTH_MODE === "sms" ? "phone" : "phoneHash", "action"]
           : action === "activate"
             ? [...common, "profile", "loginKey", "walletProof"]
             : common,
       );
+      if (action === "challenge" && env.AUTH_MODE === "sms") {
+        if (typeof b.phone !== "string" || !/^\+[1-9]\d{7,14}$/.test(b.phone))
+          bad();
+        b.phoneHash = await phoneDigest(b.phone);
+      }
       if (
         typeof b.phoneHash !== "string" ||
         !/^[a-f0-9]{64}$/.test(b.phoneHash)
@@ -283,10 +374,14 @@ export default {
         false,
         ["sign"],
       );
-      const phoneKey = await mac(key, "phone", b.phoneHash),
+      const phoneKey = await mac(
+          key,
+          env.AUTH_MODE === "sms" ? "sms-phone" : "phone",
+          b.phoneHash,
+        ),
         now = Math.floor(Date.now() / 1000);
       return action === "challenge"
-        ? await issue(env, key, phoneKey, req, b.action, now)
+        ? await issue(env, key, phoneKey, req, b.action, now, b.phone)
         : await redeem(env, key, url.origin, action, b, phoneKey, now);
     } catch (e) {
       return json(

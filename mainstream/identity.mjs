@@ -136,7 +136,7 @@ async function api(path, payload) {
   return result;
 }
 
-async function hostedAuth() {
+export async function authMode() {
   const response = await fetch("/api/auth/status", {
     cache: "no-store",
     credentials: "omit",
@@ -144,7 +144,9 @@ async function hostedAuth() {
   });
   if (response.headers.get("X-Wara-Auth") === "1" && response.ok) {
     localStorage.setItem(prefix + "backend", "worker");
-    return true;
+    const { mode = "trial" } = await response.json();
+    if (mode === "trial" || mode === "sms") return mode;
+    throw Error("この環境の登録・サインインは準備中です。");
   }
   // Only a positively identified static host may create a device-local wallet.
   const staticHost = [
@@ -161,15 +163,23 @@ async function hostedAuth() {
       (response.ok &&
         response.headers.get("content-type")?.includes("text/html")))
   )
-    return false;
+    return "local";
   throw Error("認証APIに接続できません。しばらくしてから再試行してください。");
 }
 
-export async function beginAuth(phone, action) {
+export async function beginAuth(phone, action, expectedMode) {
   const phoneHash = await phoneDigest(normalizePhone(phone));
-  if (!(await hostedAuth()))
+  const mode = await authMode();
+  if (expectedMode && expectedMode !== mode)
+    throw Error("認証方式が変わりました。ページを再読み込みしてください。");
+  if (mode === "local")
     return { backend: "local", action, phoneHash, local: challenge() };
-  const result = await api("challenge", { phoneHash, action });
+  const result = await api(
+    "challenge",
+    mode === "sms"
+      ? { phone: normalizePhone(phone), action }
+      : { phoneHash, action },
+  );
   // Wrangler maps loopback requests to the configured route's host during development.
   const loopback = ["localhost", "127.0.0.1", "[::1]"].includes(
     location.hostname,

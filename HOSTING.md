@@ -32,11 +32,11 @@ npm run workers:dev
 
 | API | 処理 |
 | --- | --- |
-| `POST /api/auth/challenge` | 正規化した番号のハッシュと用途を受け取り、5分有効の試験コードと一度限りのチャレンジ ID を返す。 |
+| `POST /api/auth/challenge` | 試験時は番号ハッシュを受け取り、画面表示用コードを返す。実SMS時は正規化した番号へTwilio Verifyで送信し、ブラウザにはコードを返さない。各手続きは5分有効。 |
 | `POST /api/auth/activate` | コードと署名を検証して、番号に対応する財布を一度だけ登録する。既存の登録は上書きできない。 |
 | `POST /api/auth/signin` | コードに加えてパスワード由来の鍵、または登録済み Phantom の署名を検証し、保存したプロフィールを返す。 |
 
-組み込み・紙カードではブラウザが秘密鍵を AES-GCM で暗号化します。復号鍵とサインイン署名鍵は別々のソルトで、パスワードから PBKDF2-SHA256（各60万回）で導出します。Worker に渡るのは番号ハッシュ、公開鍵、署名、暗号化済みの Vault です。D1 の番号検索キーはサーバー秘密を使った HMAC です。Phantom の秘密鍵は Phantom が保持します。パスワードを失った場合、画面の確認コードだけでは財布を復元できません。
+組み込み・紙カードではブラウザが秘密鍵を AES-GCM で暗号化します。復号鍵とサインイン署名鍵は別々のソルトで、パスワードから PBKDF2-SHA256（各60万回）で導出します。試験モードで Worker に渡るのは番号ハッシュ、公開鍵、署名、暗号化済みの Vault です。D1 の番号検索キーはサーバー秘密を使った HMAC です。Phantom の秘密鍵は Phantom が保持します。パスワードを失った場合、画面の確認コードだけでは財布を復元できません。
 
 同じオリジンで静的版を Workers 版へ更新した場合は、元の端末で「この端末の財布を引き継ぐ」を選べます。公開中の Sites と独自ドメインではブラウザの保存領域が異なります。Sites にだけある組み込み財布は独自ドメインに自動移行されません。静的 Sites では引き続き端末内登録を使います。Worker の通信障害時はエラーを表示して再試行できます。
 
@@ -48,11 +48,20 @@ npm run workers:dev
 4. `npm run workers:build` で確認し、公開する時点で `npx wrangler deploy` を実行します。既定の `AUTH_MODE=disabled` では認証 API は 503 を返します。架空番号を使う Devnet 試験を明示的に公開する場合だけ `npx wrangler deploy --var AUTH_MODE:trial` を使います。
 5. 公開先の `/api/auth/status` と `/signup/` を確認し、別ブラウザで登録・復元した公開アドレスを照合します。
 
-確認コードの画面表示は電話番号の所有確認を行いません。試験中は他人が先に番号を登録できます。実番号の運用には SMS 配信と所有確認の実装が必要です。
+### 実SMSへの切り替えと別端末での確認
+
+1. Twilioで専用のVerify Serviceを作成し、SMSと6桁のコードを設定します。送信する国をVerify Geo Permissionsで許可します。トライアルアカウントでは検証先の携帯番号をTwilioで事前確認します。[Twilioの開始手順](https://www.twilio.com/docs/verify/quickstarts/node-express)
+2. 同じTwilioアカウントでVerify送信・照合に使えるAPI Keyを作成します。Cloudflareの `wara-monku-ai` WorkerのSettings → Variables and Secretsで、`TWILIO_VERIFY_SERVICE_SID`（VAで始まるService SID）、`TWILIO_API_KEY`（SKで始まるKey SID）、`TWILIO_API_SECRET`（作成時に表示されるSecret）をSecretとして設定します。既存の `AUTH_PEPPER` はそのまま使用します。
+3. テストとビルド後に `npx wrangler deploy --var AUTH_MODE:sms` で切り替えます。以後の再配備にも同じ指定を使います。`/api/auth/status` の `mode` が `sms` で、登録画面に「SMSで確認コードを受け取る」と表示されることを確認します。設定がそろわないSMSモードでは登録は停止します。
+4. 端末Aで「新規登録」からSMSを受信し、組み込みウォレットとパスワードを選んで登録します。「アカウント」で公開アドレスを控えます。端末Bで「サインイン」を選び、同じ番号に新しく届いたSMSと同じパスワードで開き、アドレスの全文が一致することを確認します。確認コードとパスワードは各端末の登録画面にだけ入力します。Phantomでは両端末で同じアカウントの署名が必要です。
+
+実SMSモードではWorkerが送信時のみ平文の番号を受け取り、Twilioに送信します。D1には番号のHMAC、確認要求には一時的なTwilio照合IDを保存します。SMSを受け取っていない試験番号は、同じ番号を使う実登録を妨げません。試験時の財布を引き継ぐには、実SMSを受信できる同じ番号と元の署名手段を使います。架空番号にSMSは届かないため、実SMSへ切り替えた後、その番号では別端末からサインインできません。
+
+試験規模での送信上限は15分ごとに同じ番号3回、同じ接続元10回、サイト全体30回です。送信要求が失敗した場合も回数に含めます。
 
 ## 配備元と既存URL
 
-wara.monku.ai の配備元は kentaroid-bot/wara-monku-ai の main。リポジトリ直下でビルドし、公開中の試験環境へは `npx wrangler deploy --var AUTH_MODE:trial` で配備します。静的アセットには明示的に選んだ dist/ 内のファイルだけを含めます。
+wara.monku.ai の配備元は kentaroid-bot/wara-monku-ai の main。リポジトリ直下でビルドし、画面にコードを表示する試験環境へは `npx wrangler deploy --var AUTH_MODE:trial` で配備します。静的アセットには明示的に選んだ dist/ 内のファイルだけを含めます。
 
 /mock/ は初期モックの同梱版です。[モックの原本](https://github.com/kentaroid-bot/emergency-straw-protocol)を更新した際は、必要に応じて同梱版へ取り込みます。既発行トークンが参照する旧GitHubのJSONと画像は旧URLを維持します。新規登録用のメタデータは本リポジトリの assets/ で管理します。
 

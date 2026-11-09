@@ -307,3 +307,106 @@ test("an unconfigured Worker refuses enrollment and serves only the requested st
   });
   assert.equal(await res.text(), "/shop/");
 });
+
+test("SMS registration and fresh-device sign-in require the delivered code and wallet signer", async (t) => {
+  const worker = (await import("../worker/index.mjs")).default;
+  const { beginAuth, activate, active, unlock, signout } = await import(
+    "../mainstream/identity.mjs"
+  );
+  const env = {
+    DB: db,
+    AUTH_MODE: "sms",
+    AUTH_PEPPER: randomBytes(32).toString("hex"),
+    TWILIO_API_KEY: "SK" + "0".repeat(32),
+    TWILIO_API_SECRET: randomBytes(16).toString("hex"),
+    TWILIO_VERIFY_SERVICE_SID: "VA" + "0".repeat(32),
+  };
+  // Only the SMS provider is simulated. Calls go through the site client, Worker and D1.
+  const sent = new Map();
+  let latest,
+    failDelivery = false;
+  t.mock.method(globalThis, "fetch", async (url, opts) => {
+    if (url.startsWith("/api/"))
+      return worker.fetch(new Request(origin + url, opts), env);
+    const base =
+      "https://verify.twilio.com/v2/Services/" + env.TWILIO_VERIFY_SERVICE_SID;
+    assert.equal(
+      opts.headers.Authorization,
+      "Basic " + btoa(env.TWILIO_API_KEY + ":" + env.TWILIO_API_SECRET),
+    );
+    const form = opts.body;
+    if (url === base + "/Verifications") {
+      if (failDelivery) return new Response(null, { status: 503 });
+      const sid = "VE" + randomBytes(16).toString("hex");
+      const data = {
+        sid,
+        service_sid: env.TWILIO_VERIFY_SERVICE_SID,
+        channel: form.get("Channel"),
+        to: form.get("To"),
+      };
+      const code = String(
+        crypto.getRandomValues(new Uint32Array(1))[0] % 1000000,
+      ).padStart(6, "0");
+      latest = code;
+      sent.set(sid, { data, code });
+      return Response.json({ ...data, status: "pending" });
+    }
+    assert.equal(url, base + "/VerificationCheck");
+    const sid = form.get("VerificationSid"),
+      message = sent.get(sid);
+    if (!message) return new Response(null, { status: 404 });
+    const ok = form.get("Code") === message.code;
+    if (ok) sent.delete(sid);
+    return Response.json({
+      ...message.data,
+      status: ok ? "approved" : "pending",
+    });
+  });
+  function freshDevice() {
+    globalThis.location = new URL(origin);
+    for (const name of ["localStorage", "sessionStorage"]) {
+      const values = new Map();
+      Object.defineProperty(globalThis, name, {
+        configurable: true,
+        value: {
+          setItem: (k, v) => values.set(k, v),
+          getItem: (k) => values.get(k) ?? null,
+          removeItem: (k) => values.delete(k),
+        },
+      });
+    }
+  }
+  const phone = "+819000000000",
+    pass = randomBytes(12).toString("hex");
+  const start = (action) => beginAuth(phone, action, "sms");
+  const use = (proof, password = pass, code = latest) =>
+    activate(phone, "embedded", password, proof, code);
+  freshDevice();
+  // A trial account on this number must neither reserve it nor release its vault.
+  env.AUTH_MODE = "trial";
+  const trial = await beginAuth(phone, "activate");
+  const old = await use(trial, pass + "old", trial.trialCode);
+  freshDevice();
+  env.AUTH_MODE = "sms";
+  await assert.rejects(use(trial, pass + "old", trial.trialCode));
+  failDelivery = true;
+  await assert.rejects(start("activate"), /SMS/);
+  failDelivery = false;
+  const first = await start("activate");
+  assert.equal(first.trialCode, undefined);
+  const wrong = latest === "000000" ? "111111" : "000000";
+  await assert.rejects(use(first, pass, wrong));
+  const registered = await use(first);
+  assert.notEqual(registered.address, old.address);
+  signout();
+  freshDevice();
+  const second = await start("signin");
+  await assert.rejects(use(second, pass + "old"));
+  assert.equal(active(), null);
+  const recovered = await use(second);
+  assert.equal(
+    (await unlock(recovered, pass)).publicKey.toBase58(),
+    registered.address,
+  );
+  await assert.rejects(use(second));
+});
