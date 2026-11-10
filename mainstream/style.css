@@ -39,6 +39,7 @@ summary { cursor: pointer; color: var(--leaf); font-weight: 650; }
 section > :last-child, details > :last-child { margin-bottom: 0; }
 fieldset { border: 0; padding: 0; margin: 0; min-width: 0; }
 label { display: block; margin: .8rem 0; font-size: .88rem; font-weight: 550; }
+[data-password][hidden] { display: none !important; }
 input:not([type="radio"]):not([type="checkbox"]), select, textarea {
   display: block; width: 100%; margin-top: .25rem; background: var(--paper); color: var(--ink);
   border: 1px solid var(--quiet); border-radius: .65rem; padding: .65rem; font: inherit; font-size: 1rem;
