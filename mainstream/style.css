@@ -54,12 +54,17 @@ button.secondary, .action.secondary { background: var(--tile); color: var(--leaf
 button.theme { width: 44px; border-radius: 50%; background: var(--wash); color: var(--ink); font-size: 1.15rem; }
 :focus-visible { outline: 3px solid #aa863a; outline-offset: 2px; }
 nav { position: fixed; bottom: 0; left: 50%; transform: translateX(-50%); width: min(100%,28rem); z-index: 5;
-  display: flex; align-items: center; justify-content: space-around; padding: .25rem .7rem calc(.25rem + env(safe-area-inset-bottom));
+  display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); padding: .25rem .5rem calc(.25rem + env(safe-area-inset-bottom));
   border: 1px solid var(--line); background: var(--tile); box-shadow: 0 -3px 16px #1323190b; }
-nav a { display: grid; justify-items: center; min-width: 3.3rem; padding: .2rem; font-size: .7rem; color: var(--quiet); text-decoration: none; }
-nav a span { font-size: 1.2rem; }
-nav a[aria-current] { border-radius: .8rem; color: var(--leaf); background: var(--wash); font-weight: 750; }
-#quick { margin: -.9rem 0 0; width: 3rem; height: 3rem; border-radius: 50%; font-size: 1.5rem; background: linear-gradient(45deg,#1b4d36,#347a5a); box-shadow: 0 4px 12px #15352230; }
+nav a { position: relative; display: grid; place-items: center; min-height: 48px; padding-bottom: .35rem;
+  border-radius: .75rem; font-size: 1.35rem; line-height: 1; text-decoration: none; }
+nav a[aria-current="page"]::after { content: ""; position: absolute; bottom: .2rem; width: 6px; height: 6px;
+  border-radius: 50%; background: light-dark(#508440, #9ad982); }
+.guide-intro { background: var(--wash); }
+.guide-intro dl { margin: 0; }
+.guide-intro dt { font-weight: 700; color: var(--leaf); }
+.guide-intro dt:not(:first-child) { margin-top: .85rem; color: var(--gold); }
+.guide-intro dd { margin: .2rem 0 0; }
 footer { padding: .9rem 1rem; border-top: 1px solid var(--line); font-size: .7rem; }
 .twins, .quick-actions { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: .65rem; margin: .75rem 0; }
 .orb { margin: 0; min-height: 9rem; padding: .95rem; display: flex; flex-direction: column; border-radius: 1.05rem; position: relative; overflow: hidden; isolation: isolate; }
@@ -95,7 +100,6 @@ footer { padding: .9rem 1rem; border-top: 1px solid var(--line); font-size: .7re
   width: min(calc(100% - 2rem),26rem); z-index: 6; background: #1b4d36; color: #fff4cf; padding: .9rem; border-radius: .85rem; box-shadow: var(--shadow); font-size: .85rem; pointer-events: none; }
 dialog { width: min(24rem,92vw); max-height: 85dvh; background: var(--paper); color: var(--ink); border: 1px solid var(--line); border-radius: 1.5rem; padding: 1.25rem; }
 dialog::backdrop { background: #10201999; }
-#quick-menu form { padding: 0; border: 0; background: transparent; box-shadow: none; }
 .pin-keys { display: grid; grid-template-columns: repeat(3,1fr); gap: .4rem; margin: .8rem 0; }
 .pin-keys button { margin: 0; min-height: 3rem; font-size: 1.25rem; }
 .pin-dots { text-align: center; letter-spacing: .35em; }

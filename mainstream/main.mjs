@@ -18,11 +18,10 @@ const info = (s) => {
   notice.textContent = s;
 };
 const path = location.pathname.replace(/\/+$/, "") || "/";
-const tab = ["/", "/user"].includes(path) ? "wallet" :
+const tab = path === "/support" ? "guide" :
+  ["/", "/user"].includes(path) ? "wallet" :
   (path === "/shop" || path.startsWith("/communities")) ? "market" : "me";
 document.querySelector(`[data-tab="${tab}"]`).setAttribute("aria-current", "page");
-const menu = document.querySelector("#quick-menu");
-document.querySelector("#quick").onclick = () => menu.showModal();
 const theme = localStorage.getItem("wara.theme");
 if (theme === "dark" || theme === "light") document.documentElement.style.colorScheme = theme;
 document.querySelector(".theme").onclick = () => {
@@ -81,7 +80,33 @@ async function card() {
   );
   box.querySelector("button").onclick = () => print();
 }
+function showGuide() {
+  el.innerHTML = `<h1>使い方</h1>
+    <section class="guide-intro">
+      <h2>藁一本の約束とは</h2>
+      <dl>
+        <dt>🌱 kusa（草）</dt>
+        <dd>今日の24時間を生きるための10枚です。食事や日々のお礼に使えます。日本時間の午前0時に残りは消え、新しい10枚が使えるようになります。</dd>
+        <dt>✨ WARA（藁）</dt>
+        <dd>役に立った仕事へ贈られた、感謝の結晶です。日付が変わっても財布に残り、貯めて道具や設備、大きな仕事の支払いに使えます。</dd>
+      </dl>
+    </section>
+    <section><h2>お店で支払う</h2>
+      <p>お財布の「支払う」から、お店の会計QRを読み取ります。店名と枚数を確かめて支払いを確定してください。</p>
+      <p>1 kusaで支払うと、お店に90 WARA、あなたに10 WARAが届きます。</p>
+    </section>
+    <section><h2>お店のレジを開く</h2>
+      <p>お財布の「レジを開く」で自分の公認店舗を選びます。金額をkusaで入力し、「支払い用QRを表示」を押して、お客さんに読み取ってもらいましょう。</p>
+    </section>
+    <section><h2>携帯をお持ちでない方へ</h2>
+      <p>電話番号を登録したご家族や店員さんに、<a href="/account/">アカウント</a>で「家族・知人の財布を作る」を開いてもらいます。氏名・質問の答え・暗証番号はご本人が入力し、印刷した紙カードを受け取ってください。</p>
+    </section>`;
+}
 async function render() {
+  if (path === "/support") {
+    showGuide();
+    return;
+  }
   if (!profile?.managed) {
     try { await restorePhantom(); } catch { /* Keep the normal sign-in available offline. */ }
     profile = active();
@@ -101,8 +126,7 @@ async function render() {
     "/": "お財布",
     "/user": "お財布",
     "/shop": "レジ",
-    "/account": "マイ",
-    "/support": "地域窓口",
+    "/account": "アカウント",
     "/communities": "市場",
     "/communities/new": "コミュニティを開設",
   };
@@ -114,16 +138,10 @@ async function render() {
         "wara.v03.after-signin",
         location.pathname + location.search,
       );
-    el.insertAdjacentHTML(
-      "beforeend",
-      path === "/support"
-        ? "<p>携帯のない方の登録は、電話番号を登録した紹介者のアカウントから行えます。</p>" +
-            welcome
-        : welcome,
-    );
+    el.insertAdjacentHTML("beforeend", welcome);
     return;
   }
-  if (path === "/account" || path === "/support") {
+  if (path === "/account") {
     el.insertAdjacentHTML(
       "beforeend",
       "<section><h2>" +
