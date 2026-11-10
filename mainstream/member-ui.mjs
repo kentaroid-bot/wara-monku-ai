@@ -456,6 +456,8 @@ async function editProof(m, op) {
 export function accountTools(el, info, mode) {
   const m = managedSession(),
     box = document.createElement("section");
+  box.className = "account-settings";
+  box.innerHTML = `<h2>アカウントの設定</h2><p>電話番号連携：${m.hasPhone ? "登録済み" : "未登録"}</p>`;
   el.append(box);
   const button = (label, fn) => {
     const b = document.createElement("button");

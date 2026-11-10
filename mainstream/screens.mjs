@@ -1,3 +1,4 @@
+import { twinCards, crystallize } from "./balances.mjs";
 import { Keypair } from "@solana/web3.js";
 import { showHistory } from "./history.mjs";
 import { scannerBox } from "./scan.mjs";
@@ -76,19 +77,22 @@ export async function dashboard(ctx) {
       if (pendingSig(who)) await checkPending(who);
       view();
       info("");
+      return true;
     } catch (e) {
+      ui("<p>最新の状態を表示できません。「更新」で再確認してください。</p>");
       info("取得できません：" + e.message);
+      return false;
     }
   };
   const send = async (ix, extra = [], msg = "取引が確定しました。") => {
     const sig = await submit(profile, wallet, ix, extra);
-    await refresh(
+    const refreshed = await refresh(
       ix.some(
         (i) =>
           i.programId.equals(program) && i.data[0] >= 10 && i.data[0] <= 13,
       ),
     );
-    info(msg);
+    info(msg + (refreshed ? "" : " 残高は「更新」で再確認してください。"));
     const a = document.createElement("a");
     a.href = receipt(sig);
     a.textContent = " Devnetの取引を見る";
@@ -98,6 +102,8 @@ export async function dashboard(ctx) {
     return sig;
   };
   const by = (id) => s.groups.find((g) => g.id === id);
+  const shopName = (group, address) =>
+    s.rows.find(r => r.tag === 32 && r.group === group && r.to === address)?.name;
   const outgoing = (a, b) =>
     s.rows.some(
       (r) => r.tag === 34 && r.group === a && r.to === b && r.status === 1,
@@ -139,21 +145,14 @@ export async function dashboard(ctx) {
       g = by(id);
     if (!id) {
       ui(
-        link("/communities/new/", "コミュニティを開設") +
-          "<section><h2>コミュニティ一覧</h2>" +
-          (s.groups
-            .map(
-              (g) =>
-                "<p>" +
-                link(gid(g.id), g.name) +
-                " · " +
-                h(g.category) +
-                " / " +
-                modes[g.mode] +
-                "</p>",
-            )
-            .join("") || "まだ登録がありません。") +
-          "</section>",
+        `<section><div class="section-head"><h2>地域のコミュニティ</h2><a href="/communities/new/">＋ 開設</a></div>
+          ${s.groups.map(g => {
+            const stores = s.rows.filter(r => r.tag === 32 && r.group === g.id);
+            const joined = g.owner === who || s.rows.some(r => r.tag === 33 && r.group === g.id && r.to === who && r.status === 2);
+            return `<article class="market-row"><a href="${h(gid(g.id))}"><strong>${h(g.name)}</strong></a>
+              <small>${h(g.category)} · ${modes[g.mode]} · 公認店舗 ${stores.length}店${joined ? " · 参加中" : ""}</small>
+              ${stores.map(st => `<a class="shop-row" href="${h(register(g.id, st.to))}"><span>${h(st.name)}</span><small>レジを開く ›</small></a>`).join("")}</article>`;
+          }).join("") || "<p>まだ登録がありません。</p>"}</section>`,
       );
       return;
     }
@@ -300,9 +299,11 @@ export async function dashboard(ctx) {
         (r) => r.group === g?.id && r.to === params.get("store"),
       );
     if (!store) {
+      const receiving = params.get("mode") === "receive";
+      const choices = receiving ? stores.filter(st => st.to === who) : stores;
       ui(
-        "<section><h2>店のレジを選ぶ</h2>" +
-          stores
+        "<section><h2>" + (receiving ? "自分の店舗レジ" : "店のレジを選ぶ") + "</h2>" +
+          choices
             .map(
               (st) =>
                 "<p>" +
@@ -312,11 +313,11 @@ export async function dashboard(ctx) {
                 "</p>",
             )
             .join("") +
-          (stores.length ? "" : "<p>公認店舗はまだありません。</p>") +
+          (choices.length ? "" : receiving ? "<p>この財布に登録された公認店舗はありません。</p>" : "<p>公認店舗はまだありません。</p>") +
           link("/communities/", "コミュニティを見る") +
           "</section>",
       );
-      scannerBox(content, "store", (url) => location.assign(url));
+      if (!receiving) scannerBox(content, "store", (url) => location.assign(url));
       return;
     }
     const lots = [...s.funds]
@@ -334,7 +335,7 @@ export async function dashboard(ctx) {
     const fixed = params.get("kusa") || "1",
       n = /^([1-9]|10)$/.test(fixed) ? fixed : "1";
     ui(
-      "<section><h2>" +
+      twinCards(s) + "<section><h2>" +
         h(store.name) +
         "</h2><small>" +
         h(g.name) +
@@ -383,10 +384,15 @@ export async function dashboard(ctx) {
       action(checkout,async v=>{
         const {payWithCard}=await import("./member-ui.mjs");
         const sig=await payWithCard(g.id,store.to,Number(v.amount),store.name);
-        await refresh(true);info("紙カードの支払いが確定しました。 "+sig);
+        const refreshed = await refresh(true);
+        info("紙カードの支払いが確定しました。" + (refreshed ? "" : " 残高は再度更新してください。"));
+        const a = document.createElement("a");
+        a.href = receipt(sig); a.textContent = " Devnetの取引を見る"; a.target = "_blank"; a.rel = "noopener";
+        document.querySelector("#notice").append(a);
+        crystallize(BigInt(v.amount), true);
       });
     }
-    if (isShop) showHistory(content, who, g.id, h, by);
+    if (isShop) showHistory(content, who, g.id, h, by, shopName);
     form("invoice", async (v) => {
       const u = new URL(register(g.id, store.to), location.origin);
       u.searchParams.set("kusa", String(amount(v.kusa)));
@@ -431,6 +437,7 @@ export async function dashboard(ctx) {
           n * 10n +
           " WARA還付。",
       );
+      crystallize(n, false);
     });
     form("wara", async (v) => {
       const n = amount(v.amount),
@@ -450,24 +457,12 @@ export async function dashboard(ctx) {
     if (path === "/communities/new") return newGroup();
     if (path === "/communities") return community();
     if (path === "/shop") return store();
-    const total = [...s.funds.values()].reduce((a, b) => a + b, 0n);
-    ui(
-      '<section class="balance"><h2>今日使えるKusa</h2><div class="amount">' +
-        s.remaining +
-        ' Kusa</div><span class="leaves" aria-hidden="true">' +
-        "❧".repeat(Number(s.remaining)) +
-        '</span><p>毎日、日本時間0時に10枚へ。使っていない分は繰り越しません。</p></section><section><h2>持っているWARA</h2><div class="amount">' +
-        total +
-        " WARA</div><details><summary>発行元の内訳</summary>" +
-        [...s.funds]
-          .map(([id, n]) => "<p>" + h(by(id)?.name) + "：" + n + " WARA</p>")
-          .join("") +
-        "</details></section>" +
-        link("/shop/", "レジで支払う") +
-        link("/communities/", "地域に参加する"),
-    );
+    ui(twinCards(s) +
+      '<div class="quick-actions"><a class="action" href="/shop/">支払う</a><a class="action secondary" href="/shop/?mode=receive">レジを開く</a></div>');
+    showHistory(content, who, null, h, by, shopName);
     scannerBox(content, "store", (url) => location.assign(url));
-    showHistory(content, who, null, h, by);
+    content.insertAdjacentHTML("beforeend", `<details><summary>WARAの発行元</summary>
+      ${[...s.funds].map(([id, n]) => `<p>${h(by(id)?.name || id)}：${n} WARA</p>`).join("") || "<p>まだWARAはありません。</p>"}</details>`);
   }
   if (path === "/communities/new") {
     newGroup();

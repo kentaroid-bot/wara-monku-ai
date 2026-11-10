@@ -1,29 +1,32 @@
 <!doctype html>
 <html lang="ja">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width,initial-scale=1" />
-    <title>藁一本の約束 | KusaとWARA</title>
-    <link rel="stylesheet" href="/v3/style.css" />
-    <script defer src="/v3/main.js"></script>
-  </head>
-  <body>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <title>藁一本の約束 | KusaとWARA</title>
+  <link rel="stylesheet" href="/v3/style.css">
+  <script defer src="/v3/main.js"></script>
+</head>
+<body>
+  <div class="frame">
     <header>
-      <a class="brand" href="/">藁一本の約束</a
-      ><span>Solana Devnet · v0.3</span>
+      <a class="brand" href="/"><span class="brand-mark" aria-hidden="true">🌾</span><span>藁一本の約束<small><i></i> Solana Devnet</small></span></a>
+      <button class="theme" type="button" aria-label="配色を切り替える">◐</button>
     </header>
-    <nav aria-label="主な画面">
-      <a href="/">お財布</a><a href="/shop/">レジ</a
-      ><a href="/communities/">コミュニティ</a><a href="/account/">アカウント</a
-      ><a href="/support/">地域窓口</a>
-    </nav>
-    <main>
-      <div id="screen"></div>
-      <p id="notice" role="status" aria-live="polite"></p>
-    </main>
-    <footer>
-      テスト用のネットワークです。実際のお金は使いません。
-      <a href="/devnet/">旧Devnet検証版はこちら</a> · <a href="https://github.com/kentaroid-bot/emergency-straw-protocol">この仕組みの原案</a>
+    <main><div id="screen"></div><p id="notice" role="status"></p></main>
+    <footer>テスト用のネットワークです。実際のお金は使いません。<br>
+      <a href="/support/">地域窓口</a> · <a href="/devnet/">旧Devnet検証版</a> · <a href="https://github.com/kentaroid-bot/emergency-straw-protocol">この仕組みの原案</a>
     </footer>
-  </body>
-</html>
+    <nav aria-label="主な画面">
+      <a data-tab="wallet" href="/"><span aria-hidden="true">👛</span>お財布</a>
+      <button id="quick" type="button" aria-label="支払う・レジを開く" aria-haspopup="dialog">＋</button>
+      <a data-tab="market" href="/communities/"><span aria-hidden="true">🏘</span>市場</a>
+      <a data-tab="me" href="/account/"><span aria-hidden="true">👤</span>マイ</a>
+    </nav>
+  </div>
+  <dialog id="quick-menu" aria-labelledby="quick-title">
+    <h2 id="quick-title">お会計</h2><div class="quick-actions"><a class="action" href="/shop/">支払う</a><a class="action secondary" href="/shop/?mode=receive">レジを開く</a></div>
+    <form method="dialog"><button class="secondary">閉じる</button></form>
+  </dialog>
+  <div id="crystal-toast" role="status"></div>
+</body></html>
