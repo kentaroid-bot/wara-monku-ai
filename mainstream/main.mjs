@@ -1,6 +1,6 @@
 import { Buffer } from "buffer";
 import QRCode from "qrcode";
-import { active, signout, unlock, managedSession, authMode } from "./identity.mjs";
+import { active, signout, unlock, managedSession, restorePhantom, authMode } from "./identity.mjs";
 import { signup } from "./signup.mjs";
 globalThis.Buffer ??= Buffer;
 export const esc = (v) =>
@@ -16,14 +16,14 @@ const el = document.querySelector("#screen"),
 const info = (s) => {
   notice.textContent = s;
 };
-const path = location.pathname.replace(/\/+$/, "") || "/",
-  profile = active();
+const path = location.pathname.replace(/\/+$/, "") || "/";
+let profile = active();
 let signer = null;
 window.addEventListener("pagehide", () => {
   signer = null;
 });
 window.addEventListener("pageshow", (e) => {
-  if (e.persisted && active()?.address !== profile?.address) location.reload();
+  if (e.persisted && (path === "/signup" || active()?.address !== profile?.address)) location.reload();
 });
 export async function wallet() {
   if (!profile || active()?.address !== profile.address)
@@ -68,6 +68,11 @@ async function card() {
   box.querySelector("button").onclick = () => print();
 }
 async function render() {
+  if (!profile?.managed) {
+    try { await restorePhantom(); } catch { /* Keep the normal sign-in available offline. */ }
+    profile = active();
+  }
+  if (path === "/signup" && profile?.managed && profile.type === "phantom") { location.replace("/account/"); return; }
   if(profile?.managed) {
     const expires=managedSession()?.expires || Date.now();
     setTimeout(()=>{if(!managedSession()){signout();location.replace("/signup/");}},Math.max(0,expires-Date.now())+30);

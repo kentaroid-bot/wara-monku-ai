@@ -453,7 +453,18 @@ export default {
           await checkSignature(binary(stored.login_key,32),b.proof,transcript("signin",url.origin,b.phoneHash,b.challengeId));
           return json({profile:JSON.parse(stored.profile)});
         }
-        return json(await memberRequest(memberOp,b,ctx));
+        const cookieName = "__Host-wara-phantom";
+        const returnToken = (req.headers.get("Cookie") || "").match(/(?:^|;\s*)__Host-wara-phantom=([1-9A-HJ-NP-Za-km-z]{32,44})(?:;|$)/)?.[1];
+        if (memberOp === "phantom-return" && !returnToken) denied();
+        const result = await memberRequest(memberOp,b,{...ctx,returnToken});
+        const response = json(result);
+        const setReturn = token => response.headers.append("Set-Cookie",
+          cookieName+"="+token+"; Path=/; Secure; HttpOnly; SameSite=Strict; Max-Age="+(token ? 900 : 0));
+        if (memberOp !== "phantom-return" && result.session) {
+          if (result.profile.type === "phantom" && b.mobileReturn === true) setReturn(result.session);
+          else if (returnToken) setReturn("");
+        } else if (memberOp === "logout" && returnToken && returnToken === b.session) setReturn("");
+        return response;
       }
       if(env.WALLET_ACCESS==="enabled" && ["activate","signin"].includes(action))
         fail(409,"画面を再読み込みし、財布の暗証番号を使う手続きに進んでください。");
