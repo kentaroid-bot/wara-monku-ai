@@ -86,6 +86,7 @@ test("signed-in zero-SOL buyer joins, spends and transfers through Worker/D1 and
       : null;
   };
   const broadcast = [];
+  let rateLimitedWire;
   async function rpcRequest(req) {
     const { id, method, params } = await req.json();
     const ctx = (value) => ({ context: { slot: 1 }, value });
@@ -128,6 +129,11 @@ test("signed-in zero-SOL buyer joins, spends and transfers through Worker/D1 and
         break;
       }
       case "sendTransaction": {
+        if (!rateLimitedWire) {
+          rateLimitedWire = params[0];
+          return new Response("rate limited", {status:429, headers:{"Retry-After":"1"}});
+        }
+        if (!broadcast.length) assert.equal(params[0], rateLimitedWire);
         const raw = Buffer.from(params[0], "base64");
         execute(raw);
         result = bs58.encode(Transaction.from(raw).signature);

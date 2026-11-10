@@ -1,3 +1,4 @@
+import { requireFreshBlockhash, workerConnection } from "./devnet-rpc.mjs";
 import { feeKey, relayPayment } from "./relay.mjs";
 import bs58 from "bs58";
 import { ed25519 } from "@noble/curves/ed25519";
@@ -7,7 +8,6 @@ import {
   ordinaryMessage,
   confirmedMessage,
   decodeTransaction,
-  validBlockhash,
 } from "./member-transactions.mjs";
 
 const random = (n) => crypto.getRandomValues(new Uint8Array(n));
@@ -124,7 +124,7 @@ export async function memberRequest(op, b, ctx) {
     }
     const sponsor = feeKey(env);
     if (!sponsor) fail(503, "手数料支援は設定されていません。");
-    return relayPayment({encoded:b.tx, sponsor, member:m.address, receipts, fail,
+    return relayPayment({encoded:b.tx, sponsor, member:m.address, receipts, fail, rpc:workerConnection(env),
       reserveBudget: async () => {
         await limited("relay-member:" + m.id, 20);
         await limited("relay-global", 200);
@@ -578,8 +578,7 @@ export async function memberRequest(op, b, ctx) {
       bad();
     }
     if (card && !ordinary) denied();
-    if (!(await validBlockhash(tx.blockhash)))
-      fail(400, "Devnetの取引期限を確認してください。");
+    await requireFreshBlockhash(workerConnection(env), tx.blockhash, fail);
     if (!card && !ordinary) await strong(m, "payment");
     const seed = await encryptSeed(m.id, m.sealed_seed, true);
     return { signature: toBase64(ed25519.sign(tx.message, seed)) };

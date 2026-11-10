@@ -100,3 +100,5 @@ Firebaseで専用プロジェクトにウェブアプリを登録し、Authentic
 導入時は既存D1へ `0003_relay_receipts.sql` までのマイグレーションを適用し、Devnet SOLを入れた専用の鍵ペアを用意します。64バイトの秘密鍵をBase58化した値をWorker Secret `FEE_PAYER_SECRET` に設定します。値はソース、設定ファイル、クライアントに置きません。配備時は現在の認証モードと環境変数を維持します。`GET /api/fee-payer` は公開鍵だけを返し、無効時は `feePayerPubkey: null` です。
 
 リレーは既存セッション、利用者・招待者の署名、Devnet、命令列とRent不足額を照合してから送信します。同じ依頼の再送や応答消失に備え、D1は利用者署名と確定照会用の取引署名の対応を保持します。15分あたり会員20件・全体200件までの署名予算を設けています。ATAのRentはトークン口座の所有者が閉鎖時に回収できるため、運用予算に合わせた額だけを専用鍵に置きます。
+
+Workerの署名・リレーはOnFinalityのSolana Devnet RPCを使います。ブラウザは従来の公開Devnet RPCで照会します。専用の接続先を使う場合はWorker Secret `DEVNET_RPC_URL` にHTTPSのURLを設定します。Workerは署名の前にDevnetのGenesis Hashと取引の有効性を確認します。

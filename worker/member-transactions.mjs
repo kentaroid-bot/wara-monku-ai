@@ -115,21 +115,6 @@ export function decodeTransaction(encoded, address, configuredSponsor = null) {
     blockhash: tx.recentBlockhash,
   };
 }
-export async function validBlockhash(blockhash) {
-  const response = await fetch(manifest.rpc, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      jsonrpc: "2.0",
-      id: 1,
-      method: "isBlockhashValid",
-      params: [blockhash, { commitment: "confirmed" }],
-    }),
-    signal: AbortSignal.timeout(8000),
-  });
-  return response.ok && (await response.json()).result?.value === true;
-}
-
 // A confirmation sheet authorizes WARA payments and the site's community
 // administration. It cannot turn this endpoint into an arbitrary SOL signer.
 export function confirmedMessage(raw, address, sponsor = null) {

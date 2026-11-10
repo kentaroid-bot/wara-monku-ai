@@ -179,7 +179,9 @@ export async function submit(profile, wallet, ix, extra = []) {
     throw Error(
       "登録は済んでいます。アカウント画面の無料Devnet SOLで取引手数料を準備してください。",
     );
-  const latest = await rpc.getLatestBlockhash(),
+  const rent = sponsor ? await rentShortfall(rpc, ix.at(-1)) : 0;
+  // Use a rooted block shared by the browser and Worker RPC nodes.
+  const latest = await rpc.getLatestBlockhash(profile.managed ? "finalized" : "confirmed"),
     tx = new Transaction({
       feePayer: sponsor || pk(profile.address),
       recentBlockhash: latest.blockhash,
@@ -191,7 +193,7 @@ export async function submit(profile, wallet, ix, extra = []) {
   );
   const original = [...missingBudget, ...ix];
   tx.add(...(sponsor
-    ? sponsoredInstructions(original, sponsor, await rentShortfall(rpc, ix.at(-1)))
+    ? sponsoredInstructions(original, sponsor, rent)
     : original));
   if (extra.length) tx.partialSign(...extra);
   const before = tx.serializeMessage();
