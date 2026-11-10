@@ -126,8 +126,8 @@ function records() {
 function historyRows(rows, shop = false) {
   if (!rows.length) return '<p class="empty">まだお会計はありません。</p>';
   return rows.map(r => {
-    const unit = shop || r.origins ? "WARA" : "Kusa";
-    const note = r.origins ? "WARA払い" : (shop ? "Kusa払い" : r.userRefund + " WARA還付") +
+    const unit = shop || r.origins ? "WARA" : "INA";
+    const note = r.origins ? "WARA払い" : (shop ? "INA払い" : r.userRefund + " WARA還付") +
       (r.method === "support" ? " · 窓口立ち会い" : " · 暗証番号");
     return `<div class="history-row"><div>${shop ? "あおいさん（デモ）" : storeName(r)}
     <small>${areaName(r.communityId)} · ${r.day}日目 · ${escape(time(r.time))} · ${note}</small></div>
@@ -137,7 +137,7 @@ function historyRows(rows, shop = false) {
 const link = (href, label, secondary = false) =>
   `<a class="button${secondary ? " secondary" : ""}" href="${escape(href)}">${escape(label)}</a>`;
 function printedCard() {
-  return `<div class="qr-card"><span class="pill">画面モック専用 · 実際には使えません</span><p><strong>あおいさんの Kusaカード</strong></p><img id="cardQr" alt="デモ参加者C-001を示すQRコード"><p>C-001 · カード ${state.cardVersion}</p><p class="small">公開IDのみ。QRは本人の同意や署名ではありません。</p><button disabled id="printCard" class="secondary">このカードを印刷</button></div>`;
+  return `<div class="qr-card"><span class="pill">画面モック専用 · 実際には使えません</span><p><strong>あおいさんの INAカード</strong></p><img id="cardQr" alt="デモ参加者C-001を示すQRコード"><p>C-001 · カード ${state.cardVersion}</p><p class="small">公開IDのみ。QRは本人の同意や署名ではありません。</p><button disabled id="printCard" class="secondary">このカードを印刷</button></div>`;
 }
 
 function account() {
@@ -162,7 +162,7 @@ function user() {
     `<span class="leaf${i < remaining ? "" : " spent"}"></span>`
   ).join("");
   return `<div class="grid">
-<section class="panel balance"><p class="muted">今日あと使えるKusa</p><div class="big">${DAILY_KUSA - state.spent} <small class="gold">Kusa</small></div><p class="muted">あおいさん · Kusaアカウント C-001（デモ）</p><div class="leaves" aria-hidden="true">${leaves}</div><p class="small" style="color:#d5e0cf">今日使った ${state.spent} / ${DAILY_KUSA} Kusa</p>
+<section class="panel balance"><p class="muted">今日あと使えるINA</p><div class="big">${DAILY_KUSA - state.spent} <small class="gold">INA</small></div><p class="muted">あおいさん · INAアカウント C-001（デモ）</p><div class="leaves" aria-hidden="true">${leaves}</div><p class="small" style="color:#d5e0cf">今日使った ${state.spent} / ${DAILY_KUSA} INA</p>
 </section>
 <section class="panel"><h2>持っているWARA</h2><div class="number">${userTotal()} <small>WARA</small></div><p class="muted">支払い時に還付されたWARAは翌日も残ります。</p><p class="info-strip">WARA用ウォレットの接続は、このモックでは行いません。</p>
 </section></div>
@@ -174,7 +174,7 @@ function user() {
 }
 function success(receipt, todayTotal) {
   return `
-<section class="panel confirm"><div class="receipt-mark" aria-hidden="true">✓</div><h2>支払いが完了しました</h2><p class="small">デモのお会計 · ${escape(receipt.id)}</p><div class="big">${escape(receipt.amount)} <small>Kusa</small></div><p>店に <b>${receipt.shopCredit} WARA</b>、客に <b>${receipt.userRefund} WARA</b> 還付</p><p>発行元：${areaName(receipt.communityId)}</p><div class="receipt-meta"><div>お客さんの支払い直後の残り<strong>${escape(receipt.remaining)} Kusa</strong></div><div>店の今日の受取<strong>${todayTotal} WARA</strong></div></div>
+<section class="panel confirm"><div class="receipt-mark" aria-hidden="true">✓</div><h2>支払いが完了しました</h2><p class="small">デモのお会計 · ${escape(receipt.id)}</p><div class="big">${escape(receipt.amount)} <small>INA</small></div><p>店に <b>${receipt.shopCredit} WARA</b>、客に <b>${receipt.userRefund} WARA</b> 還付</p><p>発行元：${areaName(receipt.communityId)}</p><div class="receipt-meta"><div>お客さんの支払い直後の残り<strong>${escape(receipt.remaining)} INA</strong></div><div>店の今日の受取<strong>${todayTotal} WARA</strong></div></div>
 <div class="actions"><button id="nextCheckout">次のお会計</button>${link("/user", "利用者の残りを確認", true)}<button id="printReceipt" class="secondary">紙の控えを出す</button></div><p class="small">実際の送金はありません。${receipt.method === "support" ? "地域の確認役が立ち会う流れを体験しました。" : "デモ暗証番号で確認しました。"}</p>
 </section>`;
 }
@@ -205,12 +205,12 @@ function shop() {
   else if (receipt) panel = success(receipt, sum(todayRows));
   else if (p?.status === "support")
     panel = `
-<section class="panel confirm"><p class="eyebrow">確認役の立ち会い</p><h2>地域の窓口で確認を待っています</h2><div class="big">${p.amount} <small>Kusa</small></div><p>あおいさん → ${storeName(p)} · ${areaName(p.communityId)}</p><p class="muted">まだ枠は減っていません。店員だけで代理承認する流れにはしません。</p><p>${link("/support", "確認役の画面へ")}</p><button id="cancel" class="secondary">このお会計を取り消す</button>
+<section class="panel confirm"><p class="eyebrow">確認役の立ち会い</p><h2>地域の窓口で確認を待っています</h2><div class="big">${p.amount} <small>INA</small></div><p>あおいさん → ${storeName(p)} · ${areaName(p.communityId)}</p><p class="muted">まだ枠は減っていません。店員だけで代理承認する流れにはしません。</p><p>${link("/support", "確認役の画面へ")}</p><button id="cancel" class="secondary">このお会計を取り消す</button>
 </section>`;
   else if (p)
     panel = `
-<section class="panel confirm"><p class="flow-steps">カード読取 → <b>本人が金額を確認</b> → 完了</p><h2>${storeName(p)}へ支払います</h2><p>${areaName(p.communityId)}</p><div class="big">${p.amount} <small>Kusa</small></div><p>あおいさん · 支払い後の残り <b>${DAILY_KUSA - state.spent - p.amount} Kusa</b></p>
-<form id="payForm"><label class="label" for="pin">本人がデモ暗証番号を入力</label><input id="pin" type="password" inputmode="numeric" pattern="[0-9]{6}" minlength="6" maxlength="6" autocomplete="off" required aria-describedby="pinHelp" ${state.attempts >= 3 ? "disabled" : ""}><p class="small" id="pinHelp">体験用は <b>${PIN}</b>。本物の暗証番号は入力しないでください。<br>${state.attempts ? `入力間違い ${state.attempts}/3回。` : ""}</p><button type="submit" ${state.attempts >= 3 ? "disabled" : ""}>${p.amount} Kusaで支払う</button>
+<section class="panel confirm"><p class="flow-steps">カード読取 → <b>本人が金額を確認</b> → 完了</p><h2>${storeName(p)}へ支払います</h2><p>${areaName(p.communityId)}</p><div class="big">${p.amount} <small>INA</small></div><p>あおいさん · 支払い後の残り <b>${DAILY_KUSA - state.spent - p.amount} INA</b></p>
+<form id="payForm"><label class="label" for="pin">本人がデモ暗証番号を入力</label><input id="pin" type="password" inputmode="numeric" pattern="[0-9]{6}" minlength="6" maxlength="6" autocomplete="off" required aria-describedby="pinHelp" ${state.attempts >= 3 ? "disabled" : ""}><p class="small" id="pinHelp">体験用は <b>${PIN}</b>。本物の暗証番号は入力しないでください。<br>${state.attempts ? `入力間違い ${state.attempts}/3回。` : ""}</p><button type="submit" ${state.attempts >= 3 ? "disabled" : ""}>${p.amount} INAで支払う</button>
 </form><p><button id="askSupport" class="secondary">暗証番号を使えない方</button></p><button id="cancel" class="secondary">取り消す</button>
 </section>`;
   else
@@ -219,7 +219,7 @@ function shop() {
 <label class="label" for="community">店舗のコミュニティ</label><select id="community">${state.registry.filter(c => c.shops.length).map(c => `<option value="${escape(c.id)}" ${c.id === area.id ? "selected" : ""}>${escape(c.name)}</option>`).join("")}</select>
 <label for="store">公認店舗</label> <select id="store">${area.shops.map(x => `<option value="${escape(x.id)}" ${x.id === store.id ? "selected" : ""}>${escape(x.name)}</option>`).join("")}</select>
 <form id="checkoutForm">
-<label for="checkoutAmount" class="label">支払い額（残り ${units} Kusa）</label><div class="actions presets"><button type="button" id="coffee" class="secondary" ${units === 0 ? "disabled" : ""}>コーヒー · 1 Kusa</button><button type="button" id="meal" class="secondary" ${units < 5 ? "disabled" : ""}>定食 · 5 Kusa</button></div><div class="input-row"><input id="checkoutAmount" type="number" min="1" max="${units}" step="1" value="${units > 0 ? 1 : ""}" required ${units === 0 ? "disabled" : ""}><small>Kusa</small></div><button id="scanCard" type="button" ${state.cardActive && units > 0 ? "" : "disabled"}>カメラでカードを読む</button> <button class="secondary" type="submit" ${state.cardActive && units > 0 ? "" : "disabled"}>デモカードを読み取る</button>
+<label for="checkoutAmount" class="label">支払い額（残り ${units} INA）</label><div class="actions presets"><button type="button" id="coffee" class="secondary" ${units === 0 ? "disabled" : ""}>コーヒー · 1 INA</button><button type="button" id="meal" class="secondary" ${units < 5 ? "disabled" : ""}>定食 · 5 INA</button></div><div class="input-row"><input id="checkoutAmount" type="number" min="1" max="${units}" step="1" value="${units > 0 ? 1 : ""}" required ${units === 0 ? "disabled" : ""}><small>INA</small></div><button id="scanCard" type="button" ${state.cardActive && units > 0 ? "" : "disabled"}>カメラでカードを読む</button> <button class="secondary" type="submit" ${state.cardActive && units > 0 ? "" : "disabled"}>デモカードを読み取る</button>
 </form><p class="small">カメラがない場合はデモカードを選んでください。</p>${!state.cardActive ? '<p class="disabled-note">カードは停止中です。地域窓口で再発行してください。</p>' : ""}<p class="info-strip">店員が金額を入れたら、次の画面をお客さんに向けます。</p>
 </section>
 <section class="panel"><h2>持っているWARAで支払う</h2><p>この店で使えるWARA <strong>${accepted} WARA</strong></p>
@@ -241,15 +241,15 @@ function support() {
   return `
 <section class="panel"><p class="eyebrow">立ち会い承認</p><h2>${p?.status === "support" ? "確認を待っているお会計" : "今は立ち会いの依頼がありません"}</h2>${
     p?.status === "support"
-      ? `<p>あおいさん → <b>${storeName(p)}</b> · ${areaName(p.communityId)}</p><div class="number">${p.amount} <small>Kusa</small></div><p>支払い後の残り：<b>${DAILY_KUSA - state.spent - p.amount} Kusa</b></p>
+      ? `<p>あおいさん → <b>${storeName(p)}</b> · ${areaName(p.communityId)}</p><div class="number">${p.amount} <small>INA</small></div><p>支払い後の残り：<b>${DAILY_KUSA - state.spent - p.amount} INA</b></p>
 <form id="supportForm"><label class="check"><input id="consent" type="checkbox" required><span>本人と店名・金額を確認し、本人がこの支払いを希望していることを確かめました（デモ）。</span></label><button type="submit">確認役として承認する（デモ）</button>
 </form><p class="small">確認役：地域窓口の青葉さん（架空）。この画面は誰でも切り替えられるモックで、実際の権限チェックはありません。</p>`
       : `<p class="muted">店の金額確認画面で「暗証番号を使えない方」を選ぶと、ここに届きます。</p>${link("/shop", "店の画面へ", true)}`
   }</section><div class="support-list">
-<section class="panel"><h2>カードの相談</h2><p>あおいさん · C-001</p><p><span class="pill">${state.cardActive ? "カード有効" : "カード停止中"} · 第${state.cardVersion}版</span></p><p class="muted">今日の残り：${DAILY_KUSA - state.spent} Kusa</p>
+<section class="panel"><h2>カードの相談</h2><p>あおいさん · C-001</p><p><span class="pill">${state.cardActive ? "カード有効" : "カード停止中"} · 第${state.cardVersion}版</span></p><p class="muted">今日の残り：${DAILY_KUSA - state.spent} INA</p>
 <div class="actions" style="margin-top:18px"><button id="stopCard" class="danger" ${state.cardActive ? "" : "disabled"}>カードを停止</button><button id="reissueCard" class="secondary">再発行を試す</button></div><p class="small">再発行しても今日の使用額は引き継ぎます。進行中のお会計は取り消されます。デモの暗証番号は123456です。</p>
 </section>
-<section class="panel"><h2>初めての参加・利用相談</h2><p class="muted">地域で実在と重複登録を確認し、Kusaアカウントとカードを用意する想定です。</p><p class="info-strip">この体験ではC-001を登録済みとして用意しています。実際の受付・本人確認・暗証番号再設定は未実装です。</p>${link("/user", "残り枠と履歴を見る", true)}</section></div>`;
+<section class="panel"><h2>初めての参加・利用相談</h2><p class="muted">地域で実在と重複登録を確認し、INAアカウントとカードを用意する想定です。</p><p class="info-strip">この体験ではC-001を登録済みとして用意しています。実際の受付・本人確認・暗証番号再設定は未実装です。</p>${link("/user", "残り枠と履歴を見る", true)}</section></div>`;
 }
 function bind(id, event, fn) {
   const el = $(id);
@@ -406,7 +406,7 @@ function render() {
     if (update({ type: "cancel" })) {
       checkoutURL(null);
       render();
-      message("取り消しました。Kusaは使っていません。");
+      message("取り消しました。INAは使っていません。");
     }
   });
   bind("nextCheckout", "click", () => {
@@ -446,14 +446,14 @@ $("nextDay").onclick = () => {
     if (role === "shop") checkoutURL(null);
     render();
     message(
-      "体験の日付を進めました。Kusaは10に更新され、店と客のWARAは残ります。",
+      "体験の日付を進めました。INAは10に更新され、店と客のWARAは残ります。",
     );
   }
 };
 $("resetDemo").onclick = () => {
   if (
     !window.confirm(
-      "このブラウザの体験データを消して、10 Kusaからやり直しますか？",
+      "このブラウザの体験データを消して、10 INAからやり直しますか？",
     )
   )
     return;

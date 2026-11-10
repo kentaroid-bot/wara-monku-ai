@@ -3,8 +3,8 @@ export function twinCards(state) {
   const remaining = state?.remaining;
   const total = state && [...state.funds.values()].reduce((sum, n) => sum + n, 0n);
   return `<div class="twins">
-    <section class="orb kusa"><div class="orb-label">今日の時間 <span>24:00消滅</span></div>
-      <div class="orb-value"><strong>${remaining ?? "—"}</strong> / 10 kusa</div>
+    <section class="orb kusa ina"><div class="orb-label">今日の時間 <span>24:00消滅</span></div>
+      <div class="orb-value"><strong>${remaining ?? "—"}</strong> / 10 INA</div>
       <div class="dots" aria-hidden="true">${Array.from({length: 10}, (_, i) => `<i class="${i < remaining ? "available" : ""}"></i>`).join("")}</div>
     </section>
     <section class="orb wara"><div class="orb-label">感謝の蓄積 <span>永続</span></div>

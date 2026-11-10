@@ -7,19 +7,20 @@ import { program } from "../mainstream/network.mjs";
 const h = text => String(text).replaceAll("<", "&lt;").replaceAll(">", "&gt;");
 const by = id => ({name: id === "origin" ? "発行した地域" : "買い物をした地域"});
 const shopName = (id, address) => id === "market" && address === "store" ? "お店<test>" : undefined;
-function transaction(kusa) {
-  const data = Buffer.alloc(kusa ? 25 : 9);
-  data[0] = kusa ? 14 : 15;
-  data.writeBigUInt64LE(kusa ? 2n : 15n, 1);
+function transaction(ina) {
+  const data = Buffer.alloc(ina ? 25 : 9);
+  data[0] = ina ? 14 : 15;
+  data.writeBigUInt64LE(ina ? 2n : 15n, 1);
   return {meta: {err:null}, transaction: {message: {instructions: [{programId: program, data: bs58.encode(data),
-    accounts: kusa ? ["buyer","market","store"] : ["buyer","market","origin","store"]}]}}};
+    accounts: ina ? ["buyer","market","store"] : ["buyer","market","origin","store"]}]}}};
 }
-test("confirmed kusa stories name the certified store and attribute both shares to the correct reader", () => {
+test("confirmed INA stories name the certified store and attribute both shares to the correct reader", () => {
   const tx = transaction(true);
   for (const [reader, expected] of [["buyer", /店に \+180 WARA ／ あなたに \+20 WARA/], ["store", /あなたの店に \+180 WARA ／ お客さんに \+20 WARA/]]) {
     const [row] = entries(tx, "signature", reader);
     const story = storyReceipt(row,h,by,shopName);
     assert.match(story, expected);
+    assert.match(story, /2 INA の感謝/);
     assert.match(story, /お店&lt;test&gt;/);
     assert.match(story, /signature\?cluster=devnet/);
   }

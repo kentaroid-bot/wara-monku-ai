@@ -239,7 +239,7 @@ function secretScan(kind, title) {
 // Print the recovery material before the operation that creates or rotates it.
 async function prepareCards(el, info, values, save, done, address = "") {
   el.innerHTML =
-    '<section class="issued"><h1>本人に渡すカード</h1><p>毎日のKusaカードと、別に保管する大事な手続き用の紙を印刷してください。</p><div data-cards></div><button data-print>印刷する</button> <button data-save disabled>控えました。登録を確定</button></section>';
+    '<section class="issued"><h1>本人に渡すカード</h1><p>毎日のINAカードと、別に保管する大事な手続き用の紙を印刷してください。</p><div data-cards></div><button data-print>印刷する</button> <button data-save disabled>控えました。登録を確定</button></section>';
   const box = el.querySelector("[data-cards]");
   async function card(label, value) {
     const item = document.createElement("article"),
@@ -252,7 +252,7 @@ async function prepareCards(el, info, values, save, done, address = "") {
     item.append(h, img);
     box.append(item);
   }
-  await card("毎日のKusaカード", "wara:kusa:" + values.card);
+  await card("毎日のINAカード", "wara:ina:" + values.card);
   if (address) {
     const p = document.createElement("p");
     p.className = "wrap";
@@ -437,7 +437,7 @@ export function memberSignup(el, info, mode) {
       },
       info,
     );
-    scannerBox(form.querySelector("details"), "kusa", async (card) => {
+    scannerBox(form.querySelector("details"), "ina", async (card) => {
       form.elements.address.value = (
         await memberApi("card-info", { card })
       ).address;
@@ -574,7 +574,7 @@ export function siteSigner(profile, checkout = null) {
   };
 }
 export async function payWithCard(group, store, amount, title) {
-  const card = await secretScan("kusa", "本人のKusaカードを読む");
+  const card = await secretScan("ina", "本人のINAカードを読む");
   const { address } = await memberApi("card-info", { card });
   const [{ loadState, submit, program }, { spend }] = await Promise.all([
     import("./network.mjs"),
@@ -582,11 +582,11 @@ export async function payWithCard(group, store, amount, title) {
   ]);
   const state = await loadState(address, true);
   if (state.remaining < BigInt(amount))
-    throw Error("今日のKusaの残りを超えています。");
+    throw Error("今日のINAの残りを超えています。");
   const checkout = { group, store, amount };
   const pin = await keypad(
     "支払いの暗証番号",
-    title + " に " + amount + " Kusaを支払います。",
+    title + " に " + amount + " INAを支払います。",
   );
   const p = { address, managed: true };
   return submit(

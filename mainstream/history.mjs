@@ -43,7 +43,7 @@ export function entries(tx, sig, address, storeId = null) {
 export function storyReceipt(r, h, by, shopName) {
   const store = shopName(r.group, r.shop) || ("店舗 " + r.shop.slice(0, 5) + "…" + r.shop.slice(-5));
   const title = r.kusa
-    ? r.incoming ? `${store}で ${r.n} kusa の感謝を受け取りました` : `${store} に ${r.n} kusa の感謝を贈りました`
+    ? r.incoming ? `${store}で ${r.n} INA の感謝を受け取りました` : `${store} に ${r.n} INA の感謝を贈りました`
     : r.incoming ? `${store}で ${r.n} WARA を受け取りました` : `${store} に ${r.n} WARA を支払いました`;
   const detail = r.kusa
     ? `${r.incoming ? "あなたの店" : "店"}に +${r.n * 90n} WARA ／ ${r.incoming ? "お客さん" : "あなた"}に +${r.n * 10n} WARA`

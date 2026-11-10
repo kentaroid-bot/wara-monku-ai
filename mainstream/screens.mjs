@@ -1,7 +1,7 @@
 import { twinCards, crystallize } from "./balances.mjs";
 import { Keypair } from "@solana/web3.js";
 import { showHistory } from "./history.mjs";
-import { scannerBox } from "./scan.mjs";
+import { invoiceAmount, scannerBox } from "./scan.mjs";
 import QRCode from "qrcode";
 import { inviteSecret } from "./identity.mjs";
 import {
@@ -338,8 +338,7 @@ export async function dashboard(ctx) {
           (r) =>
             r.tag === 33 && r.group === g.id && r.to === who && r.status === 2,
         );
-    const fixed = params.get("kusa") || "1",
-      n = /^([1-9]|10)$/.test(fixed) ? fixed : "1";
+    const n = invoiceAmount(params) || "1";
     ui(
       twinCards(s) + "<section><h2>" +
         h(store.name) +
@@ -351,17 +350,17 @@ export async function dashboard(ctx) {
         (isShop
           ? '<form id="invoice"><h2>お会計QRを作る</h2>' +
             inp(
-              "kusa",
-              "金額（Kusa）",
+              "ina",
+              "金額（INA）",
               'type="number" min="1" max="10" value="' + n + '"',
             ) +
             btn("支払い用QRを表示") +
             '</form><div id="qr"></div>'
-          : '<form id="kusa"><h2>今日のKusaで支払う</h2><p>残り ' +
+          : '<form id="ina"><h2>今日のINAで支払う</h2><p>残り ' +
             s.remaining +
-            " Kusa · 1枚につき店に90 WARA、あなたに10 WARA</p>" +
+            " INA · 1枚につき店に90 WARA、あなたに10 WARA</p>" +
             inp(
-              "kusa",
+              "ina",
               "枚数",
               'type="number" min="1" max="10" value="' + n + '"',
             ) +
@@ -385,7 +384,7 @@ export async function dashboard(ctx) {
     );
     if (isShop && profile.managed) {
       const checkout=document.createElement("form");
-      checkout.innerHTML='<h2>お客さんの紙カードで支払う</h2><label>金額（Kusa）<input name="amount" type="number" min="1" max="10" required></label><button>カードを読む</button>';
+      checkout.innerHTML='<h2>お客さんの紙カードで支払う</h2><label>金額（INA）<input name="amount" type="number" min="1" max="10" required></label><button>カードを読む</button>';
       content.append(checkout);
       action(checkout,async v=>{
         const {payWithCard}=await import("./member-ui.mjs");
@@ -401,30 +400,30 @@ export async function dashboard(ctx) {
     if (isShop) showHistory(content, who, g.id, h, by, shopName);
     form("invoice", async (v) => {
       const u = new URL(register(g.id, store.to), location.origin);
-      u.searchParams.set("kusa", String(amount(v.kusa)));
+      u.searchParams.set("ina", String(amount(v.ina)));
       const qr = await QRCode.toDataURL(u.href);
       content.querySelector("#qr").innerHTML =
         '<article><img alt="支払い用QR" src="' +
         qr +
         '"><p>' +
-        h(v.kusa) +
-        " Kusa · " +
+        h(v.ina) +
+        " INA · " +
         h(store.name) +
         "</p>" +
         link(u.href, "会計リンク") +
         "</article>";
       info("お客さんのカメラで読み取ってください。");
     });
-    form("kusa", async (v) => {
-      const n = amount(v.kusa);
+    form("ina", async (v) => {
+      const n = amount(v.ina);
       if (!member) throw Error("地域に参加してください。");
-      if (n > s.remaining) throw Error("残りKusaを超えています。");
+      if (n > s.remaining) throw Error("残りINAを超えています。");
       if (
         !confirm(
           store.name +
             "へ " +
             n +
-            " Kusa。店に " +
+            " INA。店に " +
             n * 90n +
             " WARA、あなたに " +
             n * 10n +

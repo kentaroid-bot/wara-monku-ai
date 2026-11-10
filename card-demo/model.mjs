@@ -16,7 +16,7 @@ function verifyCard(raw, state) {
   let card;
   try { card = JSON.parse(raw); } catch { /* handled below */ }
   if (card?.type !== "wara-card-ui-demo" || card.participant !== "C-001")
-    throw Error("この利用者のKusaカードを読み取ってください。");
+    throw Error("この利用者のINAカードを読み取ってください。");
   if (card.cardVersion !== state.cardVersion)
     throw Error("このカードは再発行済みです。新しいカードを使用してください。");
 }
@@ -73,7 +73,7 @@ export function transition(state, action) {
       action.amount < 1 ||
       action.amount > DAILY_KUSA - s.spent
     )
-      throw Error("今日の残りKusaの範囲で、1以上の整数を入力してください。");
+      throw Error("今日の残りINAの範囲で、1以上の整数を入力してください。");
     if (!action.id || [...s.history, ...s.transfers].some((x) => x.id === action.id))
       throw Error("このお会計番号は使用済みです。");
     const shop = merchant(s, action.communityId, action.shopId);
@@ -112,7 +112,7 @@ export function transition(state, action) {
       }
     } else if (p.status !== "support" || !action.consent)
       throw Error("本人と店名・金額への同意を確認してください。");
-    if (p.amount > DAILY_KUSA - s.spent) throw Error("今日の残りKusaを超えています。");
+    if (p.amount > DAILY_KUSA - s.spent) throw Error("今日の残りINAを超えています。");
     s.spent += p.amount;
     s.attempts = 0;
     s.history.unshift({

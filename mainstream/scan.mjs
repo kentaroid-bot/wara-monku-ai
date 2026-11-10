@@ -1,10 +1,39 @@
 import { createScanner } from "../app/qr-media.mjs";
 import { pk } from "./protocol.mjs";
+
+export function invoiceAmount(params) {
+  const value = params.get("ina") || params.get("kusa");
+  return /^([1-9]|10)$/.test(value) ? value : null;
+}
+
+export function storeInvoiceUrl(value, origin) {
+  const u = new URL(value);
+  if (u.origin !== origin || !["/shop", "/shop/"].includes(u.pathname))
+    throw Error("このサイトのお会計QRを選んでください。");
+  const clean = new URL("/shop/", origin);
+  for (const key of ["group", "store"])
+    clean.searchParams.set(key, String(pk(u.searchParams.get(key))));
+  const amount = invoiceAmount(u.searchParams);
+  if (amount) clean.searchParams.set("ina", amount);
+  return clean.href;
+}
+
+function cardKind(kind) {
+  return kind === "kusa" ? "ina" : kind;
+}
+
+export function paperCardCode(value, kind) {
+  const match = /^wara:(ina|kusa|confirm):([1-9A-HJ-NP-Za-km-z]{32,44})$/.exec(value);
+  if (match && cardKind(match[1]) === cardKind(kind)) return match[2];
+  throw Error("用途の合う紙のQRを読み取ってください。");
+}
+
 export function scannerBox(el, kind, accept) {
+  const dailyCard = cardKind(kind) === "ina";
   const box = document.createElement("details");
   box.innerHTML =
     "<summary>" +
-    (kind === "confirm" ? "大事な手続き用QRを読む" : kind === "kusa" ? "Kusaカードを読む" : kind === "store" ? "会計QRを読み取る" : "店舗の公開アドレスをQRから読む") +
+    (kind === "confirm" ? "大事な手続き用QRを読む" : dailyCard ? "INAカードを読む" : kind === "store" ? "会計QRを読み取る" : "店舗の公開アドレスをQRから読む") +
     '</summary><button type="button">カメラを開く</button><button type="button" class="secondary">停止</button><label>QR画像を選ぶ<input type="file" accept="image/png,image/jpeg,image/webp"></label><video muted playsinline style="max-width:100%"></video><canvas hidden></canvas><p role="status"></p>';
   el.append(box);
   const stat = (t) => (box.querySelector("p").textContent = t);
@@ -15,23 +44,9 @@ export function scannerBox(el, kind, accept) {
     onStop() {},
     async onValue(value) {
       if (kind === "store") {
-        const u = new URL(value);
-        if (
-          u.origin !== location.origin ||
-          !["/shop", "/shop/"].includes(u.pathname)
-        )
-          throw Error("このサイトのお会計QRを選んでください。");
-        const clean = new URL("/shop/", location.origin);
-        for (const k of ["group", "store"])
-          clean.searchParams.set(k, String(pk(u.searchParams.get(k))));
-        if (/^([1-9]|10)$/.test(u.searchParams.get("kusa")))
-          clean.searchParams.set("kusa", u.searchParams.get("kusa"));
-        await accept(clean.href);
-      } else if (kind === "confirm" || kind === "kusa") {
-        const prefix="wara:"+kind+":";
-        if(!value.startsWith(prefix) || !/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(value.slice(prefix.length)))
-          throw Error("用途の合う紙のQRを読み取ってください。");
-        await accept(value.slice(prefix.length));
+        await accept(storeInvoiceUrl(value, location.origin));
+      } else if (kind === "confirm" || dailyCard) {
+        await accept(paperCardCode(value, kind));
       } else {
         await accept(String(pk(value.replace(/^wara:v3:/, ""))));
         stat("受取アドレスを読み取りました。");

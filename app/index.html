@@ -1,25 +1,25 @@
 <!doctype html><html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>藁一本の約束 · Devnet</title><link rel="stylesheet" href="/devnet/style.css"><script defer src="/devnet/app.js"></script></head><body><main>
 <header><p><a href="/">v0.3のお財布へ →</a></p><a href="/mock/">ウォレットなしで仕組みを見る</a><p class="eyebrow">SOLANA DEVNET · TEST TOKENS ONLY</p><h1>藁一本の約束</h1><p>使われない枠は消え、一度価値に置き換えられたお金だけが残る。</p></header>
-<section class="guide"><h2>はじめて試す方へ</h2><p>この体験では実際の商品やお金を使わず、食料を渡したつもりで操作します。まずは二人で、同じ「循環の速さ」を選んでください。</p><ol><li>PCの<a href="https://phantom.com/" target="_blank" rel="noopener noreferrer">Phantom拡張</a>を使い、テスト用アカウントとテストネットモードを選びます。スマートフォンはPhantomアプリ内ブラウザでこのURLを開いてください（モバイル実機は未検証）。</li><li><a href="https://faucet.solana.com/" target="_blank" rel="noopener noreferrer">公式Faucet</a>で自分のSolanaアドレスに無料のDevnet SOLを受け取ります。登録・支払いの手数料用です。SOLを購入する必要はありません。</li><li>双方がPhantomに接続し、支払う側が参加登録します。店側が「お会計QRを出す」で金額100のQRを作り、買う人が読み取ります。相手と金額を確認して「今日のKusaから払う」を選び、「支払う」から署名します。</li><li>店側はQRを出した画面を開いて待ちます。入金が確認できると「100 WARA受け取りました」と自動表示されます。受領署名・返送QR・残高更新の操作は不要です。</li><li>「体験用・120秒」を二人とも選ぶと、次の枠が300に戻ってもクレジットが残る様子を短時間で試せます。通常版とは別の残高です。</li></ol><p class="small">一人で試す時は、二つのテスト用アカウントを別ブラウザや別端末で開きます。同じアドレスへの支払いはできません。Phantomの署名画面では宛先と金額を確認してください。ページには秘密鍵や復元フレーズを入力しません。</p></section>
-<section><h2>今日を生きる、300の約束</h2><p>Kusa（日次枠）からの支払いは、一日の累計300 Kusaまで。買う人の署名で取引が成立すると、相手に本トークンが発行されます。店側の署名は不要です。すでに持っている本トークンでも支払えます。こちらはKusaを使わず、相手へ移動します。</p><label>循環の速さ<select id="instance"><option value="daily">一日・日本時間の午前0時更新</option><option value="demo">体験用・120秒を一日として更新</option></select></label><p id="deployment" role="status">配備情報を確認しています…</p><button id="connect">Phantomに接続</button> <button id="disconnect" disabled>切断</button><p id="wallet">未接続</p><p class="small">テスト用ウォレットを使い、Phantomの設定でテストネットモードを有効にしてください。</p></section>
-<section id="kusa"><h2>一つのウォレットで、KusaとWARA</h2><p><strong>Kusa（草）</strong>は毎日300まで使える購入枠。未使用分は繰り越せず、枠そのものは送金できません。100 Kusaを使う支払いが成立すると、相手に100 WARAが新しく発行されます。</p><p><strong>WARA（藁）</strong>は対価として受け取る本トークン。翌日も残り、次の支払いでは新規発行せず相手へ移動します。</p><p>ウォレットは一つで、Kusaを使う・WARAを受け取る・WARAで払う、すべてができます。生産者も同じKusaの枠を使えます。Kusaという別トークンの発行や、サイトでのウォレット作成・鍵の預かりは行いません。</p></section>
-<section id="daily-limit"><h2>今は「ウォレットごとに1日300 Kusa」です</h2>
+<section class="guide"><h2>はじめて試す方へ</h2><p>この体験では実際の商品やお金を使わず、食料を渡したつもりで操作します。まずは二人で、同じ「循環の速さ」を選んでください。</p><ol><li>PCの<a href="https://phantom.com/" target="_blank" rel="noopener noreferrer">Phantom拡張</a>を使い、テスト用アカウントとテストネットモードを選びます。スマートフォンはPhantomアプリ内ブラウザでこのURLを開いてください（モバイル実機は未検証）。</li><li><a href="https://faucet.solana.com/" target="_blank" rel="noopener noreferrer">公式Faucet</a>で自分のSolanaアドレスに無料のDevnet SOLを受け取ります。登録・支払いの手数料用です。SOLを購入する必要はありません。</li><li>双方がPhantomに接続し、支払う側が参加登録します。店側が「お会計QRを出す」で金額100のQRを作り、買う人が読み取ります。相手と金額を確認して「今日のINAから払う」を選び、「支払う」から署名します。</li><li>店側はQRを出した画面を開いて待ちます。入金が確認できると「100 WARA受け取りました」と自動表示されます。受領署名・返送QR・残高更新の操作は不要です。</li><li>「体験用・120秒」を二人とも選ぶと、次の枠が300に戻ってもクレジットが残る様子を短時間で試せます。通常版とは別の残高です。</li></ol><p class="small">一人で試す時は、二つのテスト用アカウントを別ブラウザや別端末で開きます。同じアドレスへの支払いはできません。Phantomの署名画面では宛先と金額を確認してください。ページには秘密鍵や復元フレーズを入力しません。</p></section>
+<section><h2>今日を生きる、300の約束</h2><p>INA（日次枠）からの支払いは、一日の累計300 INAまで。買う人の署名で取引が成立すると、相手に本トークンが発行されます。店側の署名は不要です。すでに持っている本トークンでも支払えます。こちらはINAを使わず、相手へ移動します。</p><label>循環の速さ<select id="instance"><option value="daily">一日・日本時間の午前0時更新</option><option value="demo">体験用・120秒を一日として更新</option></select></label><p id="deployment" role="status">配備情報を確認しています…</p><button id="connect">Phantomに接続</button> <button id="disconnect" disabled>切断</button><p id="wallet">未接続</p><p class="small">テスト用ウォレットを使い、Phantomの設定でテストネットモードを有効にしてください。</p></section>
+<section id="kusa"><h2>一つのウォレットで、INAとWARA</h2><p><strong>INA（稲）</strong>は毎日300まで使える購入枠。未使用分は繰り越せず、枠そのものは送金できません。100 INAを使う支払いが成立すると、相手に100 WARAが新しく発行されます。</p><p><strong>WARA（藁）</strong>は対価として受け取る本トークン。翌日も残り、次の支払いでは新規発行せず相手へ移動します。</p><p>ウォレットは一つで、INAを使う・WARAを受け取る・WARAで払う、すべてができます。生産者も同じINAの枠を使えます。INAという別トークンの発行や、サイトでのウォレット作成・鍵の預かりは行いません。</p></section>
+<section id="daily-limit"><h2>今は「ウォレットごとに1日300 INA」です</h2>
 <p><strong>「一人につき1日300」は、まだ実現していません。</strong>同じ人が複数のウォレットを登録すると、それぞれで枠を使えます。同じ循環設定で3つ登録すれば、合計900の枠を使える状態になります。登録だけで本トークンが発行されるわけではありません。</p>
 <p>目指すのは、誰もが一人につき1日300を使える仕組みです。同じ人の重複登録を防ぎ、ウォレットを増やしたり交換したりしても枠が増えない仕組みは、今後の課題です。所得・資産・就労で利用者を選別するための確認ではありません。</p>
-<p><strong>今後の構想：一人・一登録・一ウォレット。</strong> 地域の複数人で実在と重複登録を確認し、人の登録にKusaの使用額を結び付けます。財布の紛失・交換でも今日の使用額を引き継ぎ、枠を増やしません。地域確認と登録復旧は未実装です。</p><p class="small">体験用の設定では「1日」を120秒として扱います。一人一枠にする具体的な方式は、まだ採用・実装していません。</p>
+<p><strong>今後の構想：一人・一登録・一ウォレット。</strong> 地域の複数人で実在と重複登録を確認し、人の登録にINAの使用額を結び付けます。財布の紛失・交換でも今日の使用額を引き継ぎ、枠を増やしません。地域確認と登録復旧は未実装です。</p><p class="small">体験用の設定では「1日」を120秒として扱います。一人一枠にする具体的な方式は、まだ採用・実装していません。</p>
 </section>
-<div class="stats"><section><span>今日あと使えるKusa</span><strong id="remaining">—</strong><small>最大300 Kusa・未使用分は繰越なし</small></section><section><span>次の枠の更新まで</span><strong id="countdown">—</strong><small id="clocknote">チェーンの時計を確認中</small></section><section><span>持っているWARA</span><strong id="credit">—</strong><small>翌日も残り、買い物に使える残高</small></section></div>
+<div class="stats"><section><span>今日あと使えるINA</span><strong id="remaining">—</strong><small>最大300 INA・未使用分は繰越なし</small></section><section><span>次の枠の更新まで</span><strong id="countdown">—</strong><small id="clocknote">チェーンの時計を確認中</small></section><section><span>持っているWARA</span><strong id="credit">—</strong><small>翌日も残り、買い物に使える残高</small></section></div>
 <section id="onchain"><h2>残高はブロックチェーン上にあります</h2>
 <p>このWebアプリは、Solana Devnet上の記録を読み取り、Phantomで署名して操作するための窓口です。残高をこのサイトだけで管理・保管しているわけではありません。</p>
-<p><strong>Kusa（毎日の購入枠）：</strong>利用日と累計使用額をチェーン上で管理し、チェーンの日時と合わせて残り枠を計算します。枠そのものは相手に送れません。</p>
-<div id="issuance-flow"><h3>Kusaで100を支払うと？</h3>
-<p><strong>Kusaを消費 → 相手に同額の本トークンを新規発行</strong></p>
-<ol><li>支払う人が、Kusaから100を支払う取引にPhantomで署名します。</li><li>アプリがそのままブロックチェーンへ送信します。店側の署名・返送QRは不要です。</li><li>取引が成立すると、支払う人の残り枠は<strong>300 → 200</strong>になり、相手に<strong>100 WARAが新しく発行</strong>されます。</li></ol>
-<p class="small">枠の消費と発行は、一つの取引で一緒に成立します。Kusaは送金できるトークンではないため、「バーン（トークンの焼却）」ではなく「枠の消費」です。</p></div>
+<p><strong>INA（毎日の購入枠）：</strong>利用日と累計使用額をチェーン上で管理し、チェーンの日時と合わせて残り枠を計算します。枠そのものは相手に送れません。</p>
+<div id="issuance-flow"><h3>INAで100を支払うと？</h3>
+<p><strong>INAを消費 → 相手に同額の本トークンを新規発行</strong></p>
+<ol><li>支払う人が、INAから100を支払う取引にPhantomで署名します。</li><li>アプリがそのままブロックチェーンへ送信します。店側の署名・返送QRは不要です。</li><li>取引が成立すると、支払う人の残り枠は<strong>300 → 200</strong>になり、相手に<strong>100 WARAが新しく発行</strong>されます。</li></ol>
+<p class="small">枠の消費と発行は、一つの取引で一緒に成立します。INAは送金できるトークンではないため、「バーン（トークンの焼却）」ではなく「枠の消費」です。</p></div>
 <p><strong>WARA（本トークン・生産者クレジット）：</strong>残高はウォレットに紐づくチェーン上のトークン口座にあります。同じDevnet・同じトークンに対応した別のアプリやCLIからも、ウォレットの署名と手数料用のDevnet SOLで送れます。送信しても新規発行はなく、今日の枠も減りません。</p>
-<p class="small">このサイトが停止しても、それだけでチェーン上の残高は消えません。別のクライアントでKusaを使う場合も、同じプロトコルのプログラムを呼び出し、同じ上限と署名条件に従います。</p>
+<p class="small">このサイトが停止しても、それだけでチェーン上の残高は消えません。別のクライアントでINAを使う場合も、同じプロトコルのプログラムを呼び出し、同じ上限と署名条件に従います。</p>
 </section>
-<section><h2>1. Kusaを使えるようにする</h2><p>参加登録ではトークンを発行しません。登録は、この循環設定につき一度だけです。</p><button id="enroll" disabled>参加登録</button> <button id="refresh" disabled>残高を更新</button><p id="enrollment"></p></section>
+<section><h2>1. INAを使えるようにする</h2><p>参加登録ではトークンを発行しません。登録は、この循環設定につき一度だけです。</p><button id="enroll" disabled>参加登録</button> <button id="refresh" disabled>残高を更新</button><p id="enrollment"></p></section>
 <section id="checkout"><h2>店側：お会計QRを出す</h2>
 <p>Phantomに接続すると、自分の受取先アドレスを入れたQRを作れます。買う人は、このアプリの「お会計QRを読む」で読み取ってください。</p>
 <label>店名・受取人の呼び名（任意）<input id="merchantLabel" maxlength="40" placeholder="例：となりの八百屋"></label>
@@ -28,7 +28,7 @@
 <p id="receiptStatus" class="receipt-status" role="status" aria-live="polite">お会計QRを作ると、入金を自動で確認します。</p>
 <button id="nextCheckout" hidden>次のお会計</button>
 <div id="requestCard" class="qr-card" hidden><p id="requestSummary"></p><img id="requestQr" alt="買う人が読み取るお会計QR"><p id="requestExpiry" role="status"></p><a id="saveRequestQr" download="wara-checkout.png">QR画像を保存</a><p class="small">この画面を開いたままお待ちください。買う人が支払い、チェーン上で入金を確認すると受取完了が表示されます。「次のお会計」で続けて次のお客さんの金額を入力できます。</p></div>
-<p class="small">お会計QRは10分間有効です。双方で同じ循環設定を選んでください。Kusaで払えるのは残り枠の範囲・最大300までです。表示名は自己申告で、本人確認済みの印ではありません。</p>
+<p class="small">お会計QRは10分間有効です。双方で同じ循環設定を選んでください。INAで払えるのは残り枠の範囲・最大300までです。表示名は自己申告で、本人確認済みの印ではありません。</p>
 </section>
 <section id="shopping"><h2>2. 買い物の支払い</h2>
 <p>店側のお会計QRを読むと、支払先と金額が自動で入ります。読み取りだけで署名や送信はしません。</p>
@@ -36,26 +36,26 @@
 <label class="file-label">お会計QR画像を選ぶ<input id="requestFile" type="file" accept="image/png,image/jpeg,image/webp" disabled></label>
 <div id="checkoutReview" class="qr-review" hidden><p id="checkoutSummary"></p><label class="check-row"><input id="confirmCheckout" type="checkbox">相手と金額を確認しました</label><button id="clearCheckout" type="button">QRの宛先を解除する</button></div>
 <fieldset class="payment-method"><legend>何で支払いますか？</legend>
-<label class="payment-option"><input type="radio" name="paymentMethod" id="payDaily" value="daily" checked><span><strong>今日のKusaから払う</strong><small>今日の残り枠が減り、受取人に本トークンが新しく発行されます。</small></span></label>
+<label class="payment-option"><input type="radio" name="paymentMethod" id="payDaily" value="daily" checked><span><strong>今日のINAから払う</strong><small>今日の残り枠が減り、受取人に本トークンが新しく発行されます。</small></span></label>
 <label class="payment-option"><input type="radio" name="paymentMethod" id="payCredit" value="credit"><span><strong>持っているWARAで払う</strong><small>自分の残高から相手へ移動。新規発行なし・今日の枠は減りません。</small></span></label>
 </fieldset>
-<p id="paymentExplanation" aria-live="polite">買う人の署名で100の支払いが成立すると、Kusaは300から200へ、相手に100 WARAを新規発行。自分が持っているWARAは減りません。店側の署名は不要です。</p>
+<p id="paymentExplanation" aria-live="polite">買う人の署名で100の支払いが成立すると、INAは300から200へ、相手に100 WARAを新規発行。自分が持っているWARAは減りません。店側の署名は不要です。</p>
 <details><summary>支払先アドレスの詳細・手入力</summary><label>支払先のSolanaアドレス<input id="recipient" autocomplete="off" spellcheck="false"></label><p class="small">QRを読み取った場合は自動入力されます。手入力へ戻すには「QRの宛先を解除する」を押してください。</p></details><label>支払額<input id="amount" type="number" min="1" max="300" step="1" value="100"></label>
-<p>支払い方法を選び、下のボタンからPhantomで署名します。Kusaなら相手へ新規発行、WARAなら持っている残高から送信します。どちらも店側の署名や返送QRは不要です。</p>
+<p>支払い方法を選び、下のボタンからPhantomで署名します。INAなら相手へ新規発行、WARAなら持っている残高から送信します。どちらも店側の署名や返送QRは不要です。</p>
 <button id="pay" disabled>支払う・Phantomで署名</button>
 <p class="small">手数料用のDevnet SOLが必要です。「確認済み」になるまで待ってください。送信結果が分からない時は、操作の記録のExplorerと残高を確認してから次の支払いへ進みます。</p>
 </section>
 <section id="payment-history"><h2>買う側：今日の支払いと履歴</h2>
 <p>今日使った合計 <strong id="todaySpent" class="received-total">—</strong></p>
-<div class="spending-breakdown"><p>Kusaから <strong id="todayDailySpent">—</strong></p><p>持っているWARAから <strong id="todayWaraSpent">—</strong></p></div>
+<div class="spending-breakdown"><p>INAから <strong id="todayDailySpent">—</strong></p><p>持っているWARAから <strong id="todayWaraSpent">—</strong></p></div>
 <p id="paymentHistoryNote" role="status">接続すると、このウォレットの支払い履歴をチェーンから読み込みます。</p>
 <button id="refreshPayments" disabled>支払い履歴を更新</button> <button id="morePayments" disabled>続きを読み込む</button>
 <div class="history-scroll"><table class="receipt-history-table"><caption>新しい支払いから表示（時刻は日本時間）</caption><thead><tr><th scope="col">日時</th><th scope="col">支払額</th><th scope="col">支払い方法</th><th scope="col">支払先・お会計</th><th scope="col">チェーン記録</th></tr></thead><tbody id="paymentHistoryRows"></tbody></table></div>
-<p class="small">日本時間の午前0時から、成功した支払いを集計します。Kusaからの支払いは相手へWARAを新規発行し、持っているWARAからの支払いは既存トークンを送ります。WARA払いは日次上限300に含まれません。SOLの手数料もこの合計には含めません。</p>
-<p class="small">このアプリのKusa払いと、あなたが署名してWARA受取口座（ATA）から直接送る通常のWARA送金が対象です。自己宛て・失敗した取引・スワップなど別プログラム経由の送金は含めません。通常版と120秒体験版は別集計で、体験版も日本時間の一日で集計します。</p>
+<p class="small">日本時間の午前0時から、成功した支払いを集計します。INAからの支払いは相手へWARAを新規発行し、持っているWARAからの支払いは既存トークンを送ります。WARA払いは日次上限300に含まれません。SOLの手数料もこの合計には含めません。</p>
+<p class="small">このアプリのINA払いと、あなたが署名してWARA受取口座（ATA）から直接送る通常のWARA送金が対象です。自己宛て・失敗した取引・スワップなど別プログラム経由の送金は含めません。通常版と120秒体験版は別集計で、体験版も日本時間の一日で集計します。</p>
 <p class="small">再読み込み後もチェーンから復元します。約1分ごと・支払い完了時に更新。古い履歴は「続きを読み込む」で表示でき、更新時は最新の範囲に戻ります。取得途中の合計は「取得済み分」です。</p></section>
 <section id="receive-payment"><h2>3. 着金は自動で確認</h2>
-<p>店側が作ったお会計QRへの支払いを約6秒ごとに確認します。<strong>Kusa払いもWARA払いも、受領署名や返送QRは不要です。</strong></p>
+<p>店側が作ったお会計QRへの支払いを約6秒ごとに確認します。<strong>INA払いもWARA払いも、受領署名や返送QRは不要です。</strong></p>
 <p id="receiptStatusSummary" class="receipt-status" role="status" aria-live="polite">お会計QRを作ると、入金を自動で確認します。</p>
 <button id="nextCheckoutSummary" hidden>次のお会計</button>
 <p id="receiptDetail" class="small"></p><a id="receiptLink" target="_blank" rel="noopener noreferrer" hidden>確認した入金をExplorerで見る</a>

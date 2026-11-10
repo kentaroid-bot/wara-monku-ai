@@ -19,7 +19,7 @@ const write=(id,text)=>{$(id).textContent=text;};
 function notice(text,error=false){write('status',text);$('status').classList.toggle('error',error);}
 function usingDaily(){return $('payDaily').checked;}
 function showPaymentMethod(){const daily=usingDaily();
- write('paymentExplanation',daily?'あなたの署名で支払いが成立すると、Kusaは300から200へ、相手には100 WARAを新規発行。自分が持っているWARAは減りません。店側の署名は不要です。':'WARAを100持っていて40支払うと、自分は60、相手は40増えます。新規発行なし・今日の枠は変わりません。残高の範囲で300を超える支払いもできます。店側の署名は不要です。');
+ write('paymentExplanation',daily?'あなたの署名で支払いが成立すると、INAは300から200へ、相手には100 WARAを新規発行。自分が持っているWARAは減りません。店側の署名は不要です。':'WARAを100持っていて40支払うと、自分は60、相手は40増えます。新規発行なし・今日の枠は変わりません。残高の範囲で300を超える支払いもできます。店側の署名は不要です。');
  if(daily)$('amount').max='300';else $('amount').removeAttribute('max');controls();}
 function controls(){paymentHistory.controls();const blocked=busy||scanning,ready=Boolean(wallet&&instance)&&!blocked,confirmed=!checkoutRequest||($('confirmCheckout').checked&&Date.now()<checkoutRequest.expiresAt);for(const id of ['enroll','refresh','refreshReceived','makeRequest'])$(id).disabled=!ready;
  for(const id of ['nextCheckout','nextCheckoutSummary']){const button=$(id);button.hidden=!receiptWatch?.done;button.disabled=!ready||!receiptWatch?.done;}
@@ -38,7 +38,7 @@ async function refresh(){
  person=p;chainTime=t;clockReadAt=Date.now();credit=b?Buffer.from(b.data).readBigUInt64LE(64):0n;
  write('remaining',person?String(remaining(person,currentDay(t,instance))):'未登録');write('credit',String(credit));
  write('receivedBalance',`現在のWARA残高：${credit}（${instance.period===120n?'120秒体験版':'一日循環'}）。お会計QRへの入金は自動確認の表示をご覧ください。`);
- write('enrollment',person?'参加済み。登録し直しても、その日の枠は増えません。':'参加登録するとKusaを使えます。');
+ write('enrollment',person?'参加済み。登録し直しても、その日の枠は増えません。':'参加登録するとINAを使えます。');
  controls();tick();if(Date.now()-historyLastAttempt>60000)updateHistory();paymentHistory.update();
 }
 function tick(){if(!instance||!clockReadAt)return;const elapsed=Math.floor((Date.now()-clockReadAt)/1000);if(elapsed>30){write('countdown','更新待ち');write('clocknote','時計が古くなりました。「残高を更新」で再取得');return;}
@@ -83,7 +83,7 @@ $('pay').onclick=()=>task(async()=>{
  await refresh();validateCheckout();const daily=usingDaily(),dest=pk($('recipient').value.trim());
  if(dest.equals(wallet))throw Error('別の支払先を指定してください。');
  const day=currentDay(chainTime,instance);
- if(daily&&!person)throw Error('Kusaを使うには参加登録してください。');
+ if(daily&&!person)throw Error('INAを使うには参加登録してください。');
  const value=amount($('amount').value,daily?remaining(person,day):credit);
  const instructions=daily?paymentInstructions(program,config,wallet,dest,value,day,person.nonce).slice(2):[
   createAssociatedTokenAccountIdempotentInstruction(wallet,getAssociatedTokenAddressSync(instance.mint,dest),dest,instance.mint),
@@ -91,7 +91,7 @@ $('pay').onclick=()=>task(async()=>{
  ];
  if(checkoutRequest?.reference)instructions[instructions.length-1]=withReference(instructions.at(-1),checkoutRequest.reference);
  await signAndSend(instructions,validateCheckout);paymentHistory.update(true);clearCheckout();
- notice(daily?`${value} Kusaの支払いが成立しました。枠を消費し、相手に${value} WARAを発行しました。`:`${value} WARAの支払いが成立しました。既存残高から移動し、新規発行はありません。`);
+ notice(daily?`${value} INAの支払いが成立しました。枠を消費し、相手に${value} WARAを発行しました。`:`${value} WARAの支払いが成立しました。既存残高から移動し、新規発行はありません。`);
  try{await refresh();}catch{notice('支払いは確認済みですが、残高の再取得に失敗しました。「残高を更新」を押してください。支払いをやり直す必要はありません。',true);}
 });
 function qrContext(){if(!instance)throw Error('循環設定の読み込みを待ってください。');return {program,config,mint:instance.mint};}
@@ -114,7 +114,7 @@ async function pollReceipt(w,manual=false){
   if(receiptWatch!==w)return;
   if(result){
    w.done=true;receiptMessage(`${result.amount} WARA受け取りました`,'received');controls();
-   write('receiptDetail',`${result.method==='daily'?'Kusaからの支払い':'WARA残高からの支払い'} · 宛先・金額・お会計番号が一致し、チェーンで確認済み。支払元：${result.payer}`);
+   write('receiptDetail',`${result.method==='daily'?'INAからの支払い':'WARA残高からの支払い'} · 宛先・金額・お会計番号が一致し、チェーンで確認済み。支払元：${result.payer}`);
    $('receiptLink').href=`https://explorer.solana.com/tx/${result.signature}?cluster=devnet`;$('receiptLink').hidden=false;
    $('requestCard').hidden=true;removeQr();logSignature(result.signature).append(' · 入金確認済み');
    // Preserve success even when a separate balance refresh fails.
@@ -144,7 +144,7 @@ function renderHistory(){
  const rows=$('receiptHistoryRows');rows.replaceChildren();
  for(const entry of state.entries){
   const tr=document.createElement('tr');
-  const values=[entry.blockTime===null?'時刻不明':receiptTime.format(new Date(entry.blockTime*1000)),`${entry.amount} WARA`,entry.method==='daily'?'Kusa払い':entry.method==='credit'?'WARA払い':'その他の受取'];
+  const values=[entry.blockTime===null?'時刻不明':receiptTime.format(new Date(entry.blockTime*1000)),`${entry.amount} WARA`,entry.method==='daily'?'INA払い':entry.method==='credit'?'WARA払い':'その他の受取'];
   for(const value of values){const td=document.createElement('td');td.textContent=value;tr.append(td);}
   const detail=document.createElement('td');detail.textContent=entry.reference?`お会計 ${entry.reference.slice(0,8)}…`:'お会計番号なし';
   if(entry.reference)detail.title=entry.reference;

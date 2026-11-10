@@ -12,7 +12,7 @@ const pay = (s, id = "one") =>
     time: "2026-11-08T04:00:00Z",
   });
 for (const [amount, shopCredit, userRefund] of [[1, 90, 10], [5, 450, 50]]) {
-  test(`${amount} Kusa pays ${shopCredit} to shop and refunds ${userRefund} with the same origin`, () => {
+  test(`${amount} INA pays ${shopCredit} to shop and refunds ${userRefund} with the same origin`, () => {
     const pending = start(join(fresh()), amount, "one", "waseda-univ");
     assert.equal(pending.spent, 0);
     assert.deepEqual(balances(pending.history), { shopWara: 0, userWara: 0 });
@@ -60,7 +60,7 @@ test("support cannot approve a normal checkout or an obsolete invoice", () => {
     transition(canceled, { type: "approve", id: "one", consent: true }),
   );
 });
-test("ten Kusa shared across communities, next day renews only the quota", () => {
+test("ten INA shared across communities, next day renews only the quota", () => {
   for (const amount of [0, -1, 1.5, 11, NaN])
     assert.throws(() => start(fresh(), amount));
   assert.throws(() => start(fresh(), 1, "one", "unknown"));
