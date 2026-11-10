@@ -105,11 +105,23 @@ export async function memberRequest(op, b, ctx) {
   const byId = (id) =>
     query("SELECT * FROM members WHERE id=? AND realm=?", id, realm).first();
   const profile = (m) => ({ managed: true, type: m.type, address: m.address });
-  async function session() {
-    const grant = await readTicket(b.session, "session", false);
+  async function session(token = b.session) {
+    const grant = await readTicket(token, "session", false);
     const m = await byId(grant.id);
     if (!m || grant.revision !== m.revision) denied();
     return { m, grant };
+  }
+  if (op === "phantom-return") {
+    // Authorization is still the original signed session. Never renew it here.
+    const token = ctx.returnToken;
+    if (!token || req.headers.get("Origin") !== origin) denied();
+    const {m, grant} = await session(token);
+    if (m.type !== "phantom") denied();
+    const row = await query("SELECT expires FROM wallet_tickets WHERE token=? AND purpose='session' AND realm=? AND expires>?",
+      await hash("ticket",token),realm,now).first();
+    if (!row) denied();
+    return {profile:profile(m), session:token, phoneLogin:grant.phoneLogin, hasPhone:Boolean(m.phone_key),
+      expires:row.expires * 1000, remainingMs:(row.expires-now)*1000};
   }
   async function logged(m, phoneLogin) {
     const lifetime = 900;
@@ -117,6 +129,7 @@ export async function memberRequest(op, b, ctx) {
       profile: profile(m),
       phoneLogin,
       hasPhone: Boolean(m.phone_key),
+      remainingMs: lifetime * 1000,
       expires: (now + lifetime) * 1000,
       session: await ticket(
         "session",

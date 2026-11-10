@@ -622,7 +622,23 @@ test("SMS-verified introduction, isolated child login, card scope and linking th
   await call("signature",{ticket:pending.signatureTicket,signature:toBase64(ed25519.sign(msg,account("phantom").walletSeed))},401);
   const second=pending;
   const sg=toBase64(ed25519.sign(walletMessage(origin,"signin",second.signatureTicket,ph.profile.address),ph.walletSeed));
-  const freshParent=await call("signature",{ticket:second.signatureTicket,signature:sg});assert.equal(freshParent.profile.address,parent.profile.address);
+  const rawPost=(op,body,headers={})=>worker.fetch(new Request(origin+"/api/member/"+op,{
+    method:"POST",headers:{"Content-Type":"application/json",Origin:origin,...headers},body:JSON.stringify(body)}),env);
+  const signedResponse=await rawPost("signature",{ticket:second.signatureTicket,signature:sg,mobileReturn:true});
+  const freshParent=await signedResponse.json();assert.equal(freshParent.profile.address,parent.profile.address);
+  const setCookie=signedResponse.headers.get("Set-Cookie");
+  for(const part of ["__Host-wara-phantom=","Path=/","Secure","HttpOnly","SameSite=Strict","Max-Age=900"])assert.ok(setCookie.includes(part));
+  const Cookie=setCookie.split(";")[0];
+  assert.equal((await rawPost("phantom-return",{session:freshParent.session})).status,401);
+  assert.equal((await rawPost("phantom-return",{},{Cookie,Origin:"https://elsewhere.example"})).status,403);
+  const returning=await rawPost("phantom-return",{},{Cookie});
+  assert.equal(returning.headers.get("Set-Cookie"),null);
+  const resumed=await returning.json();
+  assert.equal(resumed.expires,freshParent.expires);
+  assert.equal(resumed.session,freshParent.session);
+  assert.equal(resumed.profile.address,ph.profile.address);
+  assert.equal((await rawPost("logout",{session:freshParent.session},{Cookie})).status,200);
+  assert.equal((await rawPost("phantom-return",{},{Cookie})).status,401);
   const sheet=cards(),answers=["白山","鳥羽","名古屋","","",""],name="架空 太郎";
   const registration={...sheet,pin:childPin,name,answers};
   await call("introduce",registration,401);

@@ -364,9 +364,27 @@ export async function activate(phone, type, pass, proof, code) {
   sessionStorage.setItem(sessionKey, id);
   return profile;
 }
+export const mobileBrowser = () => navigator.maxTouchPoints > 0 || /Android|iPhone|iPad/i.test(navigator.userAgent);
+export function rememberSession(result) {
+  localStorage.removeItem("wara.phantom.signedout");
+  // Use the server's remaining duration, even if the phone clock is ahead.
+  const expires = Number.isFinite(result.remainingMs)
+    ? Date.now() + Math.min(900000,result.remainingMs) : result.expires;
+  sessionStorage.setItem("wara.member", JSON.stringify({...result,expires}));
+  sessionStorage.removeItem(sessionKey);
+}
+export async function restorePhantom() {
+  if (!mobileBrowser() || managedSession() || localStorage.getItem("wara.phantom.signedout")) return;
+  const r=await fetch("/api/member/phantom-return",{method:"POST",credentials:"same-origin",redirect:"error",
+    cache:"no-store",signal:AbortSignal.timeout(6000),headers:{"Content-Type":"application/json"},body:"{}"});
+  if (r.ok && r.headers.get("X-Wara-Auth")==="1") {
+    const result=await r.json();
+    if (!localStorage.getItem("wara.phantom.signedout") && !managedSession()) rememberSession(result);
+  }
+}
 export function managedSession() {
   const data=JSON.parse(sessionStorage.getItem("wara.member") || "null");
-  if(data?.expires>Date.now()) return data;
+  if(data?.expires>Date.now() && !(data.profile?.type==="phantom" && localStorage.getItem("wara.phantom.signedout"))) return data;
   sessionStorage.removeItem("wara.member");
   return null;
 }
@@ -387,6 +405,7 @@ export function active() {
 }
 export function signout() {
   const token=managedSession()?.session;
+  localStorage.setItem("wara.phantom.signedout", "1");
   sessionStorage.removeItem("wara.member");
   if(token) void fetch("/api/member/logout",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({session:token}),keepalive:true}).catch(()=>{});
   sessionStorage.removeItem(sessionKey);

@@ -7,6 +7,7 @@ import {
   resolveWallet,
   normalizePhone,
   managedSession,
+  rememberSession, mobileBrowser,
   connectPhantom,
   openPair,
   deviceProfile,
@@ -26,10 +27,11 @@ export async function memberApi(op, body = {}) {
   const response = await fetch("/api/member/" + op, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    credentials: "omit",
+    credentials: "same-origin",
+    keepalive: op === "signature" || (op === "enroll" && body.type === "phantom"),
     cache: "no-store",
     redirect: "error",
-    body: JSON.stringify({ ...body, session: managedSession()?.session }),
+    body: JSON.stringify({ ...body, ...(op==="signature" || (op==="enroll" && body.type==="phantom") ? {mobileReturn:mobileBrowser()} : {}), session: managedSession()?.session }),
   });
   const result = await response.json();
   if (!response.ok)
@@ -141,8 +143,8 @@ async function logged(result) {
         result.audience,
       )),
     });
-  signout();
-  sessionStorage.setItem("wara.member", JSON.stringify(result));
+  if (managedSession()?.session !== result.session) signout();
+  rememberSession(result);
 }
 function panel(el, title, body, onSubmit, info) {
   el.innerHTML = "<h1></h1><form><fieldset>" + body + "</fieldset></form>";
@@ -305,7 +307,7 @@ function phoneEntry(el, info, mode, intent) {
             el.querySelector("button").textContent =
               "登録済みのPhantomで署名する";
           await logged(pending);
-          location.assign("/");
+          location.replace(managedSession()?.profile.type==="phantom" ? "/account/" : "/");
         },
         info,
       );
@@ -384,7 +386,7 @@ function phoneEntry(el, info, mode, intent) {
           );
         else {
           await save();
-          location.assign("/");
+          location.replace(managedSession()?.profile.type==="phantom" ? "/account/" : "/");
         }
       },
       info,
@@ -428,7 +430,7 @@ export function memberSignup(el, info, mode) {
                 pin,
               }),
             );
-            location.assign("/");
+            location.replace(managedSession()?.profile.type==="phantom" ? "/account/" : "/");
           },
           info,
         );
