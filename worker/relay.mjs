@@ -1,13 +1,12 @@
 import { Buffer } from "buffer";
 import bs58 from "bs58";
 import {
-  Connection,
   Keypair,
   Transaction,
   VersionedTransaction,
 } from "@solana/web3.js";
 import manifest from "../deployments/devnet.json" with { type: "json" };
-import { assertDevnet } from "../app/protocol.mjs";
+import { requireFreshBlockhash } from "./devnet-rpc.mjs";
 import { eligible, rentShortfall } from "../shared/sponsorship.mjs";
 import { pk } from "../mainstream/protocol.mjs";
 import {
@@ -61,12 +60,7 @@ export async function relayPayment({
   receipts,
   reserveBudget,
   fail,
-  rpc = new Connection(manifest.rpc, {
-    commitment: "confirmed",
-    disableRetryOnRateLimit: true,
-    fetch: (url, init) =>
-      fetch(url, { ...init, signal: AbortSignal.timeout(8000) }),
-  }),
+  rpc,
 }) {
   let payment;
   try {
@@ -77,17 +71,9 @@ export async function relayPayment({
   const { tx, last, receipt } = payment;
   const previous = await receipts.find(receipt);
   if (previous) return { signature: previous };
-  await assertDevnet(rpc);
+  await requireFreshBlockhash(rpc, tx.recentBlockhash, fail);
   if (declaredRent(tx) !== (await rentShortfall(rpc, last)))
     fail(409, "口座のRentが変わりました。画面を更新してください。");
-  if (
-    !(
-      await rpc.isBlockhashValid(tx.recentBlockhash, {
-        commitment: "confirmed",
-      })
-    ).value
-  )
-    fail(400, "取引の期限が切れました。");
   await reserveBudget();
   tx.partialSign(sponsor);
   const raw = tx.serialize(),

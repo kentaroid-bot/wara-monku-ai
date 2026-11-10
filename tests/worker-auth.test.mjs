@@ -569,9 +569,18 @@ test("SMS-verified introduction, isolated child login, card scope and linking th
   for(const statement of sql.trim().split(/;\s*(?=CREATE |$)/).filter(Boolean)) await db.prepare(statement).run();
   const env={DB:db,AUTH_PEPPER:randomBytes(32).toString("hex"),AUTH_MODE:"sms",WALLET_ACCESS:"enabled",
     TWILIO_VERIFY_SERVICE_SID:"VA"+"a".repeat(32),TWILIO_API_KEY:"SK"+"b".repeat(32),TWILIO_API_SECRET:"fixture"};
+  const { workerDevnetUrl } = await import("../worker/devnet-rpc.mjs");
+  const { DEVNET_GENESIS } = await import("../app/protocol.mjs");
+  let hashReply = true;
   const sent=new Map();
   t.mock.method(globalThis,"fetch",async (url,init)=>{
-    if(String(url)===manifest.rpc) return Response.json({result:{value:true}});
+    if (String(url) === workerDevnetUrl) {
+      const {id, method} = JSON.parse(init.body);
+      if (method === "getGenesisHash") return Response.json({id, jsonrpc:"2.0", result:DEVNET_GENESIS});
+      assert.equal(method, "isBlockhashValid");
+      if (hashReply === "blocked") return new Response("Forbidden", {status:403});
+      return Response.json({id, jsonrpc:"2.0", result:{context:{slot:1}, value:hashReply}});
+    }
     const params=init.body;
     const issuing=String(url).endsWith("/Verifications");
     const sid=issuing?"VE"+randomBytes(16).toString("hex"):params.get("VerificationSid");
@@ -671,7 +680,15 @@ test("SMS-verified introduction, isolated child login, card scope and linking th
   await call("sign",{session:child.session,tx:pay},401);
   await call("sign",{session:child.session,tx:pay,code:sheet.codes[0]});
   await call("sign",{session:child.session,tx:pay,code:sheet.codes[0]},401);
-  await call("sign",{session:child.session,tx:raw([...budgetInstructions(),join(manifest.program,payer,g,payer)])});
+  const joining = {session:child.session, tx:raw([...budgetInstructions(), join(manifest.program,payer,g,payer)])};
+  hashReply = "blocked";
+  assert.match((await call("sign", joining, 503)).error, /Devnetに接続できず/);
+  hashReply = false;
+  assert.match((await call("sign", joining, 400)).error, /有効期限が切れ/);
+  hashReply = true;
+  const joinedProof = await call("sign", joining);
+  assert.ok(ed25519.verify(Buffer.from(joinedProof.signature,"base64"),
+    Transaction.from(Buffer.from(joining.tx,"base64")).serializeMessage(), payer.toBytes()));
   // The site-held signer keeps the same card and confirmation-sheet scope
   // when a second key pays the fee and funds the daily allowance account.
   const sponsor = Keypair.generate();
