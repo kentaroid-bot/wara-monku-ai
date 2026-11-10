@@ -475,7 +475,7 @@ export function accountTools(el, info, mode) {
     };
     box.append(b);
   };
-  if (m.phoneLogin && ["sms", "google"].includes(mode))
+  if (m.hasPhone && ["sms", "google"].includes(mode))
     button("家族・知人の財布を作る", () =>
       panel(
         el,

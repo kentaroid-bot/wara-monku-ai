@@ -117,7 +117,7 @@ async function render() {
     el.insertAdjacentHTML(
       "beforeend",
       path === "/support"
-        ? "<p>携帯のない方の登録は、SMSでサインインした紹介者のアカウントから行えます。</p>" +
+        ? "<p>携帯のない方の登録は、電話番号を登録した紹介者のアカウントから行えます。</p>" +
             welcome
         : welcome,
     );
