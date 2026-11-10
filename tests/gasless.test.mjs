@@ -223,13 +223,13 @@ test("signed-in zero-SOL buyer joins, spends and transfers through Worker/D1 and
   );
   assert.equal((await post("/api/relay", {})).status, 401);
   const profile = { managed: true, type: "phantom", address: String(user) };
-  const store = new Map();
-  const storage = {
-    getItem: (k) => store.get(k) ?? null,
-    setItem: (k, v) => store.set(k, v),
-    removeItem: (k) => store.delete(k),
-  };
   for (const name of ["localStorage", "sessionStorage"]) {
+    const store = new Map();
+    const storage = {
+      getItem: (k) => store.get(k) ?? null,
+      setItem: (k, v) => store.set(k, v),
+      removeItem: (k) => store.delete(k),
+    };
     const old = Object.getOwnPropertyDescriptor(globalThis, name);
     Object.defineProperty(globalThis, name, {
       value: storage,
@@ -241,7 +241,7 @@ test("signed-in zero-SOL buyer joins, spends and transfers through Worker/D1 and
         : delete globalThis[name],
     );
   }
-  storage.setItem(
+  localStorage.setItem(
     "wara.member",
     JSON.stringify({ profile, session, expires: Date.now() + 900000 }),
   );

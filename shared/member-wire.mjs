@@ -1,3 +1,4 @@
+export const sessionLifetimeSeconds = 7 * 86400;
 export const questions = [
   "初めて登った山",
   "最初の遠足で行った場所",

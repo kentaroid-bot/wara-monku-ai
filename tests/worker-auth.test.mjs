@@ -735,4 +735,17 @@ test("SMS-verified introduction, isolated child login, card scope and linking th
   const rotated=cards();await call("cards",{session:linked.session,code:sheet.codes.at(-1),...rotated});
   await call("card-info",{card:sheet.card},401);
   assert.equal((await call("card-info",{card:rotated.card})).address,introduced.address);
+
+  await t.test("the D1 member session lasts exactly seven days and using it does not renew it", async t => {
+    assert.equal(parent.remainingMs, 604800000);
+    const Cookie = "__Host-wara-phantom=" + parent.session;
+    const clock = t.mock.method(Date, "now", () => parent.expires - 1000);
+    const lastSecond = await rawPost("phantom-return", {}, {Cookie});
+    assert.equal(lastSecond.status, 200);
+    const restored = await lastSecond.json();
+    assert.equal(restored.remainingMs, 1000);
+    assert.equal(restored.expires, parent.expires);
+    clock.mock.mockImplementation(() => parent.expires);
+    assert.equal((await rawPost("phantom-return", {}, {Cookie})).status, 401);
+  });
 });

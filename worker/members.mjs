@@ -3,7 +3,7 @@ import { feeKey, relayPayment } from "./relay.mjs";
 import bs58 from "bs58";
 import { ed25519 } from "@noble/curves/ed25519";
 import { toBase64, fromBase64 } from "../shared/auth-wire.mjs";
-import { questions, normal, walletMessage } from "../shared/member-wire.mjs";
+import { questions, normal, sessionLifetimeSeconds, walletMessage } from "../shared/member-wire.mjs";
 import {
   ordinaryMessage,
   confirmedMessage,
@@ -143,17 +143,16 @@ export async function memberRequest(op, b, ctx) {
       expires:row.expires * 1000, remainingMs:(row.expires-now)*1000};
   }
   async function logged(m, phoneLogin) {
-    const lifetime = 900;
     return {
       profile: profile(m),
       phoneLogin,
       hasPhone: Boolean(m.phone_key),
-      remainingMs: lifetime * 1000,
-      expires: (now + lifetime) * 1000,
+      remainingMs: sessionLifetimeSeconds * 1000,
+      expires: (now + sessionLifetimeSeconds) * 1000,
       session: await ticket(
         "session",
         { id: m.id, revision: m.revision, phoneLogin },
-        lifetime,
+        sessionLifetimeSeconds,
       ),
     };
   }

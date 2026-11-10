@@ -1,7 +1,7 @@
 import { Buffer } from "buffer";
 import { twinCards } from "./balances.mjs";
 import QRCode from "qrcode";
-import { active, signout, unlock, managedSession, restorePhantom, authMode } from "./identity.mjs";
+import { active, signout, unlock, memberSessionKey, managedSession, restorePhantom, authMode } from "./identity.mjs";
 import { signup } from "./signup.mjs";
 globalThis.Buffer ??= Buffer;
 export const esc = (v) =>
@@ -37,6 +37,12 @@ window.addEventListener("pagehide", () => {
 });
 window.addEventListener("pageshow", (e) => {
   if (e.persisted && (path === "/signup" || active()?.address !== profile?.address)) location.reload();
+});
+window.addEventListener("storage", (event) => {
+  if (event.storageArea !== localStorage || (event.key !== memberSessionKey && event.key !== null)) return;
+  signer = null;
+  if (profile?.managed && !managedSession()) location.replace("/signup/");
+  else location.reload();
 });
 export async function wallet() {
   if (!profile || active()?.address !== profile.address)
@@ -189,7 +195,7 @@ async function render() {
     el.querySelector("#exit").onclick = () => {
       signer = null;
       signout();
-      location.assign("/");
+      location.replace("/signup/");
     };
     if(profile.managed) {
       if(sessionStorage.getItem("wara.introduced")) { sessionStorage.removeItem("wara.introduced"); info("ご本人の財布を作りました。紙を本人に渡してください。今の画面は紹介者の財布です。"); }

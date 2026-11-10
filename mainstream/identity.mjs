@@ -2,6 +2,9 @@ import { Keypair, PublicKey } from "@solana/web3.js";
 import bs58 from "bs58";
 import { ed25519 } from "@noble/curves/ed25519";
 import { phoneDigest, transcript } from "../shared/auth-wire.mjs";
+import { sessionLifetimeSeconds } from "../shared/member-wire.mjs";
+
+export const memberSessionKey = "wara.member";
 const prefix = "wara.v03.identity.",
   sessionKey = "wara.v03.active";
 const enc = new TextEncoder();
@@ -369,8 +372,9 @@ export function rememberSession(result) {
   localStorage.removeItem("wara.phantom.signedout");
   // Use the server's remaining duration, even if the phone clock is ahead.
   const expires = Number.isFinite(result.remainingMs)
-    ? Date.now() + Math.min(900000,result.remainingMs) : result.expires;
-  sessionStorage.setItem("wara.member", JSON.stringify({...result,expires}));
+    ? Date.now() + Math.min(sessionLifetimeSeconds * 1000, result.remainingMs) : result.expires;
+  localStorage.setItem(memberSessionKey, JSON.stringify({...result,expires}));
+  sessionStorage.removeItem(memberSessionKey);
   sessionStorage.removeItem(sessionKey);
 }
 export async function restorePhantom() {
@@ -383,16 +387,30 @@ export async function restorePhantom() {
   }
 }
 export function managedSession() {
-  const data=JSON.parse(sessionStorage.getItem("wara.member") || "null");
-  if(data?.expires>Date.now() && !(data.profile?.type==="phantom" && localStorage.getItem("wara.phantom.signedout"))) return data;
-  sessionStorage.removeItem("wara.member");
+  const stored = localStorage.getItem(memberSessionKey);
+  const legacy = sessionStorage.getItem(memberSessionKey);
+  if (legacy) sessionStorage.removeItem(memberSessionKey);
+  const signedOut = localStorage.getItem("wara.phantom.signedout");
+  const raw = stored ?? (signedOut ? null : legacy);
+  if (!raw) return null;
+
+  let data;
+  try { data = JSON.parse(raw); } catch { /* Discard an unreadable session. */ }
+  if (data?.session && data.profile?.address && data.expires > Date.now() &&
+      !(data.profile.type === "phantom" && signedOut)) {
+    // Keep the original deadline when moving a pre-upgrade tab's ticket.
+    if (!stored) localStorage.setItem(memberSessionKey, raw);
+    return data;
+  }
+  localStorage.removeItem(memberSessionKey);
   return null;
 }
 export async function deviceProfile(phone) {
   return JSON.parse(localStorage.getItem(prefix+"account."+await phoneId(phone)) || "null");
 }
 export function active() {
-  if(managedSession()) return managedSession().profile;
+  const member = managedSession();
+  if (member) return member.profile;
   const id = sessionStorage.getItem(sessionKey);
   if (!id) return null;
   try {
@@ -406,7 +424,8 @@ export function active() {
 export function signout() {
   const token=managedSession()?.session;
   localStorage.setItem("wara.phantom.signedout", "1");
-  sessionStorage.removeItem("wara.member");
+  localStorage.removeItem(memberSessionKey);
+  sessionStorage.removeItem(memberSessionKey);
   if(token) void fetch("/api/member/logout",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({session:token}),keepalive:true}).catch(()=>{});
   sessionStorage.removeItem(sessionKey);
 }
