@@ -1,7 +1,9 @@
+import { eligible, sponsoredInstructions } from "../shared/sponsorship.mjs";
 import { Buffer } from "buffer";
 import {
   Transaction,
   SystemInstruction,
+  SystemProgram,
   ComputeBudgetProgram,
 } from "@solana/web3.js";
 import {
@@ -19,12 +21,41 @@ const price = () =>
   ComputeBudgetProgram.setComputeUnitPrice({ microLamports: 0 });
 const limit = () => ComputeBudgetProgram.setComputeUnitLimit({ units: 200000 });
 
+// Only accept the canonical complete message. For a sponsored message, relay
+// also independently compares this declared top-up with live Devnet rent.
+export function declaredRent(tx) {
+  const funding = tx.instructions.find((ix) =>
+    ix.programId.equals(SystemProgram.programId),
+  );
+  return funding
+    ? Number(SystemInstruction.decodeTransfer(funding).lamports)
+    : 0;
+}
+
+function matches(tx, address, instructions, sponsor) {
+  const feePayer = sponsor || pk(address);
+  const expected = new Transaction({
+    feePayer,
+    recentBlockhash: tx.recentBlockhash,
+  });
+  if (sponsor && !eligible(instructions, program)) return false;
+  expected.add(
+    ...(sponsor
+      ? sponsoredInstructions(instructions, sponsor, declaredRent(tx))
+      : instructions),
+  );
+  return expected.serializeMessage().equals(tx.serializeMessage());
+}
+
 // Rebuild the entire message, including fee policy and account metas. Never
 // trust the command name or an instruction picked out of a client transaction.
-export function ordinaryMessage(raw, address, scope, checkout) {
+export function ordinaryMessage(raw, address, scope, checkout, sponsor = null) {
   const tx = Transaction.from(raw);
   const last = tx.instructions.at(-1);
-  if (!last?.programId.equals(program) || !tx.feePayer?.equals(pk(address)))
+  if (
+    !last?.programId.equals(program) ||
+    !tx.feePayer?.equals(sponsor || pk(address))
+  )
     return false;
   let instructions;
   if (last.data[0] === 14 && last.data.length === 25) {
@@ -66,18 +97,23 @@ export function ordinaryMessage(raw, address, scope, checkout) {
       ),
     ];
   } else return false;
-  const expected = new Transaction({
-    feePayer: pk(address),
-    recentBlockhash: tx.recentBlockhash,
-  }).add(...instructions);
-  return Buffer.from(expected.serializeMessage()).equals(tx.serializeMessage());
+  return matches(tx, address, instructions, sponsor);
 }
-export function decodeTransaction(encoded, address) {
+export function decodeTransaction(encoded, address, configuredSponsor = null) {
   if (typeof encoded !== "string" || encoded.length > 1650) throw Error();
   const raw = Buffer.from(encoded, "base64"),
     tx = Transaction.from(raw);
-  if (!tx.feePayer?.equals(pk(address))) throw Error();
-  return { raw, message: tx.serializeMessage(), blockhash: tx.recentBlockhash };
+  const sponsor =
+    configuredSponsor && tx.feePayer?.equals(configuredSponsor)
+      ? configuredSponsor
+      : null;
+  if (!tx.feePayer?.equals(sponsor || pk(address))) throw Error();
+  return {
+    raw,
+    sponsor,
+    message: tx.serializeMessage(),
+    blockhash: tx.recentBlockhash,
+  };
 }
 export async function validBlockhash(blockhash) {
   const response = await fetch(manifest.rpc, {
@@ -96,15 +132,19 @@ export async function validBlockhash(blockhash) {
 
 // A confirmation sheet authorizes WARA payments and the site's community
 // administration. It cannot turn this endpoint into an arbitrary SOL signer.
-export function confirmedMessage(raw, address) {
+export function confirmedMessage(raw, address, sponsor = null) {
   const tx = Transaction.from(raw),
     ix = tx.instructions,
     last = ix.at(-1);
-  if (!last?.programId.equals(program) || !tx.feePayer?.equals(pk(address)))
+  if (
+    !last?.programId.equals(program) ||
+    !tx.feePayer?.equals(sponsor || pk(address))
+  )
     return false;
   const data = last.data,
     accounts = last.keys.map((k) => k.pubkey);
   let expected;
+  if (sponsor && data[0] !== 15) return false;
   switch (data[0]) {
     case 10: {
       const creation = SystemInstruction.decodeCreateAccount(ix.at(-2));
@@ -168,11 +208,5 @@ export function confirmedMessage(raw, address) {
     default:
       return false;
   }
-  return new Transaction({
-    feePayer: pk(address),
-    recentBlockhash: tx.recentBlockhash,
-  })
-    .add(...expected)
-    .serializeMessage()
-    .equals(tx.serializeMessage());
+  return matches(tx, address, expected, sponsor);
 }

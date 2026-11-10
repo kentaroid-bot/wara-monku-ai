@@ -1,3 +1,5 @@
+import { managedSession } from "./identity.mjs";
+import { eligible, sponsoredInstructions, rentShortfall } from "../shared/sponsorship.mjs";
 import { Buffer } from "buffer";
 import {
   Connection,
@@ -98,12 +100,54 @@ export const codeKey = (code) => {
     throw Error("招待コードの形式が違います。");
   }
 };
+async function feePayer() {
+  const response = await fetch("/api/fee-payer", {cache:"no-store", redirect:"error"});
+  if (response.status === 404) return null; // Previous Worker / static host.
+  if (!response.ok) throw Error("手数料支援の状態を確認できません。");
+  const {feePayerPubkey} = await response.json();
+  return feePayerPubkey === null ? null : pk(feePayerPubkey);
+}
+
+async function relayRequest(path, payload) {
+  const response = await fetch(path, {
+    method:"POST", cache:"no-store", credentials:"same-origin", redirect:"error",
+    headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({...payload, session:managedSession()?.session}),
+    signal:AbortSignal.timeout(18000),
+  });
+  const result = await response.json();
+  if (!response.ok) {
+    const error = Error(result.error || "手数料支援の送信に失敗しました。");
+    error.rejected = response.headers.get("X-Wara-Auth") === "1" && response.status >= 400 && response.status < 500;
+    throw error;
+  }
+  if (result.signature !== null && (typeof result.signature !== "string" || bs58.decode(result.signature).length !== 64))
+    throw Error("取引署名を確認できません。");
+  return result.signature;
+}
+
 const pendingKey = (a) => "wara.v3.pending." + a;
 export const pendingSig = (a) => localStorage.getItem(pendingKey(a));
 export async function checkPending(a) {
   const raw = pendingSig(a);
   if (!raw) return;
-  const { sig, height } = JSON.parse(raw);
+  const pending = JSON.parse(raw);
+  const {height} = pending;
+  let sig = pending.sig;
+  if (!sig && pending.receipt) {
+    sig = await relayRequest("/api/relay/status", {receipt:pending.receipt});
+    if (!sig && (await rpc.getBlockHeight("finalized")) > height) {
+      // Read again after observing expiry, in case the relay registered it
+      // between the first lookup and the finalized block-height read.
+      sig = await relayRequest("/api/relay/status", {receipt:pending.receipt});
+      if (!sig) {
+        localStorage.removeItem(pendingKey(a));
+        throw Error("支援取引は受付されず、署名の期限が切れました。");
+      }
+    }
+    if (!sig) throw Error("支援取引の受付を確認中です。更新で確認してください。");
+    localStorage.setItem(pendingKey(a), JSON.stringify({sig,height}));
+  }
   const [s] = (
     await rpc.getSignatureStatuses([sig], { searchTransactionHistory: true })
   ).value;
@@ -130,13 +174,14 @@ export async function submit(profile, wallet, ix, extra = []) {
   const signer = await wallet();
   if (String(signer.publicKey) !== profile.address)
     throw Error("署名ウォレットが切り替わりました。");
-  if ((await rpc.getBalance(pk(profile.address))) === 0)
+  const sponsor = profile.managed && eligible(ix, program) ? await feePayer() : null;
+  if (!sponsor && (await rpc.getBalance(pk(profile.address))) === 0)
     throw Error(
       "登録は済んでいます。アカウント画面の無料Devnet SOLで取引手数料を準備してください。",
     );
   const latest = await rpc.getLatestBlockhash(),
     tx = new Transaction({
-      feePayer: pk(profile.address),
+      feePayer: sponsor || pk(profile.address),
       recentBlockhash: latest.blockhash,
     });
   // Set the fee policy before any wallet or invite signature. Payments already
@@ -144,31 +189,55 @@ export async function submit(profile, wallet, ix, extra = []) {
   const missingBudget = budgetInstructions().filter(
     fee => !ix.some(i => i.programId.equals(fee.programId) && i.data[0] === fee.data[0]),
   );
-  tx.add(...missingBudget, ...ix);
+  const original = [...missingBudget, ...ix];
+  tx.add(...(sponsor
+    ? sponsoredInstructions(original, sponsor, await rentShortfall(rpc, ix.at(-1)))
+    : original));
   if (extra.length) tx.partialSign(...extra);
   const before = tx.serializeMessage();
   const signed = await signer.signTransaction(tx);
   if (!Buffer.from(before).equals(signed.serializeMessage()))
     throw Error("署名時に取引内容が変わりました。送信を中止しました。");
-  if (!signed.verifySignatures())
+  if (!signed.verifySignatures(!sponsor) || signed.signatures.some(s => !s.signature && !(sponsor && s.publicKey.equals(sponsor))))
     throw Error("必要な署名を確認できません。送信を中止しました。");
-  const raw = signed.serialize(),
-    sig = bs58.encode(signed.signature);
-  localStorage.setItem(
-    pendingKey(profile.address),
-    JSON.stringify({ sig, height: latest.lastValidBlockHeight }),
-  );
-  try {
-    await rpc.sendRawTransaction(raw, { skipPreflight: false, maxRetries: 3 });
-  } catch (e) {
-    // Explicit preflight rejection means no submission. Ambiguous delivery stays pending.
-    if (e.transactionMessage?.includes("simulation failed") || e.logs) {
-      localStorage.removeItem(pendingKey(profile.address));
-      throw Error(
-        "Devnetが拒否しました。残高・参加状態・手数料を確認してください。",
-      );
+  if (pendingSig(profile.address)) throw Error("別の取引の送信結果を確認中です。更新してください。");
+  const height = latest.lastValidBlockHeight;
+  let sig;
+  if (sponsor) {
+    const userSignature = signed.signatures.find(s => String(s.publicKey) === profile.address).signature;
+    const receipt = bs58.encode(userSignature);
+    const encoded = signed.serialize({requireAllSignatures:false}).toString("base64");
+    localStorage.setItem(pendingKey(profile.address), JSON.stringify({receipt,height}));
+    try {
+      sig = await relayRequest("/api/relay", {tx:encoded});
+      if (!sig) throw Error();
+    } catch (error) {
+      if (error.rejected) {
+        localStorage.removeItem(pendingKey(profile.address));
+        throw error;
+      }
+      throw Error("支援取引の送信結果を確認中です。再送せず更新してください。");
     }
-    throw Error("送信結果を確認中：" + sig);
+    localStorage.setItem(pendingKey(profile.address), JSON.stringify({sig,height}));
+  } else {
+    const raw = signed.serialize();
+    sig = bs58.encode(signed.signature);
+    localStorage.setItem(
+      pendingKey(profile.address),
+      JSON.stringify({ sig, height: latest.lastValidBlockHeight }),
+    );
+    try {
+      await rpc.sendRawTransaction(raw, { skipPreflight: false, maxRetries: 3 });
+    } catch (e) {
+      // Explicit preflight rejection means no submission. Ambiguous delivery stays pending.
+      if (e.transactionMessage?.includes("simulation failed") || e.logs) {
+        localStorage.removeItem(pendingKey(profile.address));
+        throw Error(
+          "Devnetが拒否しました。残高・参加状態・手数料を確認してください。",
+        );
+      }
+      throw Error("送信結果を確認中：" + sig);
+    }
   }
   for (let i = 0; i < 16; i++) {
     await new Promise((r) => setTimeout(r, 900));

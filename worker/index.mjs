@@ -1,3 +1,4 @@
+import { feeKey } from "./relay.mjs";
 import { verifiedPhoneEvent } from "./google-phone.mjs";
 import { memberRequest } from "./members.mjs";
 import bs58 from "bs58";
@@ -416,10 +417,14 @@ export default {
               ? "disabled"
               : env.AUTH_MODE || "disabled",
         });
+      if (url.pathname === "/api/fee-payer" && req.method === "GET")
+        return json({feePayerPubkey: env.WALLET_ACCESS === "enabled" && ["trial","sms","google"].includes(env.AUTH_MODE)
+          ? feeKey(env)?.publicKey.toBase58() ?? null : null});
+      const relayOp = {"/api/relay":"relay", "/api/relay/status":"relay-status"}[url.pathname];
       const action = url.pathname.match(
         /^\/api\/auth\/(challenge|resolve|activate|signin)$/,
       )?.[1];
-      const memberOp = env.WALLET_ACCESS === "enabled" && url.pathname.match(/^\/api\/member\/([a-z-]+)$/)?.[1];
+      const memberOp = env.WALLET_ACCESS === "enabled" && (relayOp || url.pathname.match(/^\/api\/member\/([a-z-]+)$/)?.[1]);
       if (!action && !memberOp) fail(404, "APIが見つかりません。");
       if (req.method !== "POST") fail(405, "POSTを使用してください。");
       const origin = req.headers.get("Origin");

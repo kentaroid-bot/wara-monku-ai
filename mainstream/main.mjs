@@ -134,7 +134,7 @@ async function render() {
         }[profile.type] +
         '</h2><small>公開アドレス</small><p class="wrap">' +
         esc(profile.address) +
-        '</p><p>新しいウォレットにDevnet SOLがない場合、取引手数料にテストSOLが必要です。<a href="https://faucet.solana.com/" target="_blank" rel="noopener">Devnetの無料配布</a></p><button id="exit">サインアウト</button></section><article class="card"><h2>Kusaカード</h2><img alt="このウォレットの公開QR"><p class="wrap">' +
+        '</p><p>手数料支援が有効な場合、参加・kusa払い・WARA払いにSOLは不要です。自費の取引にはテストSOLを使います。<a href="https://faucet.solana.com/" target="_blank" rel="noopener">Devnetの無料配布</a></p><button id="exit">サインアウト</button></section><article class="card"><h2>Kusaカード</h2><img alt="このウォレットの公開QR"><p class="wrap">' +
         esc(profile.address) +
         "</p><small>QRだけでお財布から引き落とすことはできません。</small><br><button>印刷する</button></article>",
     );

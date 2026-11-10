@@ -672,6 +672,22 @@ test("SMS-verified introduction, isolated child login, card scope and linking th
   await call("sign",{session:child.session,tx:pay,code:sheet.codes[0]});
   await call("sign",{session:child.session,tx:pay,code:sheet.codes[0]},401);
   await call("sign",{session:child.session,tx:raw([...budgetInstructions(),join(manifest.program,payer,g,payer)])});
+  // The site-held signer keeps the same card and confirmation-sheet scope
+  // when a second key pays the fee and funds the daily allowance account.
+  const sponsor = Keypair.generate();
+  env.FEE_PAYER_SECRET = bs58.encode(sponsor.secretKey);
+  const {sponsoredInstructions} = await import("../shared/sponsorship.mjs");
+  const sponsoredTx = instructions => new Transaction({feePayer:sponsor.publicKey,recentBlockhash:blockhash})
+    .add(...instructions).serialize({requireAllSignatures:false}).toString("base64");
+  const sponsoredCard = sponsoredTx(sponsoredInstructions([budgetInstructions()[1],...send],sponsor.publicKey,1000000));
+  const proofForSponsor = await call("card-sign",{...cardBody,tx:sponsoredCard});
+  assert.ok(ed25519.verify(Buffer.from(proofForSponsor.signature,"base64"),
+    Transaction.from(Buffer.from(sponsoredCard,"base64")).serializeMessage(),payer.toBytes()));
+  await call("card-sign",{...cardBody,tx:sponsoredCard,checkout:{...checkout,amount:2}},401);
+  const sponsoredWara = sponsoredTx(sponsoredInstructions([budgetInstructions()[1],
+    ...transfer(manifest.program,payer,g,store,[{origin:g,amount:2n}])], sponsor.publicKey,0));
+  await call("sign",{session:child.session,tx:sponsoredWara},401);
+  await call("sign",{session:child.session,tx:sponsoredWara,code:sheet.codes[2]});
   const ownPhone="+819012340833";
   await call("link",{...await verified(ownPhone,"activate"),session:child.session,code:sheet.codes[1]});
   const linked=await call("phone-login",{...await verified(ownPhone,"signin"),pin:childPin});

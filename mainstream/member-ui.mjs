@@ -588,7 +588,7 @@ export async function payWithCard(group, store, amount, title) {
     "支払いの暗証番号",
     title + " に " + amount + " Kusaを支払います。",
   );
-  const p = { address };
+  const p = { address, managed: true };
   return submit(
     p,
     () => siteSigner(p, { card, pin, checkout }),
