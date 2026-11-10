@@ -84,7 +84,7 @@ function showGuide() {
   el.innerHTML = `<h1>使い方</h1>
     <section class="guide-intro">
       <h2>🌾 稲を食べて命をつなぎ、藁を編んで暮らす</h2>
-      <p>ここでやりとりするのは、奪い合うお金ではありません。<strong>「今日という生きる時間」</strong>と<strong>「誰かの役に立った感謝」</strong>です。</p>
+      <p>ここでやりとりするのはお金ではなく、<strong>「今日という生きる時間」</strong>と<strong>「誰かの役に立った感謝」</strong>です。</p>
       <dl>
         <dt>🌱 INA（稲） — 毎日の食べる時間</dt>
         <dd>毎朝、だれの財布にも等しく10枚届きます。おむすびを食べたり、日用品を買ったり、日々の食事と暮らしに使えます。<br>
