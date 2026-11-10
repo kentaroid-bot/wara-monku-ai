@@ -1,3 +1,4 @@
+import { feeKey, relayPayment } from "./relay.mjs";
 import bs58 from "bs58";
 import { ed25519 } from "@noble/curves/ed25519";
 import { toBase64, fromBase64 } from "../shared/auth-wire.mjs";
@@ -110,6 +111,24 @@ export async function memberRequest(op, b, ctx) {
     const m = await byId(grant.id);
     if (!m || grant.revision !== m.revision) denied();
     return { m, grant };
+  }
+  if (op === "relay" || op === "relay-status") {
+    const { m } = await session();
+    const receipts = {
+      find: receipt => query("SELECT signature FROM relay_receipts WHERE receipt=?", receipt).first("signature"),
+      insert: async (receipt, sig) => (await query("INSERT OR IGNORE INTO relay_receipts VALUES (?,?)", receipt, sig).run()).meta.changes === 1,
+    };
+    if (op === "relay-status") {
+      if (typeof b.receipt !== "string" || !/^[1-9A-HJ-NP-Za-km-z]{64,88}$/.test(b.receipt)) bad();
+      return {signature: await receipts.find(b.receipt)};
+    }
+    const sponsor = feeKey(env);
+    if (!sponsor) fail(503, "手数料支援は設定されていません。");
+    return relayPayment({encoded:b.tx, sponsor, member:m.address, receipts, fail,
+      reserveBudget: async () => {
+        await limited("relay-member:" + m.id, 20);
+        await limited("relay-global", 200);
+      }});
   }
   if (op === "phantom-return") {
     // Authorization is still the original signed session. Never renew it here.
@@ -545,15 +564,16 @@ export async function memberRequest(op, b, ctx) {
   async function signed(m, card) {
     let tx, ordinary;
     try {
-      tx = decodeTransaction(b.tx, m.address);
+      tx = decodeTransaction(b.tx, m.address, feeKey(env)?.publicKey);
       if (card && (!b.checkout || !Number.isInteger(b.checkout.amount))) bad();
       ordinary = ordinaryMessage(
         tx.raw,
         m.address,
         card ? "card" : "session",
         card ? b.checkout : null,
+        tx.sponsor,
       );
-      if (!ordinary && !card && !confirmedMessage(tx.raw, m.address)) denied();
+      if (!ordinary && !card && !confirmedMessage(tx.raw, m.address, tx.sponsor)) denied();
     } catch {
       bad();
     }
