@@ -1,4 +1,5 @@
 import { Buffer } from "buffer";
+import { twinCards } from "./balances.mjs";
 import QRCode from "qrcode";
 import { active, signout, unlock, managedSession, restorePhantom, authMode } from "./identity.mjs";
 import { signup } from "./signup.mjs";
@@ -17,6 +18,19 @@ const info = (s) => {
   notice.textContent = s;
 };
 const path = location.pathname.replace(/\/+$/, "") || "/";
+const tab = ["/", "/user"].includes(path) ? "wallet" :
+  (path === "/shop" || path.startsWith("/communities")) ? "market" : "me";
+document.querySelector(`[data-tab="${tab}"]`).setAttribute("aria-current", "page");
+const menu = document.querySelector("#quick-menu");
+document.querySelector("#quick").onclick = () => menu.showModal();
+const theme = localStorage.getItem("wara.theme");
+if (theme === "dark" || theme === "light") document.documentElement.style.colorScheme = theme;
+document.querySelector(".theme").onclick = () => {
+  const current = document.documentElement.style.colorScheme || (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+  const next = current === "dark" ? "light" : "dark";
+  document.documentElement.style.colorScheme = next;
+  localStorage.setItem("wara.theme", next);
+};
 let profile = active();
 let signer = null;
 window.addEventListener("pagehide", () => {
@@ -57,7 +71,7 @@ export function action(form, handler) {
   };
 }
 const welcome =
-  '<section><h2>あなたのお財布</h2><p>毎日10 Kusa。今日使わなかった枠は翌日に持ち越せません。受け取ったWARAは翌日も使えます。</p><a class="action" href="/signup/">登録・サインイン</a></section>';
+  '<section class="welcome"><small>はじめての方へ</small><h2>今日の時間を、地域の力に。</h2><p>毎日届く10 kusaで食事や仕事に感謝を贈れます。受け取ったWARAは、明日も財布に残ります。</p><a class="action" href="/signup/">登録・サインイン</a></section>';
 async function card() {
   const box = el.querySelector(".card");
   if (!box) return;
@@ -87,13 +101,14 @@ async function render() {
     "/": "お財布",
     "/user": "お財布",
     "/shop": "レジ",
-    "/account": "アカウント",
+    "/account": "マイ",
     "/support": "地域窓口",
-    "/communities": "コミュニティ",
+    "/communities": "市場",
     "/communities/new": "コミュニティを開設",
   };
   el.innerHTML = "<h1>" + esc(titles[path] || "藁一本の約束") + "</h1>";
   if (!profile) {
+    if (tab === "wallet") el.insertAdjacentHTML("beforeend", twinCards(null));
     if (path === "/shop" && location.search)
       sessionStorage.setItem(
         "wara.v03.after-signin",
@@ -117,7 +132,7 @@ async function render() {
           paper: "窓口発行",
           embedded: "組み込みウォレット",
         }[profile.type] +
-        '</h2><p class="wrap">' +
+        '</h2><small>公開アドレス</small><p class="wrap">' +
         esc(profile.address) +
         '</p><p>新しいウォレットにDevnet SOLがない場合、取引手数料にテストSOLが必要です。<a href="https://faucet.solana.com/" target="_blank" rel="noopener">Devnetの無料配布</a></p><button id="exit">サインアウト</button></section><article class="card"><h2>Kusaカード</h2><img alt="このウォレットの公開QR"><p class="wrap">' +
         esc(profile.address) +
@@ -133,6 +148,7 @@ async function render() {
       el.querySelector(".card h2").textContent="公開アドレス";
       (await import("./member-ui.mjs")).accountTools(el,info,await authMode());
     }
+    el.insertAdjacentHTML("beforeend", '<details><summary>毎日のkusaのリセット</summary><p>日本時間の24:00に、その日の残りが消え、新しい10 kusaが使えるようになります。WARAは残ります。</p><a class="action secondary" href="/">今日の枠を読み直す</a></details>');
     await card();
     return;
   }
