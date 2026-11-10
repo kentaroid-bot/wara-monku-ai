@@ -230,6 +230,12 @@ export async function dashboard(ctx) {
         ) +
         btn("公認してレジを作る") +
         "</form>";
+    else
+      out +=
+        '<section><h2>お店（レジ）を開きたい方へ</h2>' +
+        '<p>このコミュニティでお店を開くには、開設者にお店として公認してもらう必要があります。</p>' +
+        '<p><a href="/account/">アカウント</a>にある「公開アドレス」を開設者に伝えて、公認店舗として登録してもらいましょう。</p>' +
+        '</section>';
     out +=
       "<section><h2>通貨同盟</h2><p>双方が承認した地域のWARAを額面どおり受け入れます。</p>" +
       s.groups
