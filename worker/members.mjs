@@ -332,9 +332,9 @@ export async function memberRequest(op, b, ctx) {
     });
   }
   if (op === "introduce") {
-    const { m, grant } = await session();
-    if (realm !== "verified" || !m.phone_key || !grant.phoneLogin)
-      fail(403, "SMSでサインインした紹介者が必要です。");
+    const { m } = await session();
+    if (realm !== "verified" || !m.phone_key)
+      fail(403, "電話番号を登録した紹介者が必要です。");
     return addMember({ sponsor: m });
   }
   async function finishPin(m, phoneLogin) {

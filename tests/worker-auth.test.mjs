@@ -692,6 +692,26 @@ test("SMS-verified introduction, isolated child login, card scope and linking th
   await call("link",{...await verified(ownPhone,"activate"),session:child.session,code:sheet.codes[1]});
   const linked=await call("phone-login",{...await verified(ownPhone,"signin"),pin:childPin});
   assert.equal(linked.profile.address,introduced.address);
+
+  await t.test("phone-registered member can introduce after name and quiz login, sharing the phone-login quota", async () => {
+    const byName = await call("name-login", { ...await quiz(), pin: childPin });
+    assert.equal(byName.profile.address, linked.profile.address);
+    assert.equal(byName.hasPhone, true);
+    assert.equal(byName.phoneLogin, false);
+    const invite = (session, name, status) =>
+      call("introduce", { session, name, answers, pin: childPin, ...cards() }, status);
+
+    const guest = await invite(byName.session, "架空 花子");
+    const sponsor = await db.prepare(
+      "SELECT p.address, c.phone_key FROM members c JOIN members p ON p.id=c.sponsor_id WHERE c.address=?"
+    ).bind(guest.address).first();
+    assert.equal(sponsor.address, byName.profile.address);
+    assert.equal(sponsor.phone_key, null);
+
+    await invite(linked.session, "架空 次郎");
+    await invite(byName.session, "架空 三郎");
+    await invite(linked.session, "架空 四郎", 429);
+  });
   await call("introduce",{...registration,...cards(),session:parent.session});
   await call("introduce",{...registration,...cards(),session:parent.session});
   await call("introduce",{...registration,...cards(),session:parent.session},429);
