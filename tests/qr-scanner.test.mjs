@@ -25,10 +25,11 @@ function harness(t, getUserMedia, play = async () => {}) {
       pixels[i] = pixels[i + 1] = pixels[i + 2] = 0;
     }
   const ctx = { drawImage: t.mock.fn(), getImageData: () => ({ data: pixels, width: size, height: size }) };
-  const scanner = createScanner({ video, canvas: { getContext: () => ctx }, onStatus: s => status.push(s),
+  const canvas = { getContext: () => ctx };
+  const scanner = createScanner({ video, canvas, onStatus: s => status.push(s),
     onValue: (v, kind) => values.push([v, kind]), onStop() {} });
   t.after(() => { scanner.stop(); if (old) Object.defineProperty(navigator, 'mediaDevices', old); else delete navigator.mediaDevices; });
-  return { scanner, video, media, track, calls, status, values, attributes, ctx,
+  return { scanner, video, canvas, media, track, calls, status, values, attributes, ctx,
     ready() { video.readyState = 2; video.videoWidth = video.videoHeight = size; } };
 }
 
@@ -127,4 +128,70 @@ test('late play rejection from replaced session cannot alter current scanner', a
   assert.equal(h.status.length, statusCount);
   assert.equal(h.video.controls, false);
   assert.equal(h.video.srcObject, h.media);
+});
+
+function fileHarness(t, { width = 4032, height = 3024, broken = false } = {}) {
+  const h = harness(t);
+  const previous = Object.getOwnPropertyDescriptor(globalThis, 'Image');
+  Object.defineProperty(globalThis, 'Image', { configurable: true, value: class {
+    naturalWidth = width; naturalHeight = height;
+    set src(value) { queueMicrotask(() => broken ? this.onerror() : this.onload()); }
+  } });
+  t.after(() => { if (previous) Object.defineProperty(globalThis, 'Image', previous); else delete globalThis.Image; });
+  const create = t.mock.method(URL, 'createObjectURL', () => 'blob:scanner-test');
+  const revoke = t.mock.method(URL, 'revokeObjectURL', () => {});
+  return { ...h, create, revoke };
+}
+
+// These test MIME acceptance; Image is stubbed, so this does not claim native HEIC decoding.
+for (const type of ['', 'image/heic', 'image/jpeg', 'image/png', 'image/webp']) {
+  test(`photo MIME ${type || '(empty)'} accepts exactly 20 MiB and resizes before QR decoding`, async t => {
+    const h = fileHarness(t);
+    await h.scanner.file({ type, size: 20 * 1024 * 1024 }, 'confirm');
+    assert.deepEqual(h.values, [['scanner-test', 'confirm']]);
+    assert.equal(h.canvas.width, 1600); assert.equal(h.canvas.height, 1200);
+    assert.deepEqual(h.ctx.drawImage.mock.calls[0].arguments.slice(1), [0, 0, 1600, 1200]);
+    assert.deepEqual(h.revoke.mock.calls[0].arguments, ['blob:scanner-test']);
+  });
+}
+
+for (const file of [{ type: 'text/plain', size: 100 }, { type: 'image/jpeg', size: 20 * 1024 * 1024 + 1 }, { type: '', size: 20 * 1024 * 1024 + 1 }]) {
+  test(`rejects invalid photo before image allocation: ${file.type || '(empty)'}, ${file.size} bytes`, async t => {
+    const h = fileHarness(t);
+    await assert.rejects(h.scanner.file(file, 'store'), /20MB以下のQR画像/);
+    assert.equal(h.create.mock.callCount(), 0);
+    assert.deepEqual(h.values, []);
+  });
+}
+
+test('portrait photo replaces live camera and respects the 1600px longest edge', async t => {
+  const h = fileHarness(t, { width: 3024, height: 4032 });
+  await h.scanner.start('store');
+  await h.scanner.file({ type: 'image/jpeg', size: 12 * 1024 * 1024 }, 'ina');
+  assert.equal(h.track.stop.mock.callCount(), 1);
+  assert.equal(h.video.srcObject, null);
+  assert.equal(h.canvas.width, 1200); assert.equal(h.canvas.height, 1600);
+  assert.deepEqual(h.values, [['scanner-test', 'ina']]);
+});
+
+test('unsupported or corrupt photo reports decode failure and releases object URL', async t => {
+  const h = fileHarness(t, { broken: true });
+  await assert.rejects(h.scanner.file({ type: 'image/heic', size: 100 }, 'store'), /画像を開けません/);
+  assert.equal(h.revoke.mock.callCount(), 1);
+  assert.deepEqual(h.values, []);
+});
+
+test('cancelled photo selection does not allocate an image', async t => {
+  const h = fileHarness(t);
+  await h.scanner.file(undefined, 'store');
+  assert.equal(h.create.mock.callCount(), 0);
+  assert.deepEqual(h.values, []);
+});
+
+test('stop during photo loading prevents accepting stale QR and releases object URL', async t => {
+  const h = fileHarness(t);
+  const reading = h.scanner.file({ type: '', size: 100 }, 'store');
+  h.scanner.stop(); await reading;
+  assert.deepEqual(h.values, []);
+  assert.equal(h.revoke.mock.callCount(), 1);
 });

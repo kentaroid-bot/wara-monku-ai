@@ -10,6 +10,10 @@ const origin = 'https://wara.test';
 const key = '11111111111111111111111111111111';
 const invoice = `${origin}/shop/?group=${key}&store=${key}&ina=2`;
 const qr = await QRCode.toBuffer(invoice, { margin: 4, scale: 6 });
+const largeQr = await QRCode.toBuffer(invoice, { margin: 4, scale: 60 });
+// Valid large PNG plus trailing padding exercises both >10 MiB and >1600px paths.
+const photo = Buffer.concat([largeQr, Buffer.alloc(12 * 1024 * 1024 - largeQr.length)]);
+const appGuidance = /Phantom等のアプリ内ブラウザでは「カメラで撮影」または「QR画像を選ぶ」をご利用ください。/;
 const browser = await chromium.launch({ executablePath: process.env.CHROME_BIN });
 try {
   for (const width of [320, 390]) {
@@ -49,9 +53,18 @@ try {
     await page.locator('summary').click();
     const status = page.getByRole('status'), video = page.locator('video');
     assert.match(await status.innerText(), /「許可」を選んで/);
+    assert.match(await status.innerText(), appGuidance);
+    const capture = page.getByLabel('カメラで撮影', { exact: true });
+    const picker = page.getByLabel('QR画像を選ぶ', { exact: true });
+    assert.equal(await capture.getAttribute('capture'), 'environment');
+    assert.equal(await capture.getAttribute('accept'), 'image/*');
+    assert.equal(await picker.getAttribute('capture'), null);
+    const captureBounds = await page.locator('label.camera-capture').boundingBox();
+    assert.ok(captureBounds.height >= 44 && captureBounds.x >= 0 && captureBounds.x + captureBounds.width <= width);
     await page.getByRole('button', { name: 'カメラを開く', exact: true }).click();
     await page.waitForFunction(() => document.querySelector('[role=status]').textContent.includes('アドレスバー'));
     assert.match(await status.innerText(), /「許可」にして再試行.*QR画像を選ぶ/);
+    assert.match(await status.innerText(), appGuidance);
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
     if (process.env.SCANNER_SCREENSHOT_DIR) {
       await mkdir(process.env.SCANNER_SCREENSHOT_DIR, { recursive: true });
@@ -79,9 +92,31 @@ try {
     assert.equal(await video.evaluate(v => v.srcObject), null);
     await page.evaluate(() => window.accepted = null);
     // The image path remains usable after permission and playback failures.
-    await page.locator('input[type=file]').setInputFiles({ name: 'invoice.png', mimeType: 'image/png', buffer: qr });
+    await picker.setInputFiles({ name: 'invoice.png', mimeType: 'image/png', buffer: qr });
     await page.waitForFunction(() => !!window.accepted);
     assert.equal(await page.evaluate(() => accepted), invoice);
+    // Tap the capture label and use the actual file chooser event, without getUserMedia.
+    const callsBeforeCapture = await page.evaluate(() => calls.length);
+    for (let attempt = 0; attempt < 2; attempt++) {
+      await page.evaluate(() => window.accepted = null);
+      const chooserEvent = page.waitForEvent('filechooser');
+      await page.locator('label.camera-capture').tap();
+      const chooser = await chooserEvent;
+      await chooser.setFiles({ name: 'camera-photo.png', mimeType: 'image/png', buffer: photo });
+      await page.waitForFunction(() => !!window.accepted);
+      assert.equal(await page.evaluate(() => accepted), invoice);
+      assert.equal(await capture.inputValue(), '');
+      assert.equal(await page.locator('canvas').evaluate(c => Math.max(c.width, c.height)), 1600);
+    }
+    assert.equal(await page.evaluate(() => calls.length), callsBeforeCapture);
+    await page.evaluate(() => window.accepted = null);
+    await capture.setInputFiles({ name: 'broken.heic', mimeType: 'image/heic', buffer: Buffer.from('invalid image') });
+    await page.waitForFunction(() => document.querySelector('[role=status]').textContent.includes('画像を開けません'));
+    assert.equal(await page.evaluate(() => accepted), null);
+    await capture.setInputFiles({ name: 'invoice.png', mimeType: 'image/png', buffer: qr });
+    await page.waitForFunction(() => !!window.accepted);
+    assert.equal(await page.evaluate(() => accepted), invoice);
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
     // Closing and removing a scanner stop the camera as well.
     await page.evaluate(() => window.mode = 'ok');
     await page.getByRole('button', { name: 'カメラを開く', exact: true }).click();
@@ -92,7 +127,7 @@ try {
     await page.locator('details').evaluate(el => el.remove());
     await page.waitForFunction(() => streams.every(s => s.getTracks().every(t => t.readyState === 'ended')));
     assert.deepEqual(errors, []);
-    console.log(`PASS scanner mobile ${width}px: permission, autoplay/abort, fallback, video/file QR, stop/close/remove`);
+    console.log(`PASS scanner mobile ${width}px: guidance, capture tap/reselection, 12 MiB/large photo, corrupt image recovery, permission, autoplay/abort, fallback, video/file QR, stop/close/remove`);
     await page.close();
   }
 } finally { await browser.close(); }

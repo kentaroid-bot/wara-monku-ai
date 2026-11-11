@@ -51,7 +51,7 @@ input:not([type="radio"]):not([type="checkbox"]), select, textarea {
   display: block; width: 100%; margin-top: .25rem; background: var(--paper); color: var(--ink);
   border: 1px solid var(--quiet); border-radius: .65rem; padding: .65rem; font: inherit; font-size: 1rem;
 }
-button, .action {
+button, .action, .button.camera-capture {
   display: inline-flex; align-items: center; justify-content: center; text-align: center; border: 1px solid transparent;
   border-radius: .85rem; padding: .65rem .95rem; min-height: 44px; margin: .15rem .2rem .15rem 0;
   background: linear-gradient(135deg, color-mix(in srgb, #245e43, #f43f5e var(--blush)), color-mix(in srgb, #1b4d36, #e11d48 var(--blush)));
@@ -59,7 +59,10 @@ button, .action {
   box-shadow: 0 4px 14px -2px color-mix(in srgb, #1b4d363b, rgba(244, 63, 94, 0.4) var(--blush));
   transition: transform .15s ease, box-shadow .2s ease;
 }
-button:active, .action:active { transform: scale(0.97); }
+button:active, .action:active, .camera-capture:active { transform: scale(0.97); }
+.camera-capture { position: relative; overflow: hidden; }
+.camera-capture input[type="file"] { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: pointer; }
+.camera-capture:focus-within { outline: 3px solid #aa863a; outline-offset: 2px; }
 button:disabled { opacity: .6; cursor: default; }
 button.secondary, .action.secondary { background: var(--tile); color: var(--leaf); border-color: color-mix(in srgb, var(--line), #fda4af var(--blush)); box-shadow: none; }
 button.theme { width: 44px; border-radius: 50%; background: var(--wash); color: var(--ink); font-size: 1.15rem; }
