@@ -1,3 +1,4 @@
+import { requestPanel, shopRequestAPI } from "./shop-requests.mjs";
 import { shopProfiles, shopTitle, shopDetails, shopEditor } from "./shop-profile.mjs";
 import { memoFields, bindMemoChips } from "./memo-ui.mjs";
 import { paymentMemo } from "../shared/payment-memo.mjs";
@@ -73,11 +74,14 @@ export async function dashboard(ctx) {
   const register = (g, shop) =>
     "/shop/?" + new URLSearchParams({ group: g, store: shop });
   const profiles = shopProfiles(profile, wallet);
+  const requests = shopRequestAPI(profile, wallet);
   let s = null;
   const refresh = async (force = false) => {
     info("Devnetを読み込み中…");
     try {
-      s = await loadState(who, force);
+      const requestedShop = path === "/shop" && params.has("group") && params.has("store")
+        ? {group:params.get("group"), store:params.get("store")} : null;
+      s = await loadState(who, force, requestedShop);
       let profileError = "";
       try { await profiles.load(s); }
       catch { profileError = "店舗プロフィールを取得できません。「更新」で再試行できます。"; }
@@ -232,9 +236,10 @@ export async function dashboard(ctx) {
         )
         .join("") || "<p>まだ公認店舗はありません。</p>") +
       "</section>";
+    if (owner || own?.status === 2) out += '<section data-shop-requests></section>';
     if (owner)
       out +=
-        '<form id="certify"><h2>店舗を公認</h2>' +
+        '<details><summary>直接アドレスを指定して公認</summary><form id="certify">' +
         inp("name", "店舗名", 'maxlength="40"') +
         inp(
           "merchant",
@@ -242,13 +247,9 @@ export async function dashboard(ctx) {
           'placeholder="店舗のアカウント画面にある公開アドレス"',
         ) +
         btn("公認してレジを作る") +
-        "</form>";
-    else
-      out +=
-        '<section><h2>お店（レジ）を開きたい方へ</h2>' +
-        '<p>このコミュニティでお店を開くには、開設者にお店として公認してもらう必要があります。</p>' +
-        '<p><a href="/account/">アカウント</a>にある「公開アドレス」を開設者に伝えて、公認店舗として登録してもらいましょう。</p>' +
-        '</section>';
+        "</form></details>";
+    if (!owner && own?.status !== 2)
+      out += '<section><h2>お店（レジ）を開きたい方へ</h2><p>コミュニティに参加すると、この画面から店舗の開設を申請できます。</p></section>';
     out +=
       "<section><h2>通貨同盟</h2><p>双方が承認した地域のWARAを額面どおり受け入れます。</p>" +
       s.groups
@@ -288,6 +289,10 @@ export async function dashboard(ctx) {
         .join("") +
       "</section>";
     ui(out);
+    const requestBox = content.querySelector("[data-shop-requests]");
+    if (requestBox) requestPanel(requestBox, {api:requests, group:id, who, owner, esc:h, info, register,
+      certify: row => send([certify(program, who, id, pk(row.merchant), row.title)], [], "店舗を公認してレジを開設しました。"),
+    });
     if (owner) {
       const f = content.querySelector("#policy");
       f.elements.visibility.value = g.visibility;

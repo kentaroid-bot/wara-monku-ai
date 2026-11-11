@@ -426,9 +426,11 @@ export default {
       const action = url.pathname.match(
         /^\/api\/auth\/(challenge|resolve|activate|signin)$/,
       )?.[1];
-      const memberOp = env.WALLET_ACCESS === "enabled" && (relayOp || url.pathname.match(/^\/api\/member\/([a-z-]+)$/)?.[1]);
+      const queue = url.pathname === "/api/v3/shop-requests";
+      const memberOp = env.WALLET_ACCESS === "enabled" && ((queue && "shopRequests") || relayOp || url.pathname.match(/^\/api\/member\/([a-z-]+)$/)?.[1]);
       if (!action && !memberOp) fail(404, "APIが見つかりません。");
-      if (req.method !== "POST") fail(405, "POSTを使用してください。");
+      if (queue ? !["GET","POST","DELETE"].includes(req.method) : req.method !== "POST")
+        fail(405, "この操作方法には対応していません。");
       const origin = req.headers.get("Origin");
       if (origin && origin !== url.origin)
         fail(403, "同じサイトから操作してください。");
@@ -441,7 +443,9 @@ export default {
         !env.DB
       )
         fail(503, "この環境の認証APIは準備中です。");
-      const b = await bodyOf(req, google ? 8192 : maxBody);
+      const b = queue && req.method === "GET"
+        ? {group:url.searchParams.get("group"), after:url.searchParams.get("after"), merchant:url.searchParams.get("merchant")}
+        : await bodyOf(req, google ? 8192 : maxBody);
       const key = await crypto.subtle.importKey(
         "raw",
         enc.encode(env.AUTH_PEPPER),

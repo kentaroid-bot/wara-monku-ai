@@ -197,6 +197,7 @@ test("signed-in zero-SOL buyer joins, spends and transfers through Worker/D1 and
     "0002_wallet_access",
     "0003_relay_receipts",
     "0004_shop_profiles",
+    "0005_shop_requests",
   ]) {
     const sql = await readFile("migrations/" + file + ".sql", "utf8");
     for (const stmt of sql
@@ -357,6 +358,58 @@ test("signed-in zero-SOL buyer joins, spends and transfers through Worker/D1 and
     assert.equal((await call("shop-save",{...data,group:String(f),store:String(user),session})).status,200);
     assert.deepEqual(await read(familyId),[]);assert.deepEqual(await read(familyId,{access}),[]);
     assert.equal((await read(familyId,{session}))[0].title,data.title);
+  });
+  await t.test("shop request queue uses authenticated membership, survives retries and resolves against the certified PDA", async () => {
+    const path = base + "/api/v3/shop-requests", group = String(g);
+    const buyerAuth = "Bearer " + session;
+    async function signedAccess(pair, purpose = "shop-requests") {
+      const address = String(pair.publicKey);
+      const {ticket, audience} = await (await post("/api/member/shop-challenge", {address,purpose})).json();
+      const proof = Buffer.from(ed25519.sign(walletMessage(audience,purpose,ticket,address),pair.secretKey.slice(0,32))).toString("base64");
+      return "ShopRequest " + (await (await post("/api/member/shop-access", {ticket,proof})).json()).access;
+    }
+    const adminAuth = await signedAccess(owner);
+    const call = (method, auth, extra = {}) => {
+      const headers = auth ? {Authorization:auth} : {};
+      const data = {group,...extra};
+      if (method === "GET") return runtime.dispatchFetch(path+"?"+new URLSearchParams(data), {headers});
+      return runtime.dispatchFetch(path,{method,headers:{...headers,"Content-Type":"application/json"},body:JSON.stringify(data)});
+    };
+    const pending = async (auth,extra) => {
+      const res = await call("GET",auth,extra);
+      assert.equal(res.status,200,await res.clone().text());
+      return (await res.json()).requests;
+    };
+    assert.equal((await call("GET",null)).status,401);
+    assert.equal((await call("GET",await signedAccess(owner,"shop-profile"))).status,401);
+    assert.equal((await call("POST",await signedAccess(shop),{title:"未参加"})).status,403);
+    assert.equal((await call("POST",buyerAuth,{group:String(mint),title:"偽の地域"})).status,404);
+    assert.equal((await call("POST",buyerAuth,{merchant:String(shop.publicKey),title:"別の店"})).status,403);
+    assert.equal((await call("POST",buyerAuth,{title:"🌾".repeat(31)})).status,400);
+    assert.equal((await call("POST",adminAuth,{title:"運営の店"})).status,200);
+    assert.equal((await call("POST",buyerAuth,{title:"希望店"})).status,200);
+    assert.equal((await call("POST",buyerAuth,{title:"二重申請"})).status,200);
+    const [first] = await pending(buyerAuth);
+    assert.equal(first.title,"希望店");
+    assert.equal((await pending(buyerAuth)).length,1);
+    assert.equal((await pending(adminAuth)).length,2);
+    assert.equal((await call("GET",buyerAuth,{merchant:String(owner.publicKey)})).status,403);
+    assert.equal((await call("DELETE",buyerAuth,{...first,result:"declined"})).status,403);
+    assert.equal((await call("DELETE",adminAuth,{...first,result:"certified"})).status,409);
+    assert.equal((await call("DELETE",adminAuth,{...first,result:"declined"})).status,200);
+    assert.equal((await pending(buyerAuth)).length,0);
+    assert.equal((await call("POST",buyerAuth,{title:"春の珈琲屋"})).status,200);
+    const [current] = await pending(adminAuth,{merchant:String(user)});
+    assert.notEqual(first.request_id,current.request_id);
+    assert.equal((await call("DELETE",adminAuth,{...first,result:"declined"})).status,409);
+    admin([certify(program,owner.publicKey,g,current.merchant,current.title)]);
+    const certified = account(addr(program,"s3",g,user));
+    assert.equal(certified.data.subarray(65).toString(),"春の珈琲屋");
+    // If the browser closes before DELETE, a later GET reconciles the queue.
+    assert.deepEqual(await pending(buyerAuth),[]);
+    assert.equal((await call("DELETE",adminAuth,{...current,result:"certified"})).status,200);
+    assert.equal((await call("POST",buyerAuth,{title:"もう一店"})).status,409);
+    assert.deepEqual((await pending(adminAuth)).map(r=>r.title),["運営の店"]);
   });
   // A configured service explicitly reporting no sponsor must use the
   // original balance check before asking the wallet to sign.

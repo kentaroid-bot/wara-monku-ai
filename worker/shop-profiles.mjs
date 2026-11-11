@@ -3,12 +3,12 @@ import { addr, parseRow, pk } from "../mainstream/protocol.mjs";
 import { shopFields } from "../shared/shop-profile.mjs";
 
 const program = pk(manifest.program);
-function address(value, fail) {
+export function address(value, fail) {
   try { if (typeof value === "string" && pk(value).toBase58() === value) return value; } catch {}
   fail(400, "アドレスの形式を確認してください。");
 }
 
-function decode(account, id) {
+export function decode(account, id) {
   return account?.owner.equals(program) ? parseRow(account.data, id) : null;
 }
 

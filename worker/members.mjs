@@ -1,3 +1,4 @@
+import { shopRequests } from "./shop-requests.mjs";
 import { readShops, saveShop } from "./shop-profiles.mjs";
 import { requireFreshBlockhash, workerConnection } from "./devnet-rpc.mjs";
 import { feeKey, relayPayment } from "./relay.mjs";
@@ -115,12 +116,21 @@ export async function memberRequest(op, b, ctx) {
   }
   if (op === "shop-challenge") {
     if (!validSecret(b.address) || bs58.decode(b.address).length !== 32) bad();
-    return {ticket:await ticket("shop-proof", {address:b.address}), audience:origin};
+    const purpose = b.purpose ?? "shop-profile";
+    if (!["shop-profile","shop-requests"].includes(purpose)) bad();
+    return {ticket:await ticket("shop-proof", {address:b.address,purpose}), audience:origin};
   }
   if (op === "shop-access") {
-    const {address} = await readTicket(b.ticket, "shop-proof");
-    await checkSignature(bs58.decode(address), b.proof, walletMessage(origin, "shop-profile", b.ticket, address));
-    return {access:await ticket("shop-access", {address}, 900)};
+    const {address, purpose = "shop-profile"} = await readTicket(b.ticket, "shop-proof");
+    await checkSignature(bs58.decode(address), b.proof, walletMessage(origin, purpose, b.ticket, address));
+    return {access:await ticket(purpose === "shop-profile" ? "shop-access" : "shop-requests", {address}, 900)};
+  }
+  if (op === "shopRequests") {
+    const auth = /^(Bearer|ShopRequest) ([1-9A-HJ-NP-Za-km-z]{32,44})$/.exec(req.headers.get("Authorization") || "");
+    if (!auth) denied();
+    const viewer = auth[1] === "Bearer" ? (await session(auth[2])).m.address
+      : (await readTicket(auth[2], "shop-requests", false)).address;
+    return shopRequests(db, workerConnection(env), realm, viewer, req.method, b, fail);
   }
   if (op === "shop-profiles" || op === "shop-save") {
     const viewer = b.session ? (await session()).m.address

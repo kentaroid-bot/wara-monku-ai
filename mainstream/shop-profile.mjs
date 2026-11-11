@@ -3,25 +3,30 @@ import { memberApi } from "./member-ui.mjs";
 import { walletMessage } from "../shared/member-wire.mjs";
 import { toBase64 } from "../shared/auth-wire.mjs";
 
-export function shopProfiles(profile, wallet) {
+export function shopWalletAccess(profile, wallet, purpose) {
   let access, expires = 0;
   async function authenticate() {
     if (profile.managed || (access && Date.now() < expires)) return;
-    const {ticket,audience} = await memberApi("shop-challenge",{address:profile.address});
+    const {ticket,audience} = await memberApi("shop-challenge",{address:profile.address, purpose});
     if (audience !== location.origin) throw Error("署名先を確認してください。");
     const signer = await wallet();
-    const {signature} = await signer.signMessage(walletMessage(audience,"shop-profile",ticket,profile.address),"utf8");
+    const {signature} = await signer.signMessage(walletMessage(audience,purpose,ticket,profile.address),"utf8");
     ({access} = await memberApi("shop-access",{ticket,proof:toBase64(signature)}));
     expires = Date.now()+14*60_000;
   }
+  return {authenticate, token:() => Date.now() < expires ? access : undefined};
+}
+
+export function shopProfiles(profile, wallet) {
+  const auth = shopWalletAccess(profile, wallet, "shop-profile");
   return {
-    authenticate,
+    authenticate:auth.authenticate,
     async load(state) {
       const visible = new Set(state.groups.map(g=>g.id));
       const stores = state.rows.filter(row=>row.tag === 32 && (visible.has(row.group) || row.to === profile.address));
       for (let i=0; i<stores.length; i+=32) {
         const chunk = stores.slice(i,i+32);
-        const data = await memberApi("shop-profiles",{shops:chunk.map(row=>row.id), access:Date.now()<expires ? access : undefined});
+        const data = await memberApi("shop-profiles",{shops:chunk.map(row=>row.id), access:auth.token()});
         const profiles = new Map(data.profiles.map(p=>[p.shop,p]));
         for (const row of chunk) {
           const saved = profiles.get(row.id);
@@ -31,8 +36,8 @@ export function shopProfiles(profile, wallet) {
     },
     async save(store, values) {
       const fields = shopFields({...values, is_test:values.is_test === "on"});
-      await authenticate();
-      return memberApi("shop-save",{...fields, group:store.group,store:store.to,revision:store.revision || 0,access});
+      await auth.authenticate();
+      return memberApi("shop-save",{...fields, group:store.group,store:store.to,revision:store.revision || 0,access:auth.token()});
     },
   };
 }

@@ -27,7 +27,7 @@ async function ready() {
     throw e;
   }));
 }
-export async function loadState(address, force = false) {
+export async function loadState(address, force = false, requestedShop = null) {
   await ready();
   const who = pk(address);
   let cached;
@@ -35,7 +35,8 @@ export async function loadState(address, force = false) {
     cached = JSON.parse(sessionStorage.getItem(registryKey));
   } catch {}
   let rows;
-  if (!force && cached?.at > Date.now() - 45000 && Array.isArray(cached.rows))
+  if (!force && cached?.at > Date.now() - 45000 && Array.isArray(cached.rows) &&
+      (!requestedShop || cached.rows.some(r => r.tag === 32 && r.group === requestedShop.group && r.to === requestedShop.store)))
     rows = cached.rows;
   else {
     const all = await rpc.getProgramAccounts(program);
