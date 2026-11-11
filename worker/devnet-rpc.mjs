@@ -2,7 +2,8 @@ import { Connection } from "@solana/web3.js";
 import { assertDevnet } from "../app/protocol.mjs";
 
 // The Solana public endpoint refuses requests from Workers' shared egress.
-export const workerDevnetUrl = "https://solana-devnet.api.onfinality.io/public";
+import { publicDevnetFallback as workerDevnetUrl } from "../shared/devnet.mjs";
+export { workerDevnetUrl };
 
 // Replay only an explicit rate-limit response, with the original RPC body
 // (and therefore the identical transaction signature for sendTransaction).

@@ -1,19 +1,17 @@
-import bs58 from "bs58";
+import { Connection } from "@solana/web3.js";
 import { Buffer } from "buffer";
 import { rpc, program } from "./network.mjs";
 import { pk } from "./protocol.mjs";
+import { publicDevnetFallback } from "../shared/devnet.mjs";
 export function entries(tx, sig, address, storeId = null) {
   if (!tx?.meta || tx.meta.err) return [];
   const out = [];
-  for (const ix of tx.transaction.message.instructions) {
-    if (
-      String(ix.programId) !== String(program) ||
-      !ix.data ||
-      !Array.isArray(ix.accounts)
-    )
-      continue;
-    const d = Buffer.from(bs58.decode(ix.data)),
-      keys = ix.accounts.map(String),
+  const message = tx.transaction.message;
+  const accounts = message.getAccountKeys({ accountKeysFromLookups: tx.meta.loadedAddresses });
+  for (const ix of message.compiledInstructions) {
+    if (!accounts.get(ix.programIdIndex)?.equals(program)) continue;
+    const d = Buffer.from(ix.data),
+      keys = ix.accountKeyIndexes.map(index => String(accounts.get(index))),
       k = d[0] === 14,
       w = d[0] === 15;
     if ((!k && !w) || d.length !== (k ? 25 : 9)) continue;
@@ -54,36 +52,84 @@ export function storyReceipt(r, h, by, shopName) {
     <a target="_blank" rel="noopener" href="https://explorer.solana.com/tx/${encodeURIComponent(r.sig)}?cluster=devnet">取引を確認 ↗</a></small></div></li>`;
 }
 // The wallet and shop share the same confirmed receipts as the warmth indicator.
-export function paymentHistory(address, onPayment) {
-  let cached = new Map();
+const readOptions = { commitment: "confirmed", disableRetryOnRateLimit: true };
+const historyNodes = [new Connection(rpc.rpcEndpoint, readOptions), new Connection(publicDevnetFallback, readOptions)];
+const detailsPerRead = 5;
+const cooldownMs = 60_000;
+const isRateLimit = error => /\b429\b|too many requests/i.test(error?.message);
+
+export function paymentHistory(address, onPayment, [primary, fallback] = historyNodes) {
+  const wallet = pk(address);
+  let cache = new Map();
+  let attempt = 0;
+  let primaryRetryAfter = 0;
+  let retryAfter = 0;
   let pending;
-  async function read() {
-    const signatures = await rpc.getSignaturesForAddress(pk(address), { limit: 20 });
-    const valid = signatures.filter(item => !item.err);
-    const missing = valid.filter(item => !cached.has(item.signature));
-    const transactions = missing.length ? await rpc.getParsedTransactions(
-      missing.map(item => item.signature), { maxSupportedTransactionVersion: 0 },
-    ) : [];
-    missing.forEach(({ signature, blockTime }, i) => {
-      const tx = transactions[i];
-      if (!tx) return; // The RPC may still be indexing it.
-      const rows = entries(tx, signature, address);
-      for (const row of rows) row.time ??= blockTime;
-      cached.set(signature, rows);
-    });
-    // Bound the cache to the same twenty signatures shown in the wallet.
-    cached = new Map(valid.filter(item => cached.has(item.signature))
-      .map(({ signature }) => [signature, cached.get(signature)]));
-    const rows = [...cached.values()].flat();
+
+  async function request(method, ...args) {
+    if (fallback && Date.now() < primaryRetryAfter) return fallback[method](...args);
+    try {
+      return await primary[method](...args);
+    } catch (error) {
+      if (!fallback || !isRateLimit(error)) throw error;
+      primaryRetryAfter = Date.now() + cooldownMs;
+      return fallback[method](...args);
+    }
+  }
+
+  function snapshot(incomplete = false) {
+    const rows = [];
+    for (const item of cache.values()) {
+      if (item.rows) rows.push(...item.rows);
+      else incomplete = true;
+    }
     const latest = Math.max(0, ...rows.map(row => row.time || 0));
     if (latest) onPayment(latest * 1000);
-    return { rows, indexing: cached.size < valid.length };
+    return { rows, indexing: incomplete };
+  }
+
+  function rateLimited(error) {
+    if (!isRateLimit(error)) return false;
+    retryAfter = Date.now() + cooldownMs;
+    return true;
+  }
+
+  async function read() {
+    if (Date.now() < retryAfter) return snapshot(true);
+    let signatures;
+    try {
+      signatures = await request("getSignaturesForAddress", wallet, { limit: 20 }, "confirmed");
+    } catch (error) {
+      rateLimited(error);
+      return snapshot(true);
+    }
+    const valid = signatures.filter(item => !item.err);
+    cache = new Map(valid.map(({ signature }) => [signature, cache.get(signature) ?? { attempt: 0 }]));
+    // Newest untried signatures first. A missing or unreadable receipt must not
+    // occupy one of the first five slots on every subsequent refresh.
+    const missing = valid.filter(item => !cache.get(item.signature).rows)
+      .sort((a, b) => cache.get(a.signature).attempt - cache.get(b.signature).attempt);
+    for (const { signature, blockTime } of missing.slice(0, detailsPerRead)) {
+      const item = cache.get(signature);
+      item.attempt = ++attempt;
+      try {
+        const tx = await request("getTransaction", signature, { commitment: "confirmed", maxSupportedTransactionVersion: 0 });
+        if (!tx?.meta || tx.transaction.signatures[0] !== signature) continue;
+        const rows = entries(tx, signature, address);
+        for (const row of rows) row.time ??= blockTime;
+        item.rows = rows;
+      } catch (error) {
+        if (rateLimited(error)) break;
+      }
+    }
+    return snapshot();
   }
   return () => pending ??= read().finally(() => { pending = null; });
 }
 
 export function showHistory(el, readHistory, storeId, h, by, shopName) {
   const section = document.createElement("section");
+  section.dataset.paymentHistory = "";
   section.innerHTML = '<div class="section-head"><h2>ありがとうの履歴</h2><small>直近の循環</small></div><ol class="stories"></ol><p role="status"></p><button type="button" class="secondary">履歴を更新</button>';
   el.append(section);
   const body = section.querySelector("ol"), status = section.querySelector('[role="status"]'),
@@ -95,14 +141,15 @@ export function showHistory(el, readHistory, storeId, h, by, shopName) {
       const result = await readHistory();
       const rows = storeId ? result.rows.filter(row => row.incoming && row.group === storeId) : result.rows;
       body.innerHTML = rows.map(r => storyReceipt(r, h, by, shopName)).join("");
-      status.textContent = rows.length ? "" : "直近20件に確定したお会計はありません。";
-      if (result.indexing) status.textContent += " 索引処理中の取引があります。";
+      status.textContent = result.indexing ? "最新の取引を一部照会中です。しばらくしてから続きを確認できます。" :
+        rows.length ? "" : "直近20件に確定したお会計はありません。";
     } catch {
       status.textContent = "履歴を読み込めませんでした。時間をおいて更新してください。";
     } finally {
       btn.disabled = false;
     }
   }
+  section.addEventListener("refresh-history", refresh);
   btn.onclick = refresh;
   refresh();
 }

@@ -180,10 +180,14 @@ async function render() {
   const readHistory = profile && paymentHistory(profile.address, recordPayment);
   if (readHistory) {
     const checkReceipts = () => {
-      if (!document.hidden) void readHistory().catch(() => {});
+      if (document.hidden) return;
+      const panel = el.querySelector("[data-payment-history]");
+      if (panel) panel.dispatchEvent(new Event("refresh-history"));
+      else void readHistory().catch(() => {});
     };
-    checkReceipts();
-    setInterval(checkReceipts, 30_000);
+    // Wallet and shop history panels fetch on mount.
+    if (!["/", "/user", "/shop"].includes(path)) checkReceipts();
+    setInterval(checkReceipts, 60_000);
     document.addEventListener("visibilitychange", checkReceipts);
   }
   if (path === "/support") {
