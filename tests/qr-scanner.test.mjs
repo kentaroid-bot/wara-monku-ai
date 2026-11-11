@@ -149,8 +149,8 @@ for (const type of ['', 'image/heic', 'image/jpeg', 'image/png', 'image/webp']) 
     const h = fileHarness(t);
     await h.scanner.file({ type, size: 20 * 1024 * 1024 }, 'confirm');
     assert.deepEqual(h.values, [['scanner-test', 'confirm']]);
-    assert.equal(h.canvas.width, 1600); assert.equal(h.canvas.height, 1200);
-    assert.deepEqual(h.ctx.drawImage.mock.calls[0].arguments.slice(1), [0, 0, 1600, 1200]);
+    assert.equal(h.canvas.width, 900); assert.equal(h.canvas.height, 675);
+    assert.deepEqual(h.ctx.drawImage.mock.calls[0].arguments.slice(1), [0, 0, 4032, 3024, 0, 0, 900, 675]);
     assert.deepEqual(h.revoke.mock.calls[0].arguments, ['blob:scanner-test']);
   });
 }
@@ -164,13 +164,13 @@ for (const file of [{ type: 'text/plain', size: 100 }, { type: 'image/jpeg', siz
   });
 }
 
-test('portrait photo replaces live camera and respects the 1600px longest edge', async t => {
+test('portrait photo replaces live camera and respects the 900px first pass', async t => {
   const h = fileHarness(t, { width: 3024, height: 4032 });
   await h.scanner.start('store');
   await h.scanner.file({ type: 'image/jpeg', size: 12 * 1024 * 1024 }, 'ina');
   assert.equal(h.track.stop.mock.callCount(), 1);
   assert.equal(h.video.srcObject, null);
-  assert.equal(h.canvas.width, 1200); assert.equal(h.canvas.height, 1600);
+  assert.equal(h.canvas.width, 675); assert.equal(h.canvas.height, 900);
   assert.deepEqual(h.values, [['scanner-test', 'ina']]);
 });
 
@@ -194,4 +194,50 @@ test('stop during photo loading prevents accepting stale QR and releases object 
   h.scanner.stop(); await reading;
   assert.deepEqual(h.values, []);
   assert.equal(h.revoke.mock.callCount(), 1);
+});
+
+test('photo reports analysis synchronously before loading finishes', async t => {
+  const h = fileHarness(t);
+  const reading = h.scanner.file({ type: 'image/png', size: 100 }, 'store');
+  assert.deepEqual(h.status, ['QRコードを解析しています…']);
+  assert.deepEqual(h.values, []);
+  await reading;
+});
+
+// Supply a blank frame until the chosen pass, then a real decodable QR frame.
+// Browser tests separately exercise actual canvas resampling of large images.
+for (const successPass of [1, 2, 3, 4, null]) {
+  test(`photo multipass ${successPass ? `accepts pass ${successPass} and stops` : 'reports failure only after all four passes'}`, async t => {
+    const h = fileHarness(t, { width: 4000, height: 3000 });
+    const qrFrame = h.ctx.getImageData();
+    const blankFrame = { ...qrFrame, data: new Uint8ClampedArray(qrFrame.data.length).fill(255) };
+    const passes = [];
+    h.ctx.getImageData = () => {
+      passes.push([h.canvas.width, h.canvas.height]);
+      assert.equal(h.ctx.imageSmoothingEnabled, true);
+      assert.equal(h.ctx.imageSmoothingQuality, 'high');
+      return passes.length === successPass ? qrFrame : blankFrame;
+    };
+    const reading = h.scanner.file({ type: 'image/jpeg', size: 100 }, 'confirm');
+    if (successPass) {
+      await reading;
+      assert.deepEqual(h.values, [['scanner-test', 'confirm']]);
+    } else {
+      await assert.rejects(reading, /QRが見つかりません。余白を含む、鮮明なQR画像を選んでください。/);
+      assert.deepEqual(h.values, []);
+    }
+    assert.deepEqual(passes, [[900, 675], [900, 675], [600, 450], [1400, 1050]].slice(0, successPass || 4));
+    const draws = h.ctx.drawImage.mock.calls.map(c => c.arguments);
+    assert.ok(draws.every(args => args[0] === draws[0][0]));
+    if (draws.length > 1) assert.deepEqual(draws[1].slice(1), [600, 450, 2800, 2100, 0, 0, 900, 675]);
+    for (const i of [0, 2, 3].filter(i => i < draws.length)) assert.deepEqual(draws[i].slice(1, 5), [0, 0, 4000, 3000]);
+    assert.equal(h.revoke.mock.callCount(), 1);
+  });
+}
+
+test('small photo is decoded without upscaling', async t => {
+  const h = fileHarness(t, { width: 300, height: 200 });
+  await h.scanner.file({ type: 'image/png', size: 100 }, 'store');
+  assert.equal(h.canvas.width, 300); assert.equal(h.canvas.height, 200);
+  assert.deepEqual(h.values, [['scanner-test', 'store']]);
 });

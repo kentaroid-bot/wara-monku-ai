@@ -15,6 +15,20 @@ export function createScanner({video,canvas,onValue,onStatus,onStop,imageGuidanc
   const frame=context.getImageData(0,0,canvas.width,canvas.height);
   return jsQR(frame.data,frame.width,frame.height,{inversionAttempts:'attemptBoth'})?.data;
  }
+ function readPhoto(source){
+  const width=source.naturalWidth,height=source.naturalHeight;
+  // Always resample the original photo, not the previous pass's canvas.
+  for(const [limit,fraction] of [[900,1],[900,0.7],[600,1],[1400,1]]){
+   const cropWidth=width*fraction,cropHeight=height*fraction;
+   const scale=Math.min(1,limit/Math.max(cropWidth,cropHeight));
+   canvas.width=Math.max(1,Math.round(cropWidth*scale));canvas.height=Math.max(1,Math.round(cropHeight*scale));
+   context.imageSmoothingEnabled=true;context.imageSmoothingQuality='high';
+   context.drawImage(source,(width-cropWidth)/2,(height-cropHeight)/2,cropWidth,cropHeight,0,0,canvas.width,canvas.height);
+   const frame=context.getImageData(0,0,canvas.width,canvas.height);
+   const value=jsQR(frame.data,frame.width,frame.height,{inversionAttempts:'attemptBoth'})?.data;
+   if(value)return value;
+  }
+ }
  async function start(kind){
   stop();const id=session;
   if(!navigator.mediaDevices?.getUserMedia)throw Error('このブラウザではカメラを使えません。'+imageGuidance);
@@ -62,11 +76,12 @@ export function createScanner({video,canvas,onValue,onStatus,onStop,imageGuidanc
  }
  async function file(file,kind){
   stop();const id=session;if(!file)return;
+  onStatus('QRコードを解析しています…');
   if((file.type&&!file.type.startsWith('image/'))||file.size>20*1024*1024)throw Error('20MB以下のQR画像を選んでください。');
   const url=URL.createObjectURL(file),img=new Image();
   try{await new Promise((resolve,reject)=>{img.onload=resolve;img.onerror=()=>reject(Error('画像を開けません。'));img.src=url;});
    if(id!==session)return;
-   const value=read(img,img.naturalWidth,img.naturalHeight);if(!value)throw Error('QRが見つかりません。余白を含む、鮮明なQR画像を選んでください。');
+   const value=readPhoto(img);if(!value)throw Error('QRが見つかりません。余白を含む、鮮明なQR画像を選んでください。');
    await onValue(value,kind);
   }finally{URL.revokeObjectURL(url);}
  }
