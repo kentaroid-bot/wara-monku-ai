@@ -4,6 +4,8 @@ import {mkdir,copyFile,rm,readFile,writeFile} from 'node:fs/promises';
 await rm('dist',{recursive:true,force:true});
 await mkdir('dist/devnet',{recursive:true});
 await mkdir('dist/mock',{recursive:true});
+await mkdir('dist/assets',{recursive:true});
+await copyFile('assets/wara-avatar.png','dist/assets/wara-avatar.png');
 await mkdir('dist/v3',{recursive:true});
 await build({entryPoints:['mainstream/google-phone.mjs'],bundle:true,format:'esm',outfile:'dist/v3/google-phone.js',platform:'browser',target:['es2022'],minify:true});
 await build({external:['/v3/google-phone.js'],entryPoints:['mainstream/main.mjs'],bundle:true,outfile:'dist/v3/main.js',platform:'browser',target:['es2022'],define:{global:'globalThis'},minify:true});

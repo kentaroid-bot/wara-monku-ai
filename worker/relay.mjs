@@ -37,7 +37,7 @@ function inspect(encoded, sponsor, member) {
   )
     throw Error();
   const valid =
-    last.data[0] === 15
+    (last.data[0] === 15 || last.data[0] === 16)
       ? confirmedMessage(raw, actor, sponsor)
       : ordinaryMessage(raw, actor, "session", null, sponsor);
   if (

@@ -1,4 +1,5 @@
 // Minimal client for this program's creator-authorized metadata instruction.
+import {Buffer} from "buffer";
 import {PublicKey,TransactionInstruction,SystemProgram,SYSVAR_INSTRUCTIONS_PUBKEY} from '@solana/web3.js';
 import {TOKEN_PROGRAM_ID} from '@solana/spl-token';
 import {mintFor} from '../mainstream/protocol.mjs';

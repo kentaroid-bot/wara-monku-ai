@@ -195,6 +195,11 @@ export function parseRow(raw, id) {
     } catch {
       return null;
     }
+    if (meta?.visibility === "private") {
+      if (d[33] !== 1 || typeof meta.sealed !== "string") return null;
+      return { tag: 31, id, owner: pub(1), mode: 1, invite: pub(34), visibility: "private",
+        name: "限定公開コミュニティ", description: "", category: "地域", sealed: meta.sealed };
+    }
     if (
       !meta ||
       typeof meta.name !== "string" ||

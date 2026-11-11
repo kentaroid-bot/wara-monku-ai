@@ -6,12 +6,14 @@ import {
   ComputeBudgetProgram,
 } from "@solana/web3.js";
 import { ASSOCIATED_TOKEN_PROGRAM_ID } from "@solana/spl-token";
-import { addr } from "../mainstream/protocol.mjs";
+import { metadataAddress } from "../scripts/token-metadata.mjs";
+import { addr, mintFor } from "../mainstream/protocol.mjs";
 
 export function eligible(ix, program) {
   const last = ix.at(-1);
   if (!last?.programId.equals(program)) return false;
   return (
+    (last.data[0] === 16 && ix.at(-2)?.programId.equals(program) && ix.at(-2).data[0] === 10) ||
     last.data[0] === 14 ||
     last.data[0] === 15 ||
     (last.data[0] === 12 && last.data[1] === 0)
@@ -21,6 +23,9 @@ export function eligible(ix, program) {
 export function rentTarget(last) {
   const [user, group] = last.keys;
   switch (last.data[0]) {
+    case 16:
+      // The deployed Metaplex CreateV1 allocates a 607-byte fungible metadata account.
+      return { address: metadataAddress(mintFor(last.programId, group.pubkey)), size: 607 };
     case 12:
       return {
         address: addr(last.programId, "m3", group.pubkey, user.pubkey),
@@ -52,7 +57,8 @@ export async function rentShortfall(connection, last) {
   );
   if (!Number.isSafeInteger(minimum) || minimum <= 0 || minimum > 5_000_000)
     throw Error("Rentが支援の上限を超えています。");
-  return Math.max(0, minimum - (account?.lamports ?? 0));
+  // CreateV1 charges its creator the full rent even for a dusted metadata PDA.
+  return last.data[0] === 16 ? minimum : Math.max(0, minimum - (account?.lamports ?? 0));
 }
 
 export function sponsoredInstructions(original, sponsor, rent) {
@@ -78,7 +84,9 @@ export function sponsoredInstructions(original, sponsor, rent) {
       0,
       SystemProgram.transfer({
         fromPubkey: sponsor,
-        toPubkey: target.address,
+        // CreateV1 debits the creator even when its PDA is pre-funded.
+        // Only the canonical atomic opening may reimburse that signer.
+        toPubkey: original.at(-1).data[0] === 16 ? original.at(-1).keys[0].pubkey : target.address,
         lamports: rent,
       }),
     );

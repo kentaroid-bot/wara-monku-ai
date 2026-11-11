@@ -1,3 +1,4 @@
+import { communityMetadata } from "./community-metadata.mjs";
 import { feeKey } from "./relay.mjs";
 import { verifiedPhoneEvent } from "./google-phone.mjs";
 import { memberRequest } from "./members.mjs";
@@ -402,8 +403,9 @@ async function redeem(env, key, origin, action, b, phoneKey, now) {
 }
 
 export default {
-  async fetch(req, env) {
+  async fetch(req, env, context) {
     const url = new URL(req.url);
+    if (url.pathname.startsWith("/api/v3/metadata/")) return communityMetadata(req, env, context);
     if (!url.pathname.startsWith("/api/")) return env.ASSETS.fetch(req);
     try {
       const google = env.AUTH_MODE === "google";

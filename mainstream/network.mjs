@@ -1,3 +1,5 @@
+import { privateGroupView } from "./community-privacy.mjs";
+export { codeKey } from "./community-privacy.mjs";
 import { managedSession } from "./identity.mjs";
 import { eligible, sponsoredInstructions, rentShortfall } from "../shared/sponsorship.mjs";
 import { Buffer } from "buffer";
@@ -75,8 +77,10 @@ export async function loadState(address, force = false) {
     if (a?.owner.equals(tok) && a.data.length === 165 && a.data[108] === 1)
       funds.set(g.id, Buffer.from(a.data).readBigUInt64LE(64));
   });
+  const views = await Promise.all(groups.map(group => group.visibility === "private"
+    ? privateGroupView(group, String(who), rows) : group));
   return {
-    groups,
+    groups: views.filter(Boolean),
     rows,
     funds,
     day,
@@ -93,13 +97,6 @@ export const linked = (rows, a, b) =>
       (r) => r.tag === 34 && r.group === x && r.to === y && r.status === 1,
     ),
   );
-export const codeKey = (code) => {
-  try {
-    return Keypair.fromSeed(bs58.decode(code.trim()));
-  } catch {
-    throw Error("招待コードの形式が違います。");
-  }
-};
 async function feePayer() {
   const response = await fetch("/api/fee-payer", {cache:"no-store", redirect:"error"});
   if (response.status === 404) return null; // Previous Worker / static host.
@@ -175,8 +172,9 @@ export async function submit(profile, wallet, ix, extra = []) {
   if (String(signer.publicKey) !== profile.address)
     throw Error("署名ウォレットが切り替わりました。");
   const sponsor = profile.managed && eligible(ix, program) ? await feePayer() : null;
-  if (!sponsor && (await rpc.getBalance(pk(profile.address))) === 0)
-    throw Error(
+  const opening = ix.at(-1)?.data[0] === 16;
+  if ((!sponsor || opening) && (await rpc.getBalance(pk(profile.address))) === 0)
+    throw Error(opening ? "開設用のDevnet SOLが必要です。アカウント画面の無料配布から受け取ってください。" :
       "登録は済んでいます。アカウント画面の無料Devnet SOLで取引手数料を準備してください。",
     );
   const rent = sponsor ? await rentShortfall(rpc, ix.at(-1)) : 0;
@@ -195,6 +193,13 @@ export async function submit(profile, wallet, ix, extra = []) {
   tx.add(...(sponsor
     ? sponsoredInstructions(original, sponsor, rent)
     : original));
+  if (opening) {
+    try { tx.serialize({ requireAllSignatures:false, verifySignatures:false }); }
+    catch (error) {
+      if (/too large|overrun/i.test(error.message)) throw Error("名称・説明を短くしてから開設してください。");
+      throw error;
+    }
+  }
   if (extra.length) tx.partialSign(...extra);
   const before = tx.serializeMessage();
   const signed = await signer.signTransaction(tx);

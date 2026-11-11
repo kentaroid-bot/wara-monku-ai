@@ -75,7 +75,7 @@ Twilioでの送信上限は15分ごとに同じ番号3回、同じ接続元10回
 
 wara.monku.ai の配備元は kentaroid-bot/wara-monku-ai の main。リポジトリ直下でビルドし、画面にコードを表示する試験環境へは `npx wrangler deploy --var AUTH_MODE:trial` で配備します。静的アセットには明示的に選んだ dist/ 内のファイルだけを含めます。
 
-/mock/ は初期モックの同梱版です。[モックの原本](https://github.com/kentaroid-bot/emergency-straw-protocol)を更新した際は、必要に応じて同梱版へ取り込みます。既発行トークンが参照する旧GitHubのJSONと画像は旧URLを維持します。新規登録用のメタデータは本リポジトリの assets/ で管理します。
+/mock/ は初期モックの同梱版です。[モックの原本](https://github.com/kentaroid-bot/emergency-straw-protocol)を更新した際は、必要に応じて同梱版へ取り込みます。既発行トークンが参照する旧GitHubのJSONと画像は旧URLを維持します。新規コミュニティのメタデータは /api/v3/metadata/{mint}.json がDevnetのGroupを照合して配信し、共通の画像は /assets/wara-avatar.png で配信します。
 
 従来の静的Sites版の[配備記録](https://github.com/kentaroid-bot/emergency-straw-protocol/blob/4d712647707622a5b8acb11c4f5289199c46e71f/HOSTING.md)は分離前の版を参照してください。
 
@@ -95,7 +95,7 @@ Firebaseで専用プロジェクトにウェブアプリを登録し、Authentic
 
 ### 任意のDevnet手数料支援
 
-ログイン済み会員の参加・kusa払い・WARA払い（紙カードの店頭決済を含む）は、専用のFee Payerが手数料と必要な口座のRentを負担できます。地域開設・管理操作は従来どおり本人負担です。静的版やSecret未設定のWorkerでも従来の払い方を利用できます。
+ログイン済み会員の参加・kusa払い・WARA払い（紙カードの店頭決済を含む）は、専用のFee Payerが手数料と必要な口座のRentを負担できます。地域開設では、開設者がGroup・MintのRentとMetaplexの登録料を負担します。支援が有効な場合、リレーは開設と命令16を含む一つの取引に署名し、取引手数料とメタデータ口座のRent相当額を負担します。その他の管理操作は本人負担です。静的版やSecret未設定のWorkerでも従来の払い方を利用できます。
 
 導入時は既存D1へ `0003_relay_receipts.sql` までのマイグレーションを適用し、Devnet SOLを入れた専用の鍵ペアを用意します。64バイトの秘密鍵をBase58化した値をWorker Secret `FEE_PAYER_SECRET` に設定します。値はソース、設定ファイル、クライアントに置きません。配備時は現在の認証モードと環境変数を維持します。`GET /api/fee-payer` は公開鍵だけを返し、無効時は `feePayerPubkey: null` です。
 

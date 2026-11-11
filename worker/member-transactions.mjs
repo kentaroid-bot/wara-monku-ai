@@ -1,3 +1,4 @@
+import { communityOpening } from "../shared/community-metadata.mjs";
 import { eligible, sponsoredInstructions } from "../shared/sponsorship.mjs";
 import { Buffer } from "buffer";
 import {
@@ -25,7 +26,7 @@ const limit = () => ComputeBudgetProgram.setComputeUnitLimit({ units: 200000 });
 // also independently compares this declared top-up with live Devnet rent.
 export function declaredRent(tx) {
   const funding = tx.instructions.find((ix) =>
-    ix.programId.equals(SystemProgram.programId),
+    ix.programId.equals(SystemProgram.programId) && SystemInstruction.decodeInstructionType(ix) === "Transfer",
   );
   return funding
     ? Number(SystemInstruction.decodeTransfer(funding).lamports)
@@ -129,8 +130,17 @@ export function confirmedMessage(raw, address, sponsor = null) {
   const data = last.data,
     accounts = last.keys.map((k) => k.pubkey);
   let expected;
-  if (sponsor && data[0] !== 15) return false;
+  if (sponsor && data[0] !== 15 && data[0] !== 16) return false;
   switch (data[0]) {
+    case 16: {
+      const opening = ix.at(-2);
+      if (!opening?.programId.equals(program) || opening.data[0] !== 10 || opening.data.length > 434) return false;
+      const creation = SystemInstruction.decodeCreateAccount(ix.at(-3));
+      if (creation.lamports > 100_000_000) return false;
+      expected = [limit(), price(), ...communityOpening(program, pk(address), opening.keys[1].pubkey,
+        opening.data[1], pk(opening.data.subarray(2, 34)), opening.data.subarray(34), creation.lamports)];
+      break;
+    }
     case 10: {
       const creation = SystemInstruction.decodeCreateAccount(ix.at(-2));
       if (creation.lamports > 100_000_000 || data.length > 434) return false;

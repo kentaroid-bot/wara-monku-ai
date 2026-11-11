@@ -3,6 +3,8 @@ import { Keypair } from "@solana/web3.js";
 import { showHistory } from "./history.mjs";
 import { invoiceAmount, scannerBox } from "./scan.mjs";
 import QRCode from "qrcode";
+import { communityOpening } from "../shared/community-metadata.mjs";
+import { privateMetadata, rememberInvite, storedInvite, pendingInvite, invitationUrl } from "./community-privacy.mjs";
 import { inviteSecret } from "./identity.mjs";
 import {
   program,
@@ -19,7 +21,6 @@ import {
   modes,
   metadata,
   pk,
-  createGroup,
   certify,
   join,
   offer,
@@ -111,7 +112,8 @@ export async function dashboard(ctx) {
     );
   function newGroup() {
     ui(
-      '<p>開設したウォレットが最初の管理者になります。名称と説明はDevnet上に公開されます。</p><form id="create">' +
+      '<p>開設したウォレットが最初の管理者になります。公開を選ぶと名称と説明がDevnetに掲載されます。開設者はコミュニティ口座の作成費とMetaplexの登録料をDevnet SOLで支払います。手数料支援が有効なときはトークン情報の口座保管料と取引手数料を運営が負担します。</p><form id="create">' +
+        sel("visibility", "公開範囲", opt("public", "公開（市場に掲載）") + opt("private", "限定公開（家族・仲間を招待）")) +
         inp("name", "名称", 'maxlength="50"') +
         '<label>説明<textarea name="description" maxlength="140"></textarea></label>' +
         sel("category", "カテゴリ", categories.map((c) => opt(c, c)).join("")) +
@@ -119,13 +121,21 @@ export async function dashboard(ctx) {
         btn("署名して開設する") +
         "</form>",
     );
+    const create = content.querySelector("#create");
+    create.elements.visibility.onchange = () => {
+      const hidden = create.elements.visibility.value === "private";
+      create.elements.mode.disabled = hidden;
+      if (hidden) create.elements.mode.value = "1";
+    };
     form("create", async (v) => {
       const group = Keypair.generate(),
-        mode = Number(v.mode),
+        hidden = v.visibility === "private",
+        mode = hidden ? 1 : Number(v.mode),
         secret = mode === 1 ? inviteSecret() : null,
         inv = secret ? codeKey(secret).publicKey : who;
-      const meta = metadata(v.name, v.description, v.category);
-      const ix = createGroup(
+      const meta = hidden ? await privateMetadata(v.name, v.description, v.category, secret, group.publicKey) :
+        metadata(v.name, v.description, v.category);
+      const ix = communityOpening(
         program,
         who,
         group.publicKey,
@@ -136,7 +146,8 @@ export async function dashboard(ctx) {
       );
       // Preserve the generated invitation locally across a timeout; it is never sent as transaction data.
       const id = String(group.publicKey);
-      if (secret) sessionStorage.setItem("wara.invite." + id, secret);
+      if (hidden) rememberInvite(id, who, secret);
+      else if (secret) sessionStorage.setItem("wara.invite." + id, secret);
       await send(ix, [group], "コミュニティを開設しました。");
       location.assign(gid(id));
     });
@@ -147,13 +158,15 @@ export async function dashboard(ctx) {
     if (!id) {
       ui(
         `<section><div class="section-head"><h2>地域のコミュニティ</h2><a href="/communities/new/">＋ 開設</a></div>
-          ${s.groups.map(g => {
+          ${s.groups.filter(g => g.visibility !== "private").map(g => {
             const stores = s.rows.filter(r => r.tag === 32 && r.group === g.id);
             const joined = g.owner === who || s.rows.some(r => r.tag === 33 && r.group === g.id && r.to === who && r.status === 2);
             return `<article class="market-row"><a href="${h(gid(g.id))}"><strong>${h(g.name)}</strong></a>
               <small>${h(g.category)} · ${modes[g.mode]} · 公認店舗 ${stores.length}店${joined ? " · 参加中" : ""}</small>
               ${stores.map(st => `<a class="shop-row" href="${h(register(g.id, st.to))}"><span>${h(st.name)}</span><small>レジを開く ›</small></a>`).join("")}</article>`;
-          }).join("") || "<p>まだ登録がありません。</p>"}</section>`,
+          }).join("") || "<p>まだ登録がありません。</p>"}</section>
+        ${s.groups.some(g => g.visibility === "private" && g.joined) ? '<section><h2>自分の限定公開コミュニティ</h2>' +
+          s.groups.filter(g => g.visibility === "private" && g.joined).map(g => link(gid(g.id), g.name)).join("") + '</section>' : ''}`,
       );
       return;
     }
@@ -191,8 +204,12 @@ export async function dashboard(ctx) {
         btn(g.mode === 2 ? "参加を申請する" : "この地域に参加する") +
         "</form>";
     if (owner && g.mode === 1) {
-      const secret = sessionStorage.getItem("wara.invite." + g.id);
-      if (secret)
+      const secret = g.visibility === "private" ? storedInvite(g.id, who) : sessionStorage.getItem("wara.invite." + g.id);
+      if (secret && g.visibility === "private") {
+        out += '<section data-invite><h2>家族・仲間用 招待QRコード</h2><img alt="このコミュニティの招待QRコード"><p><a class="wrap" href="' +
+          h(invitationUrl(g.id, secret)) + '">' + h(invitationUrl(g.id, secret)) + '</a></p><button type="button">招待URLをコピー</button>' +
+          '<p>このリンクを知っている人が参加できます。招待したい人にだけ渡してください。</p></section>';
+      } else if (secret)
         out +=
           '<details><summary>招待コードを表示</summary><p class="wrap">' +
           h(secret) +
@@ -240,7 +257,7 @@ export async function dashboard(ctx) {
     out +=
       "<section><h2>通貨同盟</h2><p>双方が承認した地域のWARAを額面どおり受け入れます。</p>" +
       s.groups
-        .filter((p) => p.id !== id)
+        .filter((p) => p.id !== id && p.visibility !== "private")
         .map((p) => {
           const sent = outgoing(id, p.id),
             received = outgoing(p.id, id);
@@ -276,6 +293,19 @@ export async function dashboard(ctx) {
         .join("") +
       "</section>";
     ui(out);
+    const invitation = content.querySelector("[data-invite]");
+    if (invitation) {
+      const url = invitation.querySelector("a").href;
+      QRCode.toDataURL(url).then(src => { invitation.querySelector("img").src = src; })
+        .catch(() => info("招待URLを共有してください。"));
+      invitation.querySelector("button").onclick = () => navigator.clipboard.writeText(url)
+        .then(() => info("招待URLをコピーしました。")).catch(() => info("招待URLを長押ししてコピーしてください。"));
+    }
+    const codeInput = content.querySelector('#join [name="code"]');
+    if (codeInput && g.visibility === "private") {
+      codeInput.value = sessionStorage.getItem(pendingInvite(id)) || "";
+      codeInput.parentElement.hidden = Boolean(codeInput.value);
+    }
     form("join", async (v) => {
       const inv = g.mode === 1 ? codeKey(v.code) : null;
       await send(
@@ -300,7 +330,7 @@ export async function dashboard(ctx) {
       );
   }
   function store() {
-    const stores = s.rows.filter((r) => r.tag === 32 && by(r.group)),
+    const stores = s.rows.filter((r) => r.tag === 32 && by(r.group) && (by(r.group).visibility !== "private" || by(r.group).joined)),
       g = by(params.get("group")),
       store = stores.find(
         (r) => r.group === g?.id && r.to === params.get("store"),
@@ -482,5 +512,6 @@ export async function dashboard(ctx) {
   reload.className = "secondary";
   reload.onclick = () => refresh(true);
   el.append(reload);
-  await refresh();
+  const invited = params.get("id");
+  await refresh(path === "/communities" && Boolean(invited && sessionStorage.getItem(pendingInvite(invited))));
 }

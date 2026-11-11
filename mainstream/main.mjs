@@ -1,3 +1,4 @@
+import { parseInvitation, pendingInvite } from "./community-privacy.mjs";
 import { Buffer } from "buffer";
 import { twinCards } from "./balances.mjs";
 import { paymentHistory } from "./history.mjs";
@@ -172,7 +173,16 @@ function showGuide() {
       電話番号を登録したご家族や店員さんに、<a href="/account/">アカウント</a>で「家族・知人の財布を作る」を開いてもらい、紙のカードを受け取れば、そのカードでお買い物できます。</p>
     </section>`;
 }
+window.addEventListener("hashchange", () => {
+  if (location.hash.startsWith("#/join?")) location.reload();
+});
 async function render() {
+  const invitation = parseInvitation(location.hash);
+  if (invitation) {
+    sessionStorage.setItem(pendingInvite(invitation.group), invitation.code);
+    location.replace("/communities/?id=" + invitation.group);
+    return;
+  }
   if (!profile?.managed && path !== "/support") {
     try { await restorePhantom(); } catch { /* Keep the normal sign-in available offline. */ }
     profile = active();
@@ -216,12 +226,21 @@ async function render() {
   el.innerHTML = "<h1>" + esc(titles[path] || "WARA") + "</h1>";
   if (!profile) {
     if (tab === "wallet") el.insertAdjacentHTML("beforeend", twinCards(null));
+    const group = new URLSearchParams(location.search).get("id");
+    if (path === "/communities" && group && sessionStorage.getItem(pendingInvite(group)))
+      sessionStorage.setItem("wara.after-invite", group);
     if (path === "/shop" && location.search)
       sessionStorage.setItem(
         "wara.v03.after-signin",
         location.pathname + location.search,
       );
     el.insertAdjacentHTML("beforeend", welcome);
+    return;
+  }
+  const invitedGroup = sessionStorage.getItem("wara.after-invite");
+  if (invitedGroup && (path === "/" || path === "/account")) {
+    sessionStorage.removeItem("wara.after-invite");
+    location.replace("/communities/?id=" + encodeURIComponent(invitedGroup));
     return;
   }
   if (path === "/account") {
