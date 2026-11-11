@@ -35,7 +35,7 @@ export function shopProfiles(profile, wallet) {
       }
     },
     async save(store, values) {
-      const fields = shopFields({...values, is_test:values.is_test === "on"});
+      const fields = shopFields({...values, is_test:store.is_test === true});
       await auth.authenticate();
       return memberApi("shop-save",{...fields, group:store.group,store:store.to,revision:store.revision || 0,access:auth.token()});
     },
@@ -43,8 +43,7 @@ export function shopProfiles(profile, wallet) {
 }
 
 export function shopDetails(store, h) {
-  return (store.is_test ? '<small class="test-shop">テスト店舗</small>' : "") +
-    (store.caption ? '<small class="shop-caption">' + h(store.caption) + '</small>' : "");
+  return store.caption ? '<small class="shop-caption">' + h(store.caption) + '</small>' : "";
 }
 export function shopTitle(store) {
   return [store.icon,store.name].filter(Boolean).join(" ");
@@ -54,6 +53,5 @@ export function shopEditor(store, h) {
     <label>店舗名<input name="title" required value="${h(store.name)}"></label>
     <label>一言紹介（140文字まで）<input name="caption" value="${h(store.caption || "")}"></label>
     <label>アイコン<select name="icon">${shopIcons.map(icon=>`<option${icon === store.icon ? " selected" : ""}>${icon}</option>`).join("")}</select></label>
-    <label class="shop-check"><input type="checkbox" name="is_test"${store.is_test ? " checked" : ""}>お試し・実験用のレジ</label>
     <button>店舗情報を保存</button></form></details>`;
 }

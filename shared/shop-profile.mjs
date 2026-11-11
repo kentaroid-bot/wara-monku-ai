@@ -1,4 +1,8 @@
-export const shopIcons = ["🏪", "☕", "🍙", "🥐", "🛠️", "🌾", "🎨", "🌷", "📚", "🍴"];
+export const shopIcons = [
+  "🏪", "🛠️", "🌾", "🎨", "🌷", "📚", "🪴", "✂️", "🛋️", "🚲", "⛺", "🎪", "🎵",
+  "☕", "🍙", "🥐", "🥖", "🍜", "🍰", "🍴", "🍷", "🍎", "🍵",
+  "🐶", "🐱", "🐰", "🐻", "🐼", "🐨", "🦊", "🦁", "🐯", "🐮", "🐷", "🐸", "🐵", "🐥", "🦉", "🐙", "🐬", "🐟",
+];
 
 export function shopFields(input) {
   const title = input.title?.trim(), caption = input.caption?.trim();

@@ -347,8 +347,9 @@ test("signed-in zero-SOL buyer joins, spends and transfers through Worker/D1 and
     assert.equal((await call("shop-save",{...data,access,revision:1,caption:"あ".repeat(141)})).status,400);
     const read=async(id,auth={})=>(await (await call("shop-profiles",{shops:[id],...auth})).json()).profiles;
     assert.deepEqual((await read(id))[0],{shop:id,title:data.title,caption:data.caption,icon:"☕",is_test:true,revision:1});
-    assert.equal((await call("shop-save",{...data,access,revision:1,title:"新しい店",is_test:false})).status,200);
-    assert.equal((await read(id))[0].title,"新しい店");
+    assert.equal((await call("shop-save",{...data,access,revision:1,title:"新しい店",icon:"🦊",is_test:false})).status,200);
+    const updated = (await read(id))[0];
+    assert.deepEqual([updated.title,updated.icon],["新しい店","🦊"]);
     // A signed-in merchant may also edit without an auxiliary message signature.
     const family=key(), code=bs58.encode(randomBytes(32)), f=family.publicKey;
     const bytes=await privateMetadata("家族","紹介","地域",code,f);

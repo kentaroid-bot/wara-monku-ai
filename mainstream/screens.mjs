@@ -1,3 +1,4 @@
+import { joinedGroupIds, listedGroups, registerChoices } from "./shop-directory.mjs";
 import { requestPanel, shopRequestAPI } from "./shop-requests.mjs";
 import { shopProfiles, shopTitle, shopDetails, shopEditor } from "./shop-profile.mjs";
 import { memoFields, bindMemoChips } from "./memo-ui.mjs";
@@ -146,17 +147,18 @@ export async function dashboard(ctx) {
     const id = params.get("id"),
       g = by(id);
     if (!id) {
+      const groups = listedGroups(s.groups), joined = joinedGroupIds(s, who);
+      const privateGroups = groups.filter(g => g.visibility === "private" && g.joined);
       ui(
         `<section><div class="section-head"><h2>地域のコミュニティ</h2><a href="/communities/new/">＋ 開設</a></div>
-          ${s.groups.filter(g => g.visibility !== "private").map(g => {
+          ${groups.filter(g => g.visibility !== "private").map(g => {
             const stores = s.rows.filter(r => r.tag === 32 && r.group === g.id);
-            const joined = g.owner === who || s.rows.some(r => r.tag === 33 && r.group === g.id && r.to === who && r.status === 2);
             return `<article class="market-row"><a href="${h(gid(g.id))}"><strong>${h(g.name)}</strong></a>
-              <small>${h(g.category)} · ${modes[g.mode]} · 公認店舗 ${stores.length}店${joined ? " · 参加中" : ""}</small>
+              <small>${h(g.category)} · ${modes[g.mode]} · 公認店舗 ${stores.length}店${joined.has(g.id) ? " · 参加中" : ""}</small>
               ${stores.map(st => `<a class="shop-row" href="${h(register(g.id, st.to))}"><span>${h(shopTitle(st))}${shopDetails(st,h)}</span><small>レジを開く ›</small></a>`).join("")}</article>`;
           }).join("") || "<p>まだ登録がありません。</p>"}</section>
-        ${s.groups.some(g => g.visibility === "private" && g.joined) ? '<section><h2>自分の限定公開コミュニティ</h2>' +
-          s.groups.filter(g => g.visibility === "private" && g.joined).map(g => link(gid(g.id), g.name)).join("") + '</section>' : ''}`,
+        ${privateGroups.length ? '<section><h2>自分の限定公開コミュニティ</h2>' +
+          privateGroups.map(g => link(gid(g.id), g.name)).join("") + '</section>' : ''}`,
       );
       return;
     }
@@ -360,7 +362,7 @@ export async function dashboard(ctx) {
       );
     if (!store) {
       const receiving = params.get("mode") === "receive";
-      const choices = receiving ? stores.filter(st => st.to === who) : stores;
+      const choices = registerChoices(stores, s, who, receiving);
       ui(
         "<section><h2>" + (receiving ? "自分の店舗レジ" : "店のレジを選ぶ") + "</h2>" +
           choices
@@ -373,7 +375,7 @@ export async function dashboard(ctx) {
                 "</p>",
             )
             .join("") +
-          (choices.length ? "" : receiving ? "<p>この財布に登録された公認店舗はありません。</p>" : "<p>公認店舗はまだありません。</p>") +
+          (choices.length ? "" : receiving ? "<p>この財布に登録された公認店舗はありません。</p>" : "<p>参加中のコミュニティに公認店舗はまだありません。</p>") +
           link("/communities/", "コミュニティを見る") +
           "</section>",
       );

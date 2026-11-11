@@ -141,10 +141,7 @@ img { max-width: 100%; }
   .separate-sheet { break-before: page; }
 }
 
-.shop-caption, .test-shop {display:block;overflow-wrap:anywhere}
-.test-shop {color:var(--leaf);font-weight:650}
-.shop-check {display:flex;align-items:center;gap:.6rem}
-.shop-check input {width:auto}
+.shop-caption {display:block;overflow-wrap:anywhere}
 .payment-memo {border:0;padding:0;margin:1rem 0;min-width:0}
 .memo-chips {display:flex;flex-wrap:wrap;gap:.45rem;margin:.5rem 0}
 .memo-chips button.secondary {width:auto;padding:.45rem .7rem;font-size:.87rem;border-radius:2rem}
