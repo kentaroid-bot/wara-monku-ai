@@ -28,22 +28,34 @@ export function paperCardCode(value, kind) {
   throw Error("用途の合う紙のQRを読み取ってください。");
 }
 
+export function isInAppBrowser(userAgent, phantom = false) {
+  // A desktop Phantom extension must not disable the normal browser camera.
+  return /Phantom|; wv\)|FBAN|FBAV|Instagram|Line\//i.test(userAgent) ||
+    (/Android|iPhone|iPad|iPod|Mobile/i.test(userAgent) && phantom);
+}
+
 export function scannerBox(el, kind, accept) {
   const dailyCard = cardKind(kind) === "ina";
-  const imageGuidance = "Phantom等のアプリ内ブラウザでは「カメラで撮影」または「QR画像を選ぶ」をご利用ください。";
+  const inAppBrowser = isInAppBrowser(navigator.userAgent, !!(window.phantom?.solana?.isPhantom || window.solana?.isPhantom));
+  const imageGuidance = "「カメラ・写真でQRを読む」でも読み取れます。";
+  const initialGuidance = "ボタンを押して、カメラ撮影または写真からQRコードを読み取ってください。";
   const box = document.createElement("details");
   box.innerHTML =
     "<summary>" +
     (kind === "confirm" ? "大事な手続き用QRを読む" : dailyCard ? "INAカードを読む" : kind === "store" ? "会計QRを読み取る" : "店舗の公開アドレスをQRから読む") +
-    '</summary><button type="button">カメラを開く</button><button type="button" class="secondary">停止</button><label class="button camera-capture">カメラで撮影<input type="file" accept="image/*" capture="environment"></label><label class="button file-picker">QR画像を選ぶ<input type="file" accept="image/*"></label><video muted autoplay playsinline webkit-playsinline aria-label="QR読み取り用カメラ" style="max-width:100%"></video><canvas hidden></canvas><p role="status">カメラの使用を確認されたら「許可」を選んでください。' + imageGuidance + '</p>';
+    '</summary><label class="button file-picker">カメラ・写真でQRを読む<input type="file" accept="image/*"></label>' +
+    (inAppBrowser ? '' : '<button type="button" class="button secondary">カメラを開く</button><button type="button" class="button secondary">停止</button>') +
+    '<video hidden muted autoplay playsinline webkit-playsinline aria-label="QR読み取り用カメラ" style="max-width:100%"></video><canvas hidden></canvas><p role="status">' +
+    initialGuidance + (inAppBrowser ? '' : 'カメラを開く場合、使用を確認されたら「許可」を選んでください。') + '</p>';
   el.append(box);
   const stat = (t) => (box.querySelector("p").textContent = t);
+  const video = box.querySelector("video");
   const reader = createScanner({
     imageGuidance,
-    video: box.querySelector("video"),
+    video,
     canvas: box.querySelector("canvas"),
     onStatus: stat,
-    onStop() {},
+    onStop() { video.hidden = true; },
     async onValue(value) {
       if (kind === "store") {
         await accept(storeInvoiceUrl(value, location.origin));
@@ -55,9 +67,15 @@ export function scannerBox(el, kind, accept) {
       }
     },
   });
-  box.querySelector("button").onclick = () =>
-    reader.start(kind).catch((e) => stat(e.message));
-  box.querySelectorAll("button")[1].onclick = () => reader.stop();
+  if (!inAppBrowser) {
+    box.querySelector("button").onclick = async () => {
+      try {
+        await reader.start(kind);
+        video.hidden = !video.srcObject;
+      } catch (e) { stat(e.message); }
+    };
+    box.querySelectorAll("button")[1].onclick = () => reader.stop();
+  }
   for (const input of box.querySelectorAll('input[type="file"]')) {
     // Reset only when opening the picker; keep the selected File alive while decoding.
     input.onclick = (e) => { e.currentTarget.value = ""; };

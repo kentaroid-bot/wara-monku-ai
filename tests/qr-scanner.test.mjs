@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import QRCode from 'qrcode';
+import { isInAppBrowser } from '../mainstream/scan.mjs';
 import { createScanner } from '../app/qr-media.mjs';
 
 const error = name => Object.assign(new Error(name), { name });
@@ -241,3 +242,19 @@ test('small photo is decoded without upscaling', async t => {
   assert.equal(h.canvas.width, 300); assert.equal(h.canvas.height, 200);
   assert.deepEqual(h.values, [['scanner-test', 'store']]);
 });
+
+for (const [name, userAgent, phantom, expected] of [
+  ['Phantom UA', 'Mozilla/5.0 (iPhone) Mobile Phantom/26.0', false, true],
+  ['Phantom injected on iPhone', 'Mozilla/5.0 (iPhone) Mobile', true, true],
+  ['Phantom injected on Android', 'Mozilla/5.0 (Linux; Android 15) Chrome/130 Mobile', true, true],
+  ['Android WebView', 'Mozilla/5.0 (Linux; Android 15; wv) Chrome/130', false, true],
+  ['Instagram', 'Mozilla/5.0 (iPhone) Instagram 300', false, true],
+  ['LINE', 'Mozilla/5.0 (iPhone) Line/14.0', false, true],
+  ['Safari', 'Mozilla/5.0 (iPhone) Mobile Safari/604.1', false, false],
+  ['Chrome', 'Mozilla/5.0 (Linux; Android 15) Chrome/130 Mobile Safari/537.36', false, false],
+  ['desktop Phantom extension', 'Mozilla/5.0 (Macintosh) Chrome/130 Safari/537.36', true, false],
+]) {
+  test(`scanner browser classification: ${name}`, () => {
+    assert.equal(isInAppBrowser(userAgent, phantom), expected);
+  });
+}
