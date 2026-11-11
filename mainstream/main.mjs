@@ -1,5 +1,6 @@
 import { Buffer } from "buffer";
 import { twinCards } from "./balances.mjs";
+import { paymentHistory } from "./history.mjs";
 import QRCode from "qrcode";
 import { active, signout, unlock, memberSessionKey, managedSession, restorePhantom, authMode } from "./identity.mjs";
 import { signup } from "./signup.mjs";
@@ -30,6 +31,39 @@ document.querySelector(".theme").onclick = () => {
   document.documentElement.style.colorScheme = next;
   localStorage.setItem("wara.theme", next);
 };
+const warmthKey = "wara.v03.warmth.last";
+const cooldown = 15 * 60_000;
+let lastPayment = 0;
+let coolingTimer;
+
+function paintWarmth() {
+  clearTimeout(coolingTimer);
+  const age = Date.now() - lastPayment;
+  const warmth = lastPayment > 0 && age >= 0 ? Math.max(0, Math.min(1, (cooldown - age) / (cooldown - 60_000))) : 0;
+  document.documentElement.style.setProperty("--warmth", String(warmth));
+  if (warmth && !document.hidden) coolingTimer = setTimeout(paintWarmth, 1000);
+}
+
+function restoreWarmth() {
+  try { lastPayment = Number(localStorage.getItem(warmthKey)); } catch { /* Use this page's state. */ }
+  paintWarmth();
+}
+
+function recordPayment(at = Date.now()) {
+  const now = Date.now();
+  if (!Number.isFinite(at) || at <= now - cooldown || at > now || (lastPayment <= now && at <= lastPayment)) return;
+  lastPayment = at;
+  try { localStorage.setItem(warmthKey, String(at)); } catch { /* Feedback also works without storage. */ }
+  paintWarmth();
+}
+
+restoreWarmth();
+window.addEventListener("pageshow", restoreWarmth);
+document.addEventListener("visibilitychange", paintWarmth);
+window.addEventListener("storage", event => {
+  if (event.key === warmthKey || event.key === null) restoreWarmth();
+});
+
 let profile = active();
 let signer = null;
 window.addEventListener("pagehide", () => {
@@ -139,13 +173,22 @@ function showGuide() {
     </section>`;
 }
 async function render() {
+  if (!profile?.managed && path !== "/support") {
+    try { await restorePhantom(); } catch { /* Keep the normal sign-in available offline. */ }
+    profile = active();
+  }
+  const readHistory = profile && paymentHistory(profile.address, recordPayment);
+  if (readHistory) {
+    const checkReceipts = () => {
+      if (!document.hidden) void readHistory().catch(() => {});
+    };
+    checkReceipts();
+    setInterval(checkReceipts, 30_000);
+    document.addEventListener("visibilitychange", checkReceipts);
+  }
   if (path === "/support") {
     showGuide();
     return;
-  }
-  if (!profile?.managed) {
-    try { await restorePhantom(); } catch { /* Keep the normal sign-in available offline. */ }
-    profile = active();
   }
   if (path === "/signup" && profile?.managed && profile.type === "phantom") { location.replace("/account/"); return; }
   if(profile?.managed) {
@@ -166,7 +209,7 @@ async function render() {
     "/communities": "市場",
     "/communities/new": "コミュニティを開設",
   };
-  el.innerHTML = "<h1>" + esc(titles[path] || "藁一本の約束") + "</h1>";
+  el.innerHTML = "<h1>" + esc(titles[path] || "WARA") + "</h1>";
   if (!profile) {
     if (tab === "wallet") el.insertAdjacentHTML("beforeend", twinCards(null));
     if (path === "/shop" && location.search)
@@ -220,6 +263,6 @@ async function render() {
     }
   }
   const { dashboard } = await import("./screens.mjs");
-  await dashboard({ el, info, path, profile, wallet, action, esc });
+  await dashboard({ el, info, path, profile, wallet, action, esc, recordPayment, readHistory });
 }
 render().catch((e) => info(e.message));

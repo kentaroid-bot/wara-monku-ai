@@ -53,7 +53,36 @@ export function storyReceipt(r, h, by, shopName) {
     <div><strong>${h(title)}</strong><p>${h(detail)}</p><small>${h(time)}${h(by(r.group)?.name || "地域")} ·
     <a target="_blank" rel="noopener" href="https://explorer.solana.com/tx/${encodeURIComponent(r.sig)}?cluster=devnet">取引を確認 ↗</a></small></div></li>`;
 }
-export function showHistory(el, address, storeId, h, by, shopName) {
+// The wallet and shop share the same confirmed receipts as the warmth indicator.
+export function paymentHistory(address, onPayment) {
+  let cached = new Map();
+  let pending;
+  async function read() {
+    const signatures = await rpc.getSignaturesForAddress(pk(address), { limit: 20 });
+    const valid = signatures.filter(item => !item.err);
+    const missing = valid.filter(item => !cached.has(item.signature));
+    const transactions = missing.length ? await rpc.getParsedTransactions(
+      missing.map(item => item.signature), { maxSupportedTransactionVersion: 0 },
+    ) : [];
+    missing.forEach(({ signature, blockTime }, i) => {
+      const tx = transactions[i];
+      if (!tx) return; // The RPC may still be indexing it.
+      const rows = entries(tx, signature, address);
+      for (const row of rows) row.time ??= blockTime;
+      cached.set(signature, rows);
+    });
+    // Bound the cache to the same twenty signatures shown in the wallet.
+    cached = new Map(valid.filter(item => cached.has(item.signature))
+      .map(({ signature }) => [signature, cached.get(signature)]));
+    const rows = [...cached.values()].flat();
+    const latest = Math.max(0, ...rows.map(row => row.time || 0));
+    if (latest) onPayment(latest * 1000);
+    return { rows, indexing: cached.size < valid.length };
+  }
+  return () => pending ??= read().finally(() => { pending = null; });
+}
+
+export function showHistory(el, readHistory, storeId, h, by, shopName) {
   const section = document.createElement("section");
   section.innerHTML = '<div class="section-head"><h2>ありがとうの履歴</h2><small>直近の循環</small></div><ol class="stories"></ol><p role="status"></p><button type="button" class="secondary">履歴を更新</button>';
   el.append(section);
@@ -63,22 +92,11 @@ export function showHistory(el, address, storeId, h, by, shopName) {
     btn.disabled = true;
     status.textContent = "直近20件の取引を確認しています…";
     try {
-      const list = await rpc.getSignaturesForAddress(pk(address), {
-        limit: 20,
-      });
-      const valid = list.filter((x) => !x.err);
-      const data = valid.length
-        ? await rpc.getParsedTransactions(
-            valid.map((x) => x.signature),
-            { maxSupportedTransactionVersion: 0 },
-          )
-        : [];
-      const rows = data.flatMap((t, i) =>
-        entries(t, valid[i].signature, address, storeId),
-      );
+      const result = await readHistory();
+      const rows = storeId ? result.rows.filter(row => row.incoming && row.group === storeId) : result.rows;
       body.innerHTML = rows.map(r => storyReceipt(r, h, by, shopName)).join("");
       status.textContent = rows.length ? "" : "直近20件に確定したお会計はありません。";
-      if (data.some(t => !t)) status.textContent += " 索引処理中の取引があります。";
+      if (result.indexing) status.textContent += " 索引処理中の取引があります。";
     } catch {
       status.textContent = "履歴を読み込めませんでした。時間をおいて更新してください。";
     } finally {

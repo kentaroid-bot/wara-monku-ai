@@ -17,8 +17,8 @@ let toastTimeout;
 export function crystallize(amount, incoming) {
   const toast = document.querySelector("#crystal-toast");
   toast.textContent = incoming
-    ? `✨ あなたの店に +${amount * 90n} / お客さんに +${amount * 10n} WARA 結晶化！`
-    : `✨ 店に +${amount * 90n} / あなたに +${amount * 10n} WARA 結晶化！`;
+    ? `💖 ありがとう！ あなたの店に +${amount * 90n} / お客さんに +${amount * 10n} WARA 結晶化！`
+    : `💖 ありがとう！ 店に +${amount * 90n} / あなたに +${amount * 10n} WARA 結晶化！`;
   document.querySelector(".orb.wara")?.animate(
     [{transform: "scale(1)"}, {transform: "scale(1.035)", boxShadow: "0 0 20px #d5bc78"}, {transform: "scale(1)"}],
     {duration: matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : 550},

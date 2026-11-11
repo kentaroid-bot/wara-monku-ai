@@ -38,7 +38,7 @@ const receipt = (sig) =>
   "?cluster=devnet";
 const short = (s) => s.slice(0, 5) + "…" + s.slice(-5);
 export async function dashboard(ctx) {
-  const { el, info, path, profile, wallet, action, esc: h } = ctx,
+  const { el, info, path, profile, wallet, action, recordPayment, readHistory, esc: h } = ctx,
     who = profile.address,
     params = new URLSearchParams(location.search);
   const content = document.createElement("div");
@@ -84,8 +84,9 @@ export async function dashboard(ctx) {
       return false;
     }
   };
-  const send = async (ix, extra = [], msg = "取引が確定しました。") => {
+  const send = async (ix, extra = [], msg = "取引が確定しました。", onConfirmed) => {
     const sig = await submit(profile, wallet, ix, extra);
+    onConfirmed?.();
     const refreshed = await refresh(
       ix.some(
         (i) =>
@@ -389,15 +390,16 @@ export async function dashboard(ctx) {
       action(checkout,async v=>{
         const {payWithCard}=await import("./member-ui.mjs");
         const sig=await payWithCard(g.id,store.to,Number(v.amount),store.name);
+        recordPayment();
+        crystallize(BigInt(v.amount), true);
         const refreshed = await refresh(true);
         info("紙カードの支払いが確定しました。" + (refreshed ? "" : " 残高は再度更新してください。"));
         const a = document.createElement("a");
         a.href = receipt(sig); a.textContent = " Devnetの取引を見る"; a.target = "_blank"; a.rel = "noopener";
         document.querySelector("#notice").append(a);
-        crystallize(BigInt(v.amount), true);
       });
     }
-    if (isShop) showHistory(content, who, g.id, h, by, shopName);
+    if (isShop) showHistory(content, readHistory, g.id, h, by, shopName);
     form("invoice", async (v) => {
       const u = new URL(register(g.id, store.to), location.origin);
       u.searchParams.set("ina", String(amount(v.ina)));
@@ -441,8 +443,8 @@ export async function dashboard(ctx) {
           " WARA、客に " +
           n * 10n +
           " WARA還付。",
+        () => { recordPayment(); crystallize(n, false); },
       );
-      crystallize(n, false);
     });
     form("wara", async (v) => {
       const n = amount(v.amount),
@@ -455,6 +457,7 @@ export async function dashboard(ctx) {
         transfer(program, who, g.id, store.to, selected),
         [],
         n + " WARAの支払いが確定しました。",
+        recordPayment,
       );
     });
   }
@@ -464,7 +467,7 @@ export async function dashboard(ctx) {
     if (path === "/shop") return store();
     ui(twinCards(s) +
       '<div class="quick-actions"><a class="action" href="/shop/">支払う</a><a class="action secondary" href="/shop/?mode=receive">レジを開く</a></div>');
-    showHistory(content, who, null, h, by, shopName);
+    showHistory(content, readHistory, null, h, by, shopName);
     scannerBox(content, "store", (url) => location.assign(url));
     content.insertAdjacentHTML("beforeend", `<details><summary>WARAの発行元</summary>
       ${[...s.funds].map(([id, n]) => `<p>${h(by(id)?.name || id)}：${n} WARA</p>`).join("") || "<p>まだWARAはありません。</p>"}</details>`);

@@ -1,8 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import bs58 from "bs58";
-import { entries, storyReceipt } from "../mainstream/history.mjs";
-import { program } from "../mainstream/network.mjs";
+import { entries, paymentHistory, storyReceipt } from "../mainstream/history.mjs";
+import { program, rpc } from "../mainstream/network.mjs";
 
 const h = text => String(text).replaceAll("<", "&lt;").replaceAll(">", "&gt;");
 const by = id => ({name: id === "origin" ? "発行した地域" : "買い物をした地域"});
@@ -33,4 +33,30 @@ test("paying with existing WARA reports its origin without claiming a new reward
   assert.match(story, /15 WARA を支払いました/);
   assert.match(story, /発行元：発行した地域/);
   assert.doesNotMatch(story, /\+|結晶化/);
+});
+
+test("wallet warmth follows confirmed payment times and retries receipts still being indexed", async t => {
+  const address = String(program);
+  const good = { signature: "received", blockTime: 1234, err: null };
+  const other = { signature: "other", blockTime: 1250, err: null };
+  const failed = { signature: "failed", blockTime: 1300, err: "failed" };
+  t.mock.method(rpc, "getSignaturesForAddress", async () => [failed, other, good]);
+  const tx = transaction(true);
+  tx.transaction.message.instructions[0].accounts[2] = address;
+  let indexed = false;
+  const parsed = t.mock.method(rpc, "getParsedTransactions", async signatures => {
+    assert.ok(!signatures.includes("failed"));
+    return signatures.map(sig => sig === "other" ? transaction(false) : indexed ? tx : null);
+  });
+  const times = [];
+  const read = paymentHistory(address, at => times.push(at));
+  assert.equal((await read()).indexing, true);
+  assert.deepEqual(times, []);
+  indexed = true;
+  const [result] = await Promise.all([read(), read()]);
+  assert.equal(result.rows[0].incoming, true);
+  assert.equal(result.indexing, false);
+  await read();
+  assert.deepEqual(times, [1234000, 1234000]);
+  assert.equal(parsed.mock.callCount(), 2);
 });
