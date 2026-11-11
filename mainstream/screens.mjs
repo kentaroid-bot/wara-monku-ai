@@ -252,44 +252,38 @@ export async function dashboard(ctx) {
         "</form></details>";
     if (!owner && own?.status !== 2)
       out += '<section><h2>お店（レジ）を開きたい方へ</h2><p>コミュニティに参加すると、この画面から店舗の開設を申請できます。</p></section>';
+    const peers = s.groups
+      .filter((p) => p.id !== id && p.visibility !== "private")
+      .map((p) => ({ ...p, sent: outgoing(id, p.id), received: outgoing(p.id, id) }));
+    const partners = peers.filter((p) => p.sent && p.received);
+    const treatyRow = (p, status, label, enable) =>
+      "<article>" + h(p.name) + " · " + status +
+      (owner
+        ? '<form class="treaty"><input type="hidden" name="peer" value="' + h(p.id) +
+          '"><input type="hidden" name="enable" value="' + enable + '">' + btn(label) + "</form>"
+        : "") + "</article>";
     out +=
-      "<section><h2>通貨同盟</h2><p>双方が承認した地域のWARAを額面どおり受け入れます。</p>" +
-      s.groups
-        .filter((p) => p.id !== id && p.visibility !== "private")
-        .map((p) => {
-          const sent = outgoing(id, p.id),
-            received = outgoing(p.id, id);
-          return (
-            "<article>" +
-            h(p.name) +
-            " · " +
-            (sent && received
-              ? "提携中"
-              : sent
-                ? "申請中"
-                : received
-                  ? "申請が届いています"
-                  : "未提携") +
-            (owner
-              ? '<form class="treaty"><input type="hidden" name="peer" value="' +
-                h(p.id) +
-                '"><input type="hidden" name="enable" value="' +
-                (!sent ? "1" : "0") +
-                '">' +
-                btn(
-                  sent
-                    ? "取り消す・提携を解除"
-                    : received
-                      ? "提携を承認"
-                      : "提携を申請",
-                ) +
-                "</form>"
-              : "") +
-            "</article>"
-          );
-        })
-        .join("") +
-      "</section>";
+      "<section><h2>通貨同盟（提携地域）</h2><p>双方が承認した地域のWARAを額面どおり受け入れます。</p>" +
+      (partners.map((p) => treatyRow(p, "提携中", "提携を解除", "0")).join("") ||
+        "<p>提携中の地域はありません</p>");
+    if (owner) {
+      const incoming = peers.filter((p) => !p.sent && p.received),
+        pending = peers.filter((p) => p.sent && !p.received),
+        available = peers.filter((p) => !p.sent && !p.received);
+      if (incoming.length)
+        out += "<h3>提携の申請が届いています</h3>" +
+          incoming.map((p) => treatyRow(p, "承認待ち", "提携を承認", "1")).join("");
+      if (pending.length)
+        out += "<h3>申請中（相手の承認待ち）</h3>" +
+          pending.map((p) => treatyRow(p, "申請中（相手の承認待ち）", "申請を取り消す", "0")).join("");
+      out += '<details><summary>他の地域へ提携を申請</summary>' +
+        (available.length
+          ? '<form class="treaty">' +
+            sel("peer", "申請先の地域", available.map((p) => opt(p.id, p.name)).join("")) +
+            '<input type="hidden" name="enable" value="1">' + btn("提携を申請") + "</form>"
+          : "<p>申請可能な公開地域はありません</p>") + "</details>";
+    }
+    out += "</section>";
     ui(out);
     const requestBox = content.querySelector("[data-shop-requests]");
     if (requestBox) requestPanel(requestBox, {api:requests, group:id, who, owner, esc:h, info, register,
