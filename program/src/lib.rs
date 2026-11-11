@@ -176,7 +176,7 @@ pub fn process_instruction(program: &Pubkey, accounts: &[AccountInfo], data: &[u
                 .token_standard(mpl_token_metadata::types::TokenStandard::Fungible).decimals(0)
                 .invoke_signed(&[&[seed,cfg.key.as_ref(),&[bump]]])
         },
-        10..=15 => v3::process(program,accounts,op,rest),
+        10..=15 | 17 => v3::process(program,accounts,op,rest),
         _ => Err(ProgramError::InvalidInstructionData),
     }
 }

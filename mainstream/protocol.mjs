@@ -196,8 +196,8 @@ export function parseRow(raw, id) {
       return null;
     }
     if (meta?.visibility === "private") {
-      if (d[33] !== 1 || typeof meta.sealed !== "string") return null;
-      return { tag: 31, id, owner: pub(1), mode: 1, invite: pub(34), visibility: "private",
+      if (typeof meta.sealed !== "string") return null;
+      return { tag: 31, id, owner: pub(1), mode: d[33], invite: pub(34), visibility: "private",
         name: "限定公開コミュニティ", description: "", category: "地域", sealed: meta.sealed };
     }
     if (
@@ -212,6 +212,7 @@ export function parseRow(raw, id) {
       id,
       owner: pub(1),
       mode: d[33],
+      visibility: "public", invite: pub(34),
       name: meta.name,
       description: meta.description,
       category: meta.category,

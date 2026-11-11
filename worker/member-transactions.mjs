@@ -1,4 +1,4 @@
-import { communityOpening } from "../shared/community-metadata.mjs";
+import { communityOpening, communityUpdate } from "../shared/community-metadata.mjs";
 import { eligible, sponsoredInstructions } from "../shared/sponsorship.mjs";
 import { Buffer } from "buffer";
 import {
@@ -130,8 +130,13 @@ export function confirmedMessage(raw, address, sponsor = null) {
   const data = last.data,
     accounts = last.keys.map((k) => k.pubkey);
   let expected;
-  if (sponsor && data[0] !== 15 && data[0] !== 16) return false;
+  if (sponsor && data[0] !== 15 && data[0] !== 16 && data[0] !== 17) return false;
   switch (data[0]) {
+    case 17:
+      if (data.length <= 67 || data.length > 467) return false;
+      expected = [limit(), price(), communityUpdate(program, address, accounts[1],
+        data[1], pk(data.subarray(2,34)), data[34], pk(data.subarray(35,67)), data.subarray(67))];
+      break;
     case 16: {
       const opening = ix.at(-2);
       if (!opening?.programId.equals(program) || opening.data[0] !== 10 || opening.data.length > 434) return false;

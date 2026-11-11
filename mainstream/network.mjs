@@ -19,7 +19,7 @@ export const rpc = new Connection(manifest.rpc, {
   commitment: "confirmed",
   disableRetryOnRateLimit: false,
 });
-const registryKey = "wara.v03.directory." + program;
+const registryKey = "wara.v03.policy-directory." + program;
 let verified;
 async function ready() {
   return (verified ??= assertDevnet(rpc).catch((e) => {

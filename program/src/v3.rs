@@ -63,7 +63,11 @@ pub fn process(program:&Pubkey,accounts:&[AccountInfo],op:u8,rest:&[u8])->Progra
    let status=if rest[0]==1{
     require(*who.key==owner&&mode==2,5)?;edge_is(program,row,b"m3",MEMBER,g.key,user.key,1)?;2
    }else{
-    require(rest[0]==0&&who.key==user.key&&row.owner!=program,5)?;
+    require(rest[0]==0&&who.key==user.key,5)?;
+    // A pending applicant may join under the current policy after a mode change.
+    if row.owner==program {
+     require(mode!=2,5)?;edge_is(program,row,b"m3",MEMBER,g.key,user.key,1)?;
+    }
     if mode==1 {let code=next_account_info(&mut it)?;signer(code)?;require(*code.key==invite,5)?;}
     if mode==2{1}else{2}
    };
@@ -117,6 +121,22 @@ pub fn process(program:&Pubkey,accounts:&[AccountInfo],op:u8,rest:&[u8])->Progra
    require(*token.key==spl_token::id()&&dst.owner==token.key&&src.owner==token.key,5)?;
    for(a,w)in[(src,who.key),(dst,merchant.key)]{let d=TokenAccount::unpack(&a.try_borrow_data()?)?;require(d.owner==*w&&d.mint==*mint.key,5)?;}
    invoke(&spl_token::instruction::transfer_checked(token.key,src.key,mint.key,dst.key,who.key,&[],n,0)?,&[src.clone(),mint.clone(),dst.clone(),who.clone(),token.clone()])
+  },
+  17=>{ // Update the group's policy only. No mint, token or membership accounts.
+   let sys=next_account_info(&mut it)?;
+   require(*who.key==owner && *sys.key==system_program::id() && it.next().is_none(),5)?;
+   // Compare the policy that the administrator saw before signing.
+   require(rest.len()>66 && rest.len()<=466 && rest[0]==mode && rest[1..33]==invite.to_bytes(),5)?;
+   let next=&rest[33..];
+   require(next[0]<=2 && std::str::from_utf8(&next[33..]).is_ok(),5)?;
+   let size=33+next.len();
+   let missing=Rent::get()?.minimum_balance(size).saturating_sub(g.lamports());
+   if missing>0 {
+    invoke(&system_instruction::transfer(who.key,g.key,missing),&[who.clone(),g.clone(),sys.clone()])?;
+   }
+   g.resize(size)?;
+   g.try_borrow_mut_data()?[33..].copy_from_slice(next);
+   Ok(())
   },
   _=>Err(ProgramError::InvalidInstructionData)
  }

@@ -14,6 +14,7 @@ export function eligible(ix, program) {
   if (!last?.programId.equals(program)) return false;
   return (
     (last.data[0] === 16 && ix.at(-2)?.programId.equals(program) && ix.at(-2).data[0] === 10) ||
+    last.data[0] === 17 || // transaction fee only; any extra group rent is paid by its owner
     last.data[0] === 14 ||
     last.data[0] === 15 ||
     (last.data[0] === 12 && last.data[1] === 0)

@@ -3,8 +3,8 @@ import { Keypair } from "@solana/web3.js";
 import { showHistory } from "./history.mjs";
 import { invoiceAmount, scannerBox } from "./scan.mjs";
 import QRCode from "qrcode";
-import { communityOpening } from "../shared/community-metadata.mjs";
-import { privateMetadata, rememberInvite, storedInvite, pendingInvite, invitationUrl } from "./community-privacy.mjs";
+import { communityOpening, communityUpdate } from "../shared/community-metadata.mjs";
+import { makePolicy, rememberInvite, currentInvite, pendingInvite, invitationUrl } from "./community-privacy.mjs";
 import { inviteSecret } from "./identity.mjs";
 import {
   program,
@@ -19,7 +19,6 @@ import {
 import {
   categories,
   modes,
-  metadata,
   pk,
   certify,
   join,
@@ -91,7 +90,7 @@ export async function dashboard(ctx) {
     const refreshed = await refresh(
       ix.some(
         (i) =>
-          i.programId.equals(program) && i.data[0] >= 10 && i.data[0] <= 13,
+          i.programId.equals(program) && ((i.data[0] >= 10 && i.data[0] <= 13) || i.data[0] === 17),
       ),
     );
     info(msg + (refreshed ? "" : " 残高は「更新」で再確認してください。"));
@@ -110,44 +109,24 @@ export async function dashboard(ctx) {
     s.rows.some(
       (r) => r.tag === 34 && r.group === a && r.to === b && r.status === 1,
     );
+  const policyFields = () => sel("visibility", "公開範囲", opt("public", "公開（市場に掲載）") + opt("private", "限定公開（リンク限定）")) +
+    sel("mode", "参加方式", modes.map((v, i) => opt(i, v)).join(""));
   function newGroup() {
     ui(
       '<p>開設したウォレットが最初の管理者になります。公開を選ぶと名称と説明がDevnetに掲載されます。開設者はコミュニティ口座の作成費とMetaplexの登録料をDevnet SOLで支払います。手数料支援が有効なときはトークン情報の口座保管料と取引手数料を運営が負担します。</p><form id="create">' +
-        sel("visibility", "公開範囲", opt("public", "公開（市場に掲載）") + opt("private", "限定公開（家族・仲間を招待）")) +
+        policyFields() +
         inp("name", "名称", 'maxlength="50"') +
         '<label>説明<textarea name="description" maxlength="140"></textarea></label>' +
         sel("category", "カテゴリ", categories.map((c) => opt(c, c)).join("")) +
-        sel("mode", "参加方式", modes.map((v, i) => opt(i, v)).join("")) +
         btn("署名して開設する") +
         "</form>",
     );
-    const create = content.querySelector("#create");
-    create.elements.visibility.onchange = () => {
-      const hidden = create.elements.visibility.value === "private";
-      create.elements.mode.disabled = hidden;
-      if (hidden) create.elements.mode.value = "1";
-    };
     form("create", async (v) => {
-      const group = Keypair.generate(),
-        hidden = v.visibility === "private",
-        mode = hidden ? 1 : Number(v.mode),
-        secret = mode === 1 ? inviteSecret() : null,
-        inv = secret ? codeKey(secret).publicKey : who;
-      const meta = hidden ? await privateMetadata(v.name, v.description, v.category, secret, group.publicKey) :
-        metadata(v.name, v.description, v.category);
-      const ix = communityOpening(
-        program,
-        who,
-        group.publicKey,
-        mode,
-        inv,
-        meta,
-        await rpc.getMinimumBalanceForRentExemption(66 + meta.length),
-      );
-      // Preserve the generated invitation locally across a timeout; it is never sent as transaction data.
-      const id = String(group.publicKey);
-      if (hidden) rememberInvite(id, who, secret);
-      else if (secret) sessionStorage.setItem("wara.invite." + id, secret);
+      const group = Keypair.generate(), id = String(group.publicKey);
+      const policy = await makePolicy({...v, mode:Number(v.mode)}, id, who, inviteSecret);
+      const ix = communityOpening(program, who, id, policy.mode, policy.invite, policy.bytes,
+        await rpc.getMinimumBalanceForRentExemption(66 + policy.bytes.length));
+      if (policy.code) rememberInvite(id, who, policy.code);
       await send(ix, [group], "コミュニティを開設しました。");
       location.assign(gid(id));
     });
@@ -197,23 +176,32 @@ export async function dashboard(ctx) {
             ? "参加申請中"
             : "未参加") +
       "</small></section>";
-    if (!owner && !own)
+    if (!owner && (!own || (own.status === 1 && g.mode !== 2)))
       out +=
         '<form id="join">' +
         (g.mode === 1 ? inp("code", "招待コード", 'autocomplete="off"') : "") +
         btn(g.mode === 2 ? "参加を申請する" : "この地域に参加する") +
         "</form>";
-    if (owner && g.mode === 1) {
-      const secret = g.visibility === "private" ? storedInvite(g.id, who) : sessionStorage.getItem("wara.invite." + g.id);
-      if (secret && g.visibility === "private") {
-        out += '<section data-invite><h2>家族・仲間用 招待QRコード</h2><img alt="このコミュニティの招待QRコード"><p><a class="wrap" href="' +
-          h(invitationUrl(g.id, secret)) + '">' + h(invitationUrl(g.id, secret)) + '</a></p><button type="button">招待URLをコピー</button>' +
-          '<p>このリンクを知っている人が参加できます。招待したい人にだけ渡してください。</p></section>';
-      } else if (secret)
-        out +=
-          '<details><summary>招待コードを表示</summary><p class="wrap">' +
-          h(secret) +
-          "</p><small>このタブを閉じる前に控えて、招待したい人にだけ渡してください。</small></details>";
+    const secret = currentInvite(g, who);
+    if (owner) {
+      const locked = g.visibility === "private" && !g.unlocked;
+      const recover = locked ? '<p>この端末には現在の招待鍵がありません。控えたリンクを開くか、名称・説明を再入力して新しいリンクを発行してください。</p>' +
+        inp("name","コミュニティ名") + '<label>説明<textarea name="description"></textarea></label>' +
+        sel("category","カテゴリ", categories.map(c => opt(c,c)).join("")) : "";
+      out += '<form id="policy"><h2>コミュニティの設定</h2>' + policyFields() + recover +
+        '<p>設定を変更すると、共有リンクは新しくなります。これまで公開した名称や取引の記録は台帳に残ります。トークンと既存の参加資格は変わりません。保存容量が増える場合、追加の口座保管料は管理者が支払います。</p>' +
+        btn(locked ? "設定を更新してリンクを再発行" : "署名して設定を更新") + '</form>';
+      if (g.mode === 1 && !locked)
+        out += '<form id="rotate">' + btn("招待コードを再発行") + '</form>';
+      if ((g.visibility === "private" || g.mode === 1) && secret) {
+        const url = h(invitationUrl(g.id, secret));
+        out += '<section data-invite><h2>参加用リンク・QRコード</h2><img alt="このコミュニティの参加用QRコード"><p><a class="wrap" href="' +
+          url + '">' + url + '</a></p><button type="button">URLをコピー</button>' +
+          (g.mode === 1 ? '<details><summary>招待コードを表示</summary><p class="wrap">' + h(secret) + '</p></details>' : '') +
+          '<p>共有したい相手にだけ渡してください。' + (g.mode === 2 ? '参加には管理者の承認が必要です。' : '') + '</p></section>';
+      } else if (g.mode === 1 && !locked) {
+        out += '<p>この端末に招待コードがありません。元のリンクを開くか、再発行してください。</p>';
+      }
     }
     if (owner && g.mode === 2)
       out += s.rows
@@ -293,6 +281,26 @@ export async function dashboard(ctx) {
         .join("") +
       "</section>";
     ui(out);
+    if (owner) {
+      const f = content.querySelector("#policy");
+      f.elements.visibility.value = g.visibility;
+      f.elements.mode.value = String(g.mode);
+      const change = async (v, rotate) => {
+        const mode = Number(v.mode), visibility = v.visibility;
+        if (!rotate && mode === g.mode && visibility === g.visibility && !v.name) throw Error("変更する設定を選んでください。");
+        const warning = g.visibility === "private" && visibility === "public"
+          ? "名称・説明を公開します。台帳に公開した内容は消去できません。"
+          : "現在の参加用リンクは更新されます。既存の参加者はそのままです。";
+        if (!confirm(warning + " 設定を更新しますか？")) { info("取り消しました。"); return; }
+        const next = await makePolicy({...g, ...v, mode, visibility}, id, who, inviteSecret);
+        const ix = communityUpdate(program, who, id, g.mode, g.invite, mode, next.invite, next.bytes);
+        if (next.code) rememberInvite(id, who, next.code);
+        await send([ix], [], "コミュニティの設定を更新しました。");
+      };
+      form("policy", v => change(v, false));
+      form("rotate", () => change({mode:g.mode, visibility:g.visibility}, true));
+      if (secret) rememberInvite(id, who, secret);
+    }
     const invitation = content.querySelector("[data-invite]");
     if (invitation) {
       const url = invitation.querySelector("a").href;
@@ -302,12 +310,13 @@ export async function dashboard(ctx) {
         .then(() => info("招待URLをコピーしました。")).catch(() => info("招待URLを長押ししてコピーしてください。"));
     }
     const codeInput = content.querySelector('#join [name="code"]');
-    if (codeInput && g.visibility === "private") {
-      codeInput.value = sessionStorage.getItem(pendingInvite(id)) || "";
+    if (codeInput) {
+      codeInput.value = secret || "";
       codeInput.parentElement.hidden = Boolean(codeInput.value);
     }
     form("join", async (v) => {
       const inv = g.mode === 1 ? codeKey(v.code) : null;
+      if (inv && String(inv.publicKey) !== g.invite) throw Error("この招待コードは無効です。最新のリンクを管理者に依頼してください。");
       await send(
         [join(program, who, id, who, false, inv?.publicKey)],
         inv ? [inv] : [],
