@@ -2,7 +2,7 @@
   "name": "wara-monku-ai",
   "version": "0.3.0",
   "private": true,
-  "description": "10 daily Kusa across communities, origin-preserving Devnet settlement and 90:10 WARA issuance.",
+  "description": "10 daily INA (formerly Kusa) across communities, origin-preserving Devnet settlement and 90:10 WARA issuance.",
   "license": "MIT",
   "scripts": {
     "start": "node serve.js",
