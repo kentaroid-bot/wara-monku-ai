@@ -57,7 +57,7 @@ npm run workers:dev
 1. `wrangler.toml` で `wara.monku.ai` を Worker の Custom Domain に指定しています。Cloudflare がこのホストの DNS と TLS 証明書を管理します。併記した専用ルート `wara.monku.ai/*` をゾーン共通の `*.monku.ai/*` より優先し、アプリと API を同じ Worker に届けます。
 2. 公開環境の D1 と `database_id` は設定済みです。別環境を初めて作る場合は、専用の D1 を用意してその UUID を設定します。`npx wrangler d1 migrations apply DB --remote` でスキーマを適用します。
 3. 公開環境の `AUTH_PEPPER` は登録済みです。新しい環境の初回にだけ専用乱数を生成し、Cloudflare の暗号化された Worker Secret として設定します（CLI は `npx wrangler secret put AUTH_PEPPER`）。番号検索に必要なため、安全に保管してください。DB の移行を伴わない変更・紛失は既存財布へのサインインに影響します。
-4. `npm run workers:build` で確認し、公開する時点で `npx wrangler deploy` を実行します。既定の `AUTH_MODE=disabled` では認証 API は 503 を返します。架空番号を使う Devnet 試験を明示的に公開する場合だけ `npx wrangler deploy --var AUTH_MODE:trial` を使います。
+4. 本番は `npm run workers:build` で確認してから `npx wrangler deploy` で配備します。配備後は `https://wara.monku.ai/api/auth/status` が `mode: "google"` を返すことを確認します。架空番号の試験はローカルで `npm run workers:dev` を使います。
 5. 公開先の `/api/auth/status` と `/signup/` を確認し、別ブラウザで登録・復元した公開アドレスを照合します。
 
 ### 実SMSへの切り替えと別端末での確認
@@ -73,7 +73,7 @@ Twilioでの送信上限は15分ごとに同じ番号3回、同じ接続元10回
 
 ## 配備元と既存URL
 
-wara.monku.ai の配備元は kentaroid-bot/wara-monku-ai の main。リポジトリ直下でビルドし、画面にコードを表示する試験環境へは `npx wrangler deploy --var AUTH_MODE:trial` で配備します。静的アセットには明示的に選んだ dist/ 内のファイルだけを含めます。
+wara.monku.ai の配備元は kentaroid-bot/wara-monku-ai の main。リポジトリ直下でビルドし、上記の本番手順で配備します。静的アセットには明示的に選んだ dist/ 内のファイルだけを含めます。
 
 /mock/ は初期モックの同梱版です。[モックの原本](https://github.com/kentaroid-bot/emergency-straw-protocol)を更新した際は、必要に応じて同梱版へ取り込みます。既発行トークンが参照する旧GitHubのJSONと画像は旧URLを維持します。新規コミュニティのメタデータは /api/v3/metadata/{mint}.json がDevnetのGroupを照合して配信し、共通の画像は /assets/wara-avatar.png で配信します。
 
@@ -89,7 +89,7 @@ wara.monku.ai の配備元は kentaroid-bot/wara-monku-ai の main。リポジ�
 
 Firebaseで専用プロジェクトにウェブアプリを登録し、Authenticationのログイン方法で電話番号を有効にします。承認済みドメインに `wara.monku.ai` を追加し、SMSリージョンで日本を許可します。実SMSには請求先（Blaze）の設定が必要です。公開環境では固定コードのテスト番号を登録しません。実際の送信はFirebase SDKからGoogleへ直接行うため、Google側でも割り当てと利用量を確認します。[電話認証の設定](https://firebase.google.com/docs/auth/web/phone-auth?hl=ja)
 
-ウェブアプリの設定の `projectId`、`apiKey`、`appId` を、それぞれWorkerの `FIREBASE_PROJECT_ID`、`FIREBASE_WEB_API_KEY`、`FIREBASE_APP_ID` に設定します。この3つはFirebaseが公開クライアント向けに発行する設定です。サービスアカウントの秘密鍵は使いません。Wranglerで配備時にダッシュボードの変数を維持する場合は `npx wrangler deploy --keep-vars --var AUTH_MODE:google` を使い、以後の再配備も同じモードを明示します。既存のD1とAUTH_PEPPERを使います。
+ウェブアプリの設定の `projectId`、`apiKey`、`appId` を、それぞれWorkerの `FIREBASE_PROJECT_ID`、`FIREBASE_WEB_API_KEY`、`FIREBASE_APP_ID` に設定します。この3つはFirebaseが公開クライアント向けに発行する設定です。サービスアカウントの秘密鍵は使いません。本番の `wrangler.toml` は `AUTH_MODE = "google"` を指定し、`keep_vars = true` でCloudflare上のFirebase設定3項目を次の配備にも引き継ぎます。既存のD1とAUTH_PEPPERを使います。
 
 現行版はSMSの確認後、本人が決めた固定6桁を入力し、Phantomの場合は署名します。別端末で同じ番号に新しいSMSを送信し、同じ財布が開くことを公開アドレスで照合します。Googleの公開鍵で署名・プロジェクト・電話番号・認証時刻を検証し、同じ電話認証の再利用を防ぎます。
 

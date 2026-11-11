@@ -3,6 +3,8 @@ main = "worker/index.mjs"
 compatibility_date = "2026-11-04"
 workers_dev = false
 preview_urls = false
+# Preserve the Firebase web app settings managed on the production Worker.
+keep_vars = true
 # The exact host route takes precedence over the zone's shared *.monku.ai/* route.
 routes = [
   { pattern = "wara.monku.ai", custom_domain = true },
@@ -21,7 +23,7 @@ database_id = "9a3bf1f1-f58f-4098-bd54-7a555dfb1f08"
 migrations_dir = "migrations"
 
 [vars]
-# Select trial (onscreen code) or sms (Twilio Verify) explicitly at deploy time.
-AUTH_MODE = "disabled"
+# Local development overrides this with trial (npm run workers:dev).
+AUTH_MODE = "google"
 
 WALLET_ACCESS = "enabled"
