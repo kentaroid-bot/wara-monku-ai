@@ -8,7 +8,7 @@ export function invoiceAmount(params) {
 
 export function storeInvoiceUrl(value, origin) {
   const u = new URL(value);
-  if (u.origin !== origin || !["/shop", "/shop/"].includes(u.pathname))
+  if (u.origin !== origin || !["/shop", "/shop/", "/register", "/register/"].includes(u.pathname))
     throw Error("このサイトのお会計QRを選んでください。");
   const clean = new URL("/shop/", origin);
   for (const key of ["group", "store"])

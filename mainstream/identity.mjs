@@ -116,6 +116,7 @@ export async function unlock(profile, pass) {
   const pair = await openPair(profile, pass);
   return {
     publicKey: pair.publicKey,
+    signMessage: async message => ({signature:ed25519.sign(message,pair.secretKey.subarray(0,32))}),
     signTransaction: async (tx) => {
       tx.partialSign(pair);
       return tx;

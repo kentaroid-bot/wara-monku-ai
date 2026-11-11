@@ -19,7 +19,8 @@ const el = document.querySelector("#screen"),
 const info = (s) => {
   notice.textContent = s;
 };
-const path = location.pathname.replace(/\/+$/, "") || "/";
+const pathname = location.pathname.replace(/\/+$/, "") || "/";
+const path = pathname === "/register" ? "/shop" : pathname;
 const tab = path === "/support" ? "guide" :
   ["/", "/user"].includes(path) ? "wallet" :
   (path === "/shop" || path.startsWith("/communities")) ? "market" : "me";
@@ -232,7 +233,7 @@ async function render() {
     if (path === "/shop" && location.search)
       sessionStorage.setItem(
         "wara.v03.after-signin",
-        location.pathname + location.search,
+        "/shop/" + location.search,
       );
     el.insertAdjacentHTML("beforeend", welcome);
     return;

@@ -1,3 +1,4 @@
+import { memoInstruction, paymentMemo } from "../shared/payment-memo.mjs";
 import { Buffer } from "buffer";
 import {
   PublicKey,
@@ -119,12 +120,14 @@ export const offer = (p, who, g, peer, yes) =>
     [actor(who), key(g), key(peer), rw(addr(p, "a3", g, peer)), key(sys)],
     data(13, byte(yes ? 1 : 0)),
   );
-export function spend(p, who, g, merchant, n, day, nonce) {
+export function spend(p, who, g, merchant, n, day, nonce, message = "") {
+  const memo = paymentMemo(message);
   const m = mintFor(p, g);
   return [
     budget(),
     makeAta(who, m, merchant),
     makeAta(who, m, who),
+    ...(memo ? [memoInstruction(memo)] : []),
     ix(
       p,
       [

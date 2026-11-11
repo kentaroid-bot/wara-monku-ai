@@ -1,3 +1,4 @@
+import { memoProgram, readPaymentMemo } from "../shared/payment-memo.mjs";
 import { Connection } from "@solana/web3.js";
 import { Buffer } from "buffer";
 import { rpc, program } from "./network.mjs";
@@ -8,7 +9,8 @@ export function entries(tx, sig, address, storeId = null) {
   const out = [];
   const message = tx.transaction.message;
   const accounts = message.getAccountKeys({ accountKeysFromLookups: tx.meta.loadedAddresses });
-  for (const ix of message.compiledInstructions) {
+  const instructions = message.compiledInstructions;
+  for (const [index, ix] of instructions.entries()) {
     if (!accounts.get(ix.programIdIndex)?.equals(program)) continue;
     const d = Buffer.from(ix.data),
       keys = ix.accountKeyIndexes.map(index => String(accounts.get(index))),
@@ -24,7 +26,11 @@ export function entries(tx, sig, address, storeId = null) {
     )
       continue;
     const n = d.readBigUInt64LE(1);
+    const previous = index > 0 && instructions[index - 1];
+    const memo = k && previous && accounts.get(previous.programIdIndex)?.equals(memoProgram) &&
+      previous.accountKeyIndexes.length === 0 && readPaymentMemo(previous.data);
     out.push({
+      ...(memo ? {memo} : {}),
       sig,
       group,
       origin: k ? group : keys[2],
@@ -48,7 +54,7 @@ export function storyReceipt(r, h, by, shopName) {
     : `発行元：${by(r.origin)?.name || "地域"}`;
   const time = r.time ? new Date(r.time * 1000).toLocaleString("ja-JP", {month:"numeric", day:"numeric", hour:"2-digit", minute:"2-digit", timeZone:"Asia/Tokyo"}) + " JST · " : "";
   return `<li class="story"><span aria-hidden="true">${r.incoming ? "🌾" : "🌱"}</span>
-    <div><strong>${h(title)}</strong><p>${h(detail)}</p><small>${h(time)}${h(by(r.group)?.name || "地域")} ·
+    <div><strong>${h(title)}</strong>${r.memo ? `<p class="receipt-memo">💬「${h(r.memo)}」</p>` : ""}<p>${h(detail)}</p><small>${h(time)}${h(by(r.group)?.name || "地域")} ·
     <a target="_blank" rel="noopener" href="https://explorer.solana.com/tx/${encodeURIComponent(r.sig)}?cluster=devnet">取引を確認 ↗</a></small></div></li>`;
 }
 // The wallet and shop share the same confirmed receipts as the warmth indicator.

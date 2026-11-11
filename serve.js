@@ -8,6 +8,7 @@ const routes = new Set([
   "user",
   "signup",
   "shop",
+  "register",
   "account",
   "support",
   "communities",

@@ -1,3 +1,4 @@
+import { readShops, saveShop } from "./shop-profiles.mjs";
 import { requireFreshBlockhash, workerConnection } from "./devnet-rpc.mjs";
 import { feeKey, relayPayment } from "./relay.mjs";
 import bs58 from "bs58";
@@ -111,6 +112,23 @@ export async function memberRequest(op, b, ctx) {
     const m = await byId(grant.id);
     if (!m || grant.revision !== m.revision) denied();
     return { m, grant };
+  }
+  if (op === "shop-challenge") {
+    if (!validSecret(b.address) || bs58.decode(b.address).length !== 32) bad();
+    return {ticket:await ticket("shop-proof", {address:b.address}), audience:origin};
+  }
+  if (op === "shop-access") {
+    const {address} = await readTicket(b.ticket, "shop-proof");
+    await checkSignature(bs58.decode(address), b.proof, walletMessage(origin, "shop-profile", b.ticket, address));
+    return {access:await ticket("shop-access", {address}, 900)};
+  }
+  if (op === "shop-profiles" || op === "shop-save") {
+    const viewer = b.session ? (await session()).m.address
+      : b.access ? (await readTicket(b.access, "shop-access", false)).address : null;
+    const rpc = workerConnection(env);
+    if (op === "shop-profiles") return readShops(db, rpc, realm, viewer, b.shops, fail);
+    if (!viewer) denied();
+    return saveShop(db, rpc, realm, viewer, b, fail);
   }
   if (op === "relay" || op === "relay-status") {
     const { m } = await session();

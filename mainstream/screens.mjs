@@ -1,3 +1,6 @@
+import { shopProfiles, shopTitle, shopDetails, shopEditor } from "./shop-profile.mjs";
+import { memoFields, bindMemoChips } from "./memo-ui.mjs";
+import { paymentMemo } from "../shared/payment-memo.mjs";
 import { twinCards, crystallize } from "./balances.mjs";
 import { Keypair } from "@solana/web3.js";
 import { showHistory } from "./history.mjs";
@@ -69,14 +72,18 @@ export async function dashboard(ctx) {
   const gid = (id) => "/communities/?id=" + encodeURIComponent(id);
   const register = (g, shop) =>
     "/shop/?" + new URLSearchParams({ group: g, store: shop });
+  const profiles = shopProfiles(profile, wallet);
   let s = null;
   const refresh = async (force = false) => {
     info("Devnetを読み込み中…");
     try {
       s = await loadState(who, force);
+      let profileError = "";
+      try { await profiles.load(s); }
+      catch { profileError = "店舗プロフィールを取得できません。「更新」で再試行できます。"; }
       if (pendingSig(who)) await checkPending(who);
       view();
-      info("");
+      info(profileError);
       return true;
     } catch (e) {
       ui("<p>最新の状態を表示できません。「更新」で再確認してください。</p>");
@@ -142,7 +149,7 @@ export async function dashboard(ctx) {
             const joined = g.owner === who || s.rows.some(r => r.tag === 33 && r.group === g.id && r.to === who && r.status === 2);
             return `<article class="market-row"><a href="${h(gid(g.id))}"><strong>${h(g.name)}</strong></a>
               <small>${h(g.category)} · ${modes[g.mode]} · 公認店舗 ${stores.length}店${joined ? " · 参加中" : ""}</small>
-              ${stores.map(st => `<a class="shop-row" href="${h(register(g.id, st.to))}"><span>${h(st.name)}</span><small>レジを開く ›</small></a>`).join("")}</article>`;
+              ${stores.map(st => `<a class="shop-row" href="${h(register(g.id, st.to))}"><span>${h(shopTitle(st))}${shopDetails(st,h)}</span><small>レジを開く ›</small></a>`).join("")}</article>`;
           }).join("") || "<p>まだ登録がありません。</p>"}</section>
         ${s.groups.some(g => g.visibility === "private" && g.joined) ? '<section><h2>自分の限定公開コミュニティ</h2>' +
           s.groups.filter(g => g.visibility === "private" && g.joined).map(g => link(gid(g.id), g.name)).join("") + '</section>' : ''}`,
@@ -221,7 +228,7 @@ export async function dashboard(ctx) {
       "<section><h2>公認店舗</h2>" +
       (shops
         .map(
-          (r) => "<p>" + link(register(g.id, r.to), r.name + "のレジ") + "</p>",
+          (r) => "<p>" + link(register(g.id, r.to), shopTitle(r) + "のレジ") + shopDetails(r,h) + "</p>",
         )
         .join("") || "<p>まだ公認店舗はありません。</p>") +
       "</section>";
@@ -339,8 +346,10 @@ export async function dashboard(ctx) {
       );
   }
   function store() {
-    const stores = s.rows.filter((r) => r.tag === 32 && by(r.group) && (by(r.group).visibility !== "private" || by(r.group).joined)),
-      g = by(params.get("group")),
+    const groupForShop = id => by(id) || s.rows.find(row=>row.tag === 31 && row.id === id);
+    const stores = s.rows.filter(r => r.tag === 32 && (r.to === who ||
+      (by(r.group) && (by(r.group).visibility !== "private" || by(r.group).joined)))),
+      g = groupForShop(params.get("group")),
       store = stores.find(
         (r) => r.group === g?.id && r.to === params.get("store"),
       );
@@ -353,9 +362,9 @@ export async function dashboard(ctx) {
             .map(
               (st) =>
                 "<p>" +
-                link(register(st.group, st.to), st.name) +
+                link(register(st.group, st.to), shopTitle(st)) + shopDetails(st,h) +
                 " · " +
-                h(by(st.group).name) +
+                h(groupForShop(st.group)?.name) +
                 "</p>",
             )
             .join("") +
@@ -381,14 +390,14 @@ export async function dashboard(ctx) {
     const n = invoiceAmount(params) || "1";
     ui(
       twinCards(s) + "<section><h2>" +
-        h(store.name) +
-        "</h2><small>" +
+        h(shopTitle(store)) +
+        "</h2>" + shopDetails(store,h) + "<small>" +
         h(g.name) +
         "の公認店舗 · " +
         h(short(store.to)) +
         "</small></section>" +
         (isShop
-          ? '<form id="invoice"><h2>お会計QRを作る</h2>' +
+          ? shopEditor(store,h) + '<form id="invoice"><h2>お会計QRを作る</h2>' +
             inp(
               "ina",
               "金額（INA）",
@@ -404,6 +413,7 @@ export async function dashboard(ctx) {
               "枚数",
               'type="number" min="1" max="10" value="' + n + '"',
             ) +
+            (member ? memoFields : "") +
             (member
               ? btn("金額を確認して支払う")
               : link(gid(g.id), "地域に参加して支払う")) +
@@ -422,13 +432,26 @@ export async function dashboard(ctx) {
             btn("WARAで支払う") +
             "</form>"),
     );
+    if (isShop) form("edit-shop", async values => {
+      const saved = await profiles.save(store,values);
+      Object.assign(store,saved,{name:saved.title});
+      view();
+      info("店舗情報を保存しました。");
+    });
+    if (!profile.managed && g.visibility === "private" && !store.revision) {
+      const readProfile = document.createElement("form");
+      readProfile.innerHTML = btn("財布で本人確認して店舗情報を読む");
+      content.append(readProfile);
+      action(readProfile,async()=>{await profiles.authenticate(); await refresh();});
+    }
     if (isShop && profile.managed) {
       const checkout=document.createElement("form");
-      checkout.innerHTML='<h2>お客さんの紙カードで支払う</h2><label>金額（INA）<input name="amount" type="number" min="1" max="10" required></label><button>カードを読む</button>';
+      checkout.innerHTML='<h2>お客さんの紙カードで支払う</h2><label>金額（INA）<input name="amount" type="number" min="1" max="10" required></label>'+memoFields+'<button>カードを読む</button>';
       content.append(checkout);
+      bindMemoChips(checkout);
       action(checkout,async v=>{
         const {payWithCard}=await import("./member-ui.mjs");
-        const sig=await payWithCard(g.id,store.to,Number(v.amount),store.name);
+        const sig=await payWithCard(g.id,store.to,Number(v.amount),store.name,paymentMemo(v.memo));
         recordPayment();
         crystallize(BigInt(v.amount), true);
         const refreshed = await refresh(true);
@@ -455,7 +478,10 @@ export async function dashboard(ctx) {
         "</article>";
       info("お客さんのカメラで読み取ってください。");
     });
+    const inaForm = content.querySelector("#ina");
+    if (inaForm) bindMemoChips(inaForm);
     form("ina", async (v) => {
+      const memo = paymentMemo(v.memo || "");
       const n = amount(v.ina);
       if (!member) throw Error("地域に参加してください。");
       if (n > s.remaining) throw Error("残りINAを超えています。");
@@ -468,14 +494,14 @@ export async function dashboard(ctx) {
             n * 90n +
             " WARA、あなたに " +
             n * 10n +
-            " WARA。支払いますか？",
+            " WARA。" + (memo ? "\n💬「" + memo + "」\n" : "") + "支払いますか？",
         )
       ) {
         info("取り消しました。");
         return;
       }
       await send(
-        spend(program, who, g.id, store.to, n, s.day, s.nonce),
+        spend(program, who, g.id, store.to, n, s.day, s.nonce, memo),
         [],
         "支払い完了。店に " +
           n * 90n +

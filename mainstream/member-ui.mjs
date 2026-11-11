@@ -28,6 +28,7 @@ export async function memberApi(op, body = {}) {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     credentials: "same-origin",
+    ...(op === "shop-profiles" ? {signal:AbortSignal.timeout(8000)} : {}),
     keepalive: op === "signature" || (op === "enroll" && body.type === "phantom"),
     cache: "no-store",
     redirect: "error",
@@ -573,7 +574,7 @@ export function siteSigner(profile, checkout = null) {
     },
   };
 }
-export async function payWithCard(group, store, amount, title) {
+export async function payWithCard(group, store, amount, title, memo = "") {
   const card = await secretScan("ina", "本人のINAカードを読む");
   const { address } = await memberApi("card-info", { card });
   const [{ loadState, submit, program }, { spend }] = await Promise.all([
@@ -583,10 +584,10 @@ export async function payWithCard(group, store, amount, title) {
   const state = await loadState(address, true);
   if (state.remaining < BigInt(amount))
     throw Error("今日のINAの残りを超えています。");
-  const checkout = { group, store, amount };
+  const checkout = { group, store, amount, memo };
   const pin = await keypad(
     "支払いの暗証番号",
-    title + " に " + amount + " INAを支払います。",
+    title + " に " + amount + " INAを支払います。" + (memo ? " 💬「" + memo + "」" : ""),
   );
   const p = { address, managed: true };
   return submit(
@@ -600,6 +601,7 @@ export async function payWithCard(group, store, amount, title) {
       BigInt(amount),
       state.day,
       state.nonce,
+      memo,
     ),
   );
 }

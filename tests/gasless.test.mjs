@@ -13,6 +13,10 @@ import {
   SystemProgram,
 } from "@solana/web3.js";
 import bs58 from "bs58";
+import { ed25519 } from "@noble/curves/ed25519";
+import { walletMessage } from "../shared/member-wire.mjs";
+import { addr } from "../mainstream/protocol.mjs";
+import { privateMetadata } from "../mainstream/community-privacy.mjs";
 import { program, rpc, submit, checkPending } from "../mainstream/network.mjs";
 import {
   createGroup,
@@ -114,6 +118,12 @@ test("signed-in zero-SOL buyer joins, spends and transfers through Worker/D1 and
         );
         break;
       }
+      case "getMultipleAccounts":
+        result = ctx(params[0].map(k => {
+          const a = account(k);
+          return a && {...a, owner:String(a.owner), executable:false, rentEpoch:0, data:[a.data.toString("base64"),"base64"]};
+        }));
+        break;
       case "simulateTransaction": {
         assert.equal(params[1].sigVerify, true);
         const sim = svm.simulateTransaction(
@@ -186,6 +196,7 @@ test("signed-in zero-SOL buyer joins, spends and transfers through Worker/D1 and
     "0001_auth",
     "0002_wallet_access",
     "0003_relay_receipts",
+    "0004_shop_profiles",
   ]) {
     const sql = await readFile("migrations/" + file + ".sql", "utf8");
     for (const stmt of sql
@@ -295,6 +306,12 @@ test("signed-in zero-SOL buyer joins, spends and transfers through Worker/D1 and
   assert.equal(balance(merchant), 90n);
   assert.equal(balance(user), 10n);
   assert.equal(account(ata(mint, secondShop)), null);
+  await t.test("signed memo crosses Worker relay and settles on LiteSVM", async () => {
+    const signature = await submit(profile, wallet, spend(program,user,g,merchant,1n,day,1n,"いつもありがとう！ ✨"));
+    assert.equal(signature,broadcast.at(-1));
+    assert.equal(balance(merchant),180n);
+    assert.equal(balance(user),20n);
+  });
   drop = true;
   await assert.rejects(
     submit(
@@ -304,15 +321,43 @@ test("signed-in zero-SOL buyer joins, spends and transfers through Worker/D1 and
     ),
     /送信結果を確認中/,
   );
-  assert.equal(await checkPending(String(user)), broadcast[2]);
-  assert.equal(balance(merchant), 90n);
+  assert.equal(await checkPending(String(user)), broadcast[3]);
+  assert.equal(balance(merchant), 180n);
   assert.equal(balance(secondShop), 3n);
-  assert.equal(balance(user), 7n);
+  assert.equal(balance(user), 17n);
   assert.equal(account(user)?.lamports ?? 0, 0);
   assert.deepEqual(await (await post("/api/relay", lastBody)).json(), {
-    signature: broadcast[2],
+    signature: broadcast[3],
   });
-  assert.equal(broadcast.length, 3);
+  assert.equal(broadcast.length, 4);
+  await t.test("store profile persists in D1 only for its certified merchant, with stale-edit and private-read checks",async()=>{
+    const group = String(g), store = String(merchant), id = String(addr(program,"s3",g,merchant));
+    const data = {group,store,title:"珈琲屋",caption:"手作りスコーン",icon:"☕",is_test:true,revision:0};
+    const call = (op,payload)=>post("/api/member/"+op,payload);
+    assert.equal((await call("shop-save",data)).status,401);
+    assert.equal((await call("shop-save",{...data,session})).status,403);
+    assert.equal((await call("shop-save",{...data,store:String(user),session})).status,403);
+    const {ticket,audience}=await (await call("shop-challenge",{address:store})).json();
+    const proof=Buffer.from(ed25519.sign(walletMessage(audience,"shop-profile",ticket,store),shop.secretKey.slice(0,32))).toString("base64");
+    const {access}=await (await call("shop-access",{ticket,proof})).json();
+    assert.ok(access);assert.equal((await call("shop-access",{ticket,proof})).status,401);
+    assert.equal((await call("shop-save",{...data,access})).status,200);
+    assert.equal((await call("shop-save",{...data,access})).status,409);
+    assert.equal((await call("shop-save",{...data,access,revision:1,caption:"あ".repeat(141)})).status,400);
+    const read=async(id,auth={})=>(await (await call("shop-profiles",{shops:[id],...auth})).json()).profiles;
+    assert.deepEqual((await read(id))[0],{shop:id,title:data.title,caption:data.caption,icon:"☕",is_test:true,revision:1});
+    assert.equal((await call("shop-save",{...data,access,revision:1,title:"新しい店",is_test:false})).status,200);
+    assert.equal((await read(id))[0].title,"新しい店");
+    // A signed-in merchant may also edit without an auxiliary message signature.
+    const family=key(), code=bs58.encode(randomBytes(32)), f=family.publicKey;
+    const bytes=await privateMetadata("家族","紹介","地域",code,f);
+    admin(createGroup(program,owner.publicKey,f,1,invite.publicKey,bytes,minRent(66+bytes.length)),family);
+    admin([certify(program,owner.publicKey,f,user,"家の店")]);
+    const familyId=String(addr(program,"s3",f,user));
+    assert.equal((await call("shop-save",{...data,group:String(f),store:String(user),session})).status,200);
+    assert.deepEqual(await read(familyId),[]);assert.deepEqual(await read(familyId,{access}),[]);
+    assert.equal((await read(familyId,{session}))[0].title,data.title);
+  });
   // A configured service explicitly reporting no sponsor must use the
   // original balance check before asking the wallet to sign.
   t.mock.method(globalThis, "fetch", async (path) => {

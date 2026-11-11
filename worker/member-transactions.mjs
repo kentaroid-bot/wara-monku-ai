@@ -1,3 +1,4 @@
+import { memoProgram, readPaymentMemo } from "../shared/payment-memo.mjs";
 import { communityOpening, communityUpdate } from "../shared/community-metadata.mjs";
 import { eligible, sponsoredInstructions } from "../shared/sponsorship.mjs";
 import { Buffer } from "buffer";
@@ -60,6 +61,12 @@ export function ordinaryMessage(raw, address, scope, checkout, sponsor = null) {
     return false;
   let instructions;
   if (last.data[0] === 14 && last.data.length === 25) {
+    const preceding = tx.instructions.at(-2);
+    let memo = "";
+    if (preceding?.programId.equals(memoProgram)) {
+      memo = readPaymentMemo(preceding.data);
+      if (!memo || preceding.keys.length || (checkout && memo !== checkout.memo)) return false;
+    } else if (checkout?.memo) return false;
     const n = last.data.readBigUInt64LE(1);
     const group = last.keys[1].pubkey,
       shop = last.keys[2].pubkey;
@@ -82,6 +89,7 @@ export function ordinaryMessage(raw, address, scope, checkout, sponsor = null) {
         n,
         last.data.readBigUInt64LE(9),
         last.data.readBigUInt64LE(17),
+        memo,
       ),
     ];
   } else if (scope === "session" && last.data[0] === 12 && last.data[1] === 0) {
