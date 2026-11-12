@@ -1,3 +1,4 @@
+import { pendingKey, policyDirectoryKey } from "./storage-keys.mjs";
 import { syncPrivateGroups } from "./community-privacy.mjs";
 import { memberApi } from "./member-ui.mjs";
 export { codeKey } from "./community-privacy.mjs";
@@ -38,7 +39,7 @@ export const rpc = new Connection(manifest.rpc, {
   disableRetryOnRateLimit: false,
   fetch: browserFetchRpc,
 });
-const registryKey = "wara.v03.policy-directory." + program;
+const registryKey = policyDirectoryKey(program);
 let verified;
 async function ready() {
   return (verified ??= assertDevnet(rpc).catch((e) => {
@@ -75,19 +76,18 @@ export async function loadState(address, force = false, requestedShop = null, di
   const sync = () => syncPrivateGroups(groups, String(who), rows,
     session?.profile.address === String(who) ? memberApi : null, force);
   if (directoryOnly) return {rows,...await sync()};
+  const syncPromise = sync();
   const keys = [
       SYSVAR_CLOCK_PUBKEY,
       addr(program, "p3", who),
       ...groups.map((g) => ata(mintFor(program, g.id), who)),
-    ],
-    accounts = [];
-  for (let i = 0; i < keys.length; i += 100)
-    accounts.push(
-      ...(await rpc.getMultipleAccountsInfo(
-        keys.slice(i, i + 100),
-        "confirmed",
-      )),
-    );
+    ];
+  const [views, accounts] = await Promise.all([syncPromise, (async () => {
+    const accounts = [];
+    for (let i = 0; i < keys.length; i += 100)
+      accounts.push(...await rpc.getMultipleAccountsInfo(keys.slice(i, i + 100), "confirmed"));
+    return accounts;
+  })()]);
   const [clock, person] = accounts;
   if (!clock || clock.data.length < 40)
     throw Error("チェーン時刻を取得できません。");
@@ -101,7 +101,6 @@ export async function loadState(address, force = false, requestedShop = null, di
     if (a?.owner.equals(tok) && a.data.length === 165 && a.data[108] === 1)
       funds.set(g.id, Buffer.from(a.data).readBigUInt64LE(64));
   });
-  const views = await sync();
   return {
     ...views,
     rows,
@@ -133,7 +132,7 @@ async function relayRequest(path, payload) {
     method:"POST", cache:"no-store", credentials:"same-origin", redirect:"error",
     headers:{"Content-Type":"application/json"},
     body:JSON.stringify({...payload, session:managedSession()?.session}),
-    signal:AbortSignal.timeout(18000),
+    signal:AbortSignal.timeout(path === "/api/relay" ? 35000 : 8000),
   });
   const result = await response.json();
   if (!response.ok) {
@@ -146,50 +145,70 @@ async function relayRequest(path, payload) {
   return result.signature;
 }
 
-const pendingKey = (a) => "wara.v3.pending." + a;
 export const pendingSig = (a) => localStorage.getItem(pendingKey(a));
-export async function checkPending(a) {
-  const raw = pendingSig(a);
-  if (!raw) return;
-  const pending = JSON.parse(raw);
+export const settlementEvents = new EventTarget();
+function paymentEffect(instructions, viewer) {
+  let amount = 0n, currency, incoming;
+  for (const ix of instructions) {
+    if (!ix.programId.equals(program) || ![14,15].includes(ix.data[0])) continue;
+    const ina = ix.data[0] === 14;
+    incoming = String(ix.keys[ina ? 2 : 3].pubkey) === viewer;
+    if (!incoming && String(ix.keys[0].pubkey) !== viewer) return null;
+    currency = ina ? "ina" : "wara";
+    amount += Buffer.from(ix.data).readBigUInt64LE(1);
+  }
+  return amount ? {amount:String(amount),currency,incoming} : null;
+}
+function isCurrent(address, entry) {
+  const current = JSON.parse(pendingSig(address));
+  return current && ((entry.receipt && current.receipt === entry.receipt) || (entry.sig && current.sig === entry.sig));
+}
+export async function checkPending(a, pending = JSON.parse(pendingSig(a))) {
+  if (!pending) return;
+  const clear = () => {
+    if (!isCurrent(a,pending)) return false;
+    localStorage.removeItem(pendingKey(a));
+    return true;
+  };
   const {height} = pending;
   let sig = pending.sig;
   if (!sig && pending.receipt) {
     sig = await relayRequest("/api/relay/status", {receipt:pending.receipt});
     if (!sig && (await rpc.getBlockHeight("finalized")) > height) {
-      // Read again after observing expiry, in case the relay registered it
-      // between the first lookup and the finalized block-height read.
       sig = await relayRequest("/api/relay/status", {receipt:pending.receipt});
       if (!sig) {
-        localStorage.removeItem(pendingKey(a));
+        clear();
         throw Error("支援取引は受付されず、署名の期限が切れました。");
       }
     }
-    if (!sig) throw Error("支援取引の受付を確認中です。更新で確認してください。");
-    localStorage.setItem(pendingKey(a), JSON.stringify({sig,height}));
+    if (!sig) throw Error("支援取引の受付を確認中です。");
+    if (isCurrent(a,pending)) localStorage.setItem(pendingKey(a), JSON.stringify({...pending,sig}));
+    pending.sig = sig;
   }
-  const [s] = (
-    await rpc.getSignatureStatuses([sig], { searchTransactionHistory: true })
-  ).value;
+  const [s] = (await rpc.getSignatureStatuses([sig], { searchTransactionHistory:true })).value;
   if (s?.err) {
-    localStorage.removeItem(pendingKey(a));
+    clear();
     throw Error("取引はチェーンに拒否されました。");
   }
-  if (["confirmed", "finalized"].includes(s?.confirmationStatus)) {
-    localStorage.removeItem(pendingKey(a));
+  if (["confirmed","finalized"].includes(s?.confirmationStatus)) {
+    if (clear()) settlementEvents.dispatchEvent(new CustomEvent("confirmed",{
+      detail:{address:a,sig,payment:pending.payment},
+    }));
     return sig;
   }
   if (!s && (await rpc.getBlockHeight("finalized")) > height) {
-    localStorage.removeItem(pendingKey(a));
+    clear();
     throw Error("署名の期限が切れました。履歴を確認してからお試しください。");
   }
-  throw Error("着地確認中：" + sig + "。再送せず「更新」で確認してください。");
+  throw Error("取引の確定を確認中です。");
 }
-export async function submit(profile, wallet, ix, extra = []) {
+export async function submit(profile, wallet, ix, extra = [], viewer = profile.address) {
   await assertDevnet(rpc);
-  if (pendingSig(profile.address)) {
-    const settled = await checkPending(profile.address);
-    throw Error("前の取引が確定しました。画面を更新してください：" + settled);
+  for (const address of new Set([viewer,profile.address])) {
+    if (pendingSig(address)) {
+      const settled = await checkPending(address);
+      throw Error("前の取引が確定しました。画面を更新してください：" + settled);
+    }
   }
   const signer = await wallet();
   if (String(signer.publicKey) !== profile.address)
@@ -230,52 +249,44 @@ export async function submit(profile, wallet, ix, extra = []) {
     throw Error("署名時に取引内容が変わりました。送信を中止しました。");
   if (!signed.verifySignatures(!sponsor) || signed.signatures.some(s => !s.signature && !(sponsor && s.publicKey.equals(sponsor))))
     throw Error("必要な署名を確認できません。送信を中止しました。");
-  if (pendingSig(profile.address)) throw Error("別の取引の送信結果を確認中です。更新してください。");
-  const height = latest.lastValidBlockHeight;
-  let sig;
+  if (pendingSig(viewer) || pendingSig(profile.address)) throw Error("別の取引の送信結果を確認中です。");
+  const entry = {height:latest.lastValidBlockHeight,payment:paymentEffect(ix,viewer)};
   if (sponsor) {
     const userSignature = signed.signatures.find(s => String(s.publicKey) === profile.address).signature;
-    const receipt = bs58.encode(userSignature);
+    entry.receipt = bs58.encode(userSignature);
     const encoded = signed.serialize({requireAllSignatures:false}).toString("base64");
-    localStorage.setItem(pendingKey(profile.address), JSON.stringify({receipt,height}));
+    localStorage.setItem(pendingKey(viewer), JSON.stringify(entry));
     try {
-      sig = await relayRequest("/api/relay", {tx:encoded});
-      if (!sig) throw Error();
+      const sig = await relayRequest("/api/relay", {tx:encoded});
+      if (sig && isCurrent(viewer,entry)) {
+        entry.sig = sig;
+        localStorage.setItem(pendingKey(viewer), JSON.stringify(entry));
+      }
     } catch (error) {
       if (error.rejected) {
-        localStorage.removeItem(pendingKey(profile.address));
+        if (isCurrent(viewer,entry)) localStorage.removeItem(pendingKey(viewer));
         throw error;
       }
-      throw Error("支援取引の送信結果を確認中です。再送せず更新してください。");
+      // The POST may already have landed. Only query its existing receipt.
     }
-    localStorage.setItem(pendingKey(profile.address), JSON.stringify({sig,height}));
   } else {
     const raw = signed.serialize();
-    sig = bs58.encode(signed.signature);
-    localStorage.setItem(
-      pendingKey(profile.address),
-      JSON.stringify({ sig, height: latest.lastValidBlockHeight }),
-    );
-    try {
-      await rpc.sendRawTransaction(raw, { skipPreflight: false, maxRetries: 3 });
-    } catch (e) {
-      // Explicit preflight rejection means no submission. Ambiguous delivery stays pending.
+    entry.sig = bs58.encode(signed.signature);
+    localStorage.setItem(pendingKey(viewer), JSON.stringify(entry));
+    try { await rpc.sendRawTransaction(raw, {skipPreflight:false,maxRetries:3}); }
+    catch (e) {
       if (e.transactionMessage?.includes("simulation failed") || e.logs) {
-        localStorage.removeItem(pendingKey(profile.address));
-        throw Error(
-          "Devnetが拒否しました。残高・参加状態・手数料を確認してください。",
-        );
+        if (isCurrent(viewer,entry)) localStorage.removeItem(pendingKey(viewer));
+        throw Error("Devnetが拒否しました。残高・参加状態・手数料を確認してください。");
       }
-      throw Error("送信結果を確認中：" + sig);
     }
   }
-  for (let i = 0; i < 16; i++) {
-    await new Promise((r) => setTimeout(r, 900));
-    try {
-      return await checkPending(profile.address);
-    } catch (e) {
-      if (!pendingSig(profile.address)) throw e;
-    }
-  }
-  throw Error("着地確認中：" + sig + "。更新で確認してください。");
+  const deadline = Date.now()+15000;
+  do {
+    await new Promise(r=>setTimeout(r,entry.sig ? 900 : 1800));
+    try { return await checkPending(viewer,entry); }
+    catch (e) { if (!isCurrent(viewer,entry)) throw e; }
+  } while (Date.now() < deadline);
+  settlementEvents.dispatchEvent(new CustomEvent("waiting",{detail:{address:viewer}}));
+  throw Error("支払いを再送せず、取引の確定を確認しています。");
 }

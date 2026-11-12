@@ -1,3 +1,4 @@
+import { accessVersionKey } from "./storage-keys.mjs";
 import { activate, authMode, beginAuth, hasDeviceWallet, normalizePhone, resolveWallet } from "./identity.mjs";
 
 const titles = {
@@ -15,7 +16,7 @@ export async function signup(el, info) {
     el.textContent = "再読み込みしてお試しください。";
     return;
   }
-  if(delivery!=="local" && sessionStorage.getItem("wara.access.version")==="3"){
+  if(delivery!=="local" && sessionStorage.getItem(accessVersionKey)==="3"){
     const {memberSignup}=await import("./member-ui.mjs");
     return memberSignup(el,info,delivery);
   }

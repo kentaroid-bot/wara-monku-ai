@@ -17,7 +17,7 @@ let toastTimeout;
 export function crystallize(amount, incoming, currency = "ina") {
   const toast = document.querySelector("#crystal-toast");
   toast.textContent = currency === "wara"
-    ? `💖 ありがとう！ あなたの店に +${amount} WARA が届きました！`
+    ? (incoming ? `💖 ありがとう！ あなたの店に +${amount} WARA が届きました！` : `💖 ありがとう！ お店に ${amount} WARA を支払いました！`)
     : incoming
     ? `💖 ありがとう！ あなたの店に +${amount * 90n} / お客さんに +${amount * 10n} WARA 結晶化！`
     : `💖 ありがとう！ 店に +${amount * 90n} / あなたに +${amount * 10n} WARA 結晶化！`;

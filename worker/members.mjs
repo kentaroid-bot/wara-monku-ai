@@ -23,7 +23,7 @@ export async function memberRequest(op, b, ctx) {
     if (op === "community-rename") return renameCommunity(db,rpc,realm,m.address,b,hash,fail);
     return op === "community-save"
       ? saveCommunityProfile(db,rpc,realm,m.address,b,hash,fail)
-      : readCommunityProfiles(db,communityReaders(env),realm,m.address,b.groups,hash,fail,b.versions);
+      : readCommunityProfiles(db,communityReaders(env),realm,m.address,b.groups,hash,fail,b.versions,b.force === true);
   }
   if (op === "community-access-reset") {
     const viewer = b.session ? (await session()).m.address : (await readTicket(b.access,"community-access",false)).address;

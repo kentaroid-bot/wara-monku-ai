@@ -33,7 +33,7 @@ export function shopView(ctx) {
             .map(
               (st) =>
                 "<p>" +
-                link(register(st.group, st.to), shopTitle(st)) + shopDetails(st,h) +
+                `<a href="${h(register(st.group, st.to))}" data-shop-label="${h(st.id)}">${h(shopTitle(st))}${shopDetails(st,h)}</a>` +
                 " · " +
                 h(groupForShop(st.group)?.name) +
                 "</p>",
@@ -60,9 +60,9 @@ export function shopView(ctx) {
         );
     const n = invoiceAmount(params) || "1";
     ui(
-      twinCards(s) + "<section><h2>" +
-        h(shopTitle(store)) +
-        "</h2>" + shopDetails(store,h) + "<small>" +
+      twinCards(s) + `<section><h2 data-shop-label="${h(store.id)}">` +
+        h(shopTitle(store)) + shopDetails(store,h) +
+        "</h2><small>" +
         h(g.name) +
         "の公認店舗 · " +
         h(short(store.to)) +
@@ -123,8 +123,6 @@ export function shopView(ctx) {
       action(checkout,async v=>{
         const {payWithCard}=await import("../member-ui.mjs");
         const sig=await payWithCard(g.id,store.to,Number(v.amount),store.name,paymentMemo(v.memo));
-        recordPayment();
-        crystallize(BigInt(v.amount), true);
         const refreshed = await refresh(true);
         info("紙カードの支払いが確定しました。" + (refreshed ? "" : " 残高は再度更新してください。"));
         const a = document.createElement("a");
@@ -200,7 +198,6 @@ export function shopView(ctx) {
           " WARA、客に " +
           n * 10n +
           " WARA還付。",
-        () => { recordPayment(); crystallize(n, false); },
       );
     });
     form("wara", async (v) => {
@@ -214,7 +211,6 @@ export function shopView(ctx) {
         transfer(program, who, g.id, store.to, selected),
         [],
         n + " WARAの支払いが確定しました。",
-        recordPayment,
       );
     });
   }

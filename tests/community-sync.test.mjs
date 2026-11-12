@@ -127,3 +127,25 @@ test("a throttled community read uses another verified Devnet; an unknown chain 
   ],keys,()=>assert.fail());
   assert.deepEqual(calls,["primary","secondary"]); assert.equal(result,rows);
 });
+
+
+test("default community membership reads have an independent Devnet fallback, custom endpoints stay scoped",async()=>{
+  const {communityReaders} = await import("../worker/community-read.mjs");
+  const {publicDevnetFallback,tatumDevnetUrl} = await import("../shared/devnet.mjs");
+  const endpoints = env=>communityReaders(env).map(r=>r.rpcEndpoint);
+  assert.deepEqual(endpoints({}),[publicDevnetFallback,tatumDevnetUrl]);
+  assert.deepEqual(endpoints({DEVNET_RPC_URL:"https://private.example"}),["https://private.example"]);
+});
+
+test("explicit refresh sends policy versions and force together", async t => {
+  storage(t);
+  const {group} = await fixture();
+  let calls = 0;
+  await syncPrivateGroups([group],group.owner,[],async (op, data) => {
+    calls++;
+    assert.equal(op,"community-profiles");
+    assert.deepEqual(data,{groups:[group.id],versions:[await privateProfileVersion(group)],force:true});
+    return {groups:[{...group,joined:true,unlocked:true}]};
+  },true);
+  assert.equal(calls,1);
+});

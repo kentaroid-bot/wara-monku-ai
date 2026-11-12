@@ -4,7 +4,7 @@ import { Connection } from "@solana/web3.js";
 import { assertDevnet, DEVNET_GENESIS } from "../shared/protocol.mjs";
 import { workerConnection, workerDevnetUrl } from "./devnet-rpc.mjs";
 
-const publicAlternate = "https://solana-devnet.gateway.tatum.io";
+import { tatumDevnetUrl as publicAlternate } from "../shared/devnet.mjs";
 class Unavailable extends Error {}
 function retryable(error) {
   return error instanceof Unavailable || transientCodes.includes(error?.code);

@@ -1,3 +1,4 @@
+import { introducedKey } from "./storage-keys.mjs";
 import QRCode from "qrcode";
 import bs58 from "bs58";
 import { Buffer } from "buffer";
@@ -493,7 +494,7 @@ export function accountTools(el, info, mode) {
             info,
             values,
             () => memberApi("introduce", { ...data, pin, ...values }),
-            () => { sessionStorage.setItem("wara.introduced", "yes"); location.replace("/account/"); },
+            () => { sessionStorage.setItem(introducedKey, "yes"); location.replace("/account/"); },
           );
         },
         info,
@@ -603,5 +604,6 @@ export async function payWithCard(group, store, amount, title, memo = "") {
       state.nonce,
       memo,
     ),
+    [], store,
   );
 }

@@ -1,0 +1,35 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      WRANGLER_SEND_METRICS: "false"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - run: npm ci
+      - uses: dtolnay/rust-toolchain@stable
+      # Cargo.toml is at the repository root, with sources in program/src/.
+      - name: Check Rust program
+        run: cargo test --locked --manifest-path Cargo.toml
+      - name: Install SBF builder
+        run: cargo install cargo-build-sbf --version 4.6.0 --locked
+      # LiteSVM tests require this binary, which is deliberately not tracked.
+      - name: Build on-chain test program
+        run: cargo build-sbf --tools-version v1.57 -- --locked
+      - run: npm run build
+      - run: npm test
+      - run: npm run workers:build

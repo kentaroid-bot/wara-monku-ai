@@ -1,12 +1,12 @@
+import { phantomSignedOutKey, accessVersionKey, memberSessionKey, activeIdentityKey, identitySaltKey, identityBackendKey, identityAccountsPrefix, identityAccountKey, identitySourceKey } from "./storage-keys.mjs";
 import { Keypair, PublicKey } from "@solana/web3.js";
 import bs58 from "bs58";
 import { ed25519 } from "@noble/curves/ed25519";
 import { phoneDigest, transcript } from "../shared/auth-wire.mjs";
 import { sessionLifetimeSeconds } from "../shared/member-wire.mjs";
 
-export const memberSessionKey = "wara.member";
-const prefix = "wara.v03.identity.",
-  sessionKey = "wara.v03.active";
+export { memberSessionKey } from "./storage-keys.mjs";
+
 const enc = new TextEncoder();
 const random = (n) => crypto.getRandomValues(new Uint8Array(n));
 const b64 = (a) => btoa(String.fromCharCode(...new Uint8Array(a)));
@@ -22,10 +22,10 @@ export function normalizePhone(s) {
   return intl;
 }
 async function phoneId(s) {
-  let salt = localStorage.getItem(prefix + "salt");
+  let salt = localStorage.getItem(identitySaltKey);
   if (!salt) {
     salt = b64(random(24));
-    localStorage.setItem(prefix + "salt", salt);
+    localStorage.setItem(identitySaltKey, salt);
   }
   return b64(
     await crypto.subtle.digest("SHA-256", enc.encode(salt + normalizePhone(s))),
@@ -147,9 +147,9 @@ export async function authMode() {
     redirect: "error",
   });
   if (response.headers.get("X-Wara-Auth") === "1" && response.ok) {
-    localStorage.setItem(prefix + "backend", "worker");
+    localStorage.setItem(identityBackendKey, "worker");
     const { mode = "trial", version } = await response.json();
-    sessionStorage.setItem("wara.access.version",String(version ?? 2));
+    sessionStorage.setItem(accessVersionKey,String(version ?? 2));
     if (mode === "trial" || mode === "sms" || mode === "google") return mode;
     throw Error("この環境の登録・サインインは準備中です。");
   }
@@ -162,7 +162,7 @@ export async function authMode() {
   ].includes(location.hostname);
   if (
     staticHost &&
-    !localStorage.getItem(prefix + "backend") &&
+    !localStorage.getItem(identityBackendKey) &&
     (response.status === 404 ||
       response.status === 405 ||
       (response.ok &&
@@ -282,18 +282,18 @@ async function registerRemote(profile, pass, proof, common) {
 }
 
 export function hasDeviceWallet() {
-  const accounts = prefix + "account.";
+  const accounts = identityAccountsPrefix;
   for (let i = 0; i < localStorage.length; i++) {
     const key = localStorage.key(i);
     if (key?.startsWith(accounts) &&
-        localStorage.getItem(prefix + "source." + key.slice(accounts.length)) === "device") return true;
+        localStorage.getItem(identitySourceKey(key.slice(accounts.length))) === "device") return true;
   }
   return false;
 }
 
 export async function resolveWallet(phone, proof, code) {
   const id = await phoneId(phone);
-  const local = JSON.parse(localStorage.getItem(prefix + "account." + id) || "null");
+  const local = JSON.parse(localStorage.getItem(identityAccountKey(id)) || "null");
   let next;
   if (proof.backend === "local") {
     verify(proof.local, code);
@@ -311,7 +311,7 @@ export async function activate(phone, type, pass, proof, code) {
   if (!proof || proof.phoneHash !== (await phoneDigest(normalizePhone(phone))))
     throw Error("確認コードを発行し直してください。");
   const id = await phoneId(phone),
-    key = prefix + "account." + id;
+    key = identityAccountKey(id);
   const local = JSON.parse(localStorage.getItem(key) || "null");
   let profile = local;
   if (proof.backend === "local") {
@@ -364,34 +364,34 @@ export async function activate(phone, type, pass, proof, code) {
   }
   localStorage.setItem(key, JSON.stringify(profile));
   const source = proof.backend === "local" || proof.trialCode ? "device" : "registered";
-  localStorage.setItem(prefix + "source." + id, source);
-  sessionStorage.setItem(sessionKey, id);
+  localStorage.setItem(identitySourceKey(id), source);
+  sessionStorage.setItem(activeIdentityKey, id);
   return profile;
 }
 export const mobileBrowser = () => navigator.maxTouchPoints > 0 || /Android|iPhone|iPad/i.test(navigator.userAgent);
 export function rememberSession(result) {
-  localStorage.removeItem("wara.phantom.signedout");
+  localStorage.removeItem(phantomSignedOutKey);
   // Use the server's remaining duration, even if the phone clock is ahead.
   const expires = Number.isFinite(result.remainingMs)
     ? Date.now() + Math.min(sessionLifetimeSeconds * 1000, result.remainingMs) : result.expires;
   localStorage.setItem(memberSessionKey, JSON.stringify({...result,expires}));
   sessionStorage.removeItem(memberSessionKey);
-  sessionStorage.removeItem(sessionKey);
+  sessionStorage.removeItem(activeIdentityKey);
 }
 export async function restorePhantom() {
-  if (!mobileBrowser() || managedSession() || localStorage.getItem("wara.phantom.signedout")) return;
+  if (!mobileBrowser() || managedSession() || localStorage.getItem(phantomSignedOutKey)) return;
   const r=await fetch("/api/member/phantom-return",{method:"POST",credentials:"same-origin",redirect:"error",
     cache:"no-store",signal:AbortSignal.timeout(6000),headers:{"Content-Type":"application/json"},body:"{}"});
   if (r.ok && r.headers.get("X-Wara-Auth")==="1") {
     const result=await r.json();
-    if (!localStorage.getItem("wara.phantom.signedout") && !managedSession()) rememberSession(result);
+    if (!localStorage.getItem(phantomSignedOutKey) && !managedSession()) rememberSession(result);
   }
 }
 export function managedSession() {
   const stored = localStorage.getItem(memberSessionKey);
   const legacy = sessionStorage.getItem(memberSessionKey);
   if (legacy) sessionStorage.removeItem(memberSessionKey);
-  const signedOut = localStorage.getItem("wara.phantom.signedout");
+  const signedOut = localStorage.getItem(phantomSignedOutKey);
   const raw = stored ?? (signedOut ? null : legacy);
   if (!raw) return null;
 
@@ -407,15 +407,15 @@ export function managedSession() {
   return null;
 }
 export async function deviceProfile(phone) {
-  return JSON.parse(localStorage.getItem(prefix+"account."+await phoneId(phone)) || "null");
+  return JSON.parse(localStorage.getItem(identityAccountKey(await phoneId(phone))) || "null");
 }
 export function active() {
   const member = managedSession();
   if (member) return member.profile;
-  const id = sessionStorage.getItem(sessionKey);
+  const id = sessionStorage.getItem(activeIdentityKey);
   if (!id) return null;
   try {
-    const p = JSON.parse(localStorage.getItem(prefix + "account." + id));
+    const p = JSON.parse(localStorage.getItem(identityAccountKey(id)));
     new PublicKey(p.address);
     return p;
   } catch {
@@ -424,10 +424,10 @@ export function active() {
 }
 export function signout() {
   const token=managedSession()?.session;
-  localStorage.setItem("wara.phantom.signedout", "1");
+  localStorage.setItem(phantomSignedOutKey, "1");
   localStorage.removeItem(memberSessionKey);
   sessionStorage.removeItem(memberSessionKey);
   if(token) void fetch("/api/member/logout",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({session:token}),keepalive:true}).catch(()=>{});
-  sessionStorage.removeItem(sessionKey);
+  sessionStorage.removeItem(activeIdentityKey);
 }
 export const inviteSecret = () => bs58.encode(random(32));

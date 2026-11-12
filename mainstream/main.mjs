@@ -1,3 +1,5 @@
+import { themeKey, accessVersionKey, afterInviteKey, afterSigninKey, introducedKey, warmthKey } from "./storage-keys.mjs";
+import { showGuide } from "./views/guide.mjs";
 import { parseInvitation, pendingInvite } from "./community-privacy.mjs";
 import { Buffer } from "buffer";
 import { twinCards } from "./balances.mjs";
@@ -25,15 +27,14 @@ const tab = path === "/support" ? "guide" :
   ["/", "/user"].includes(path) ? "wallet" :
   (path === "/shop" || path.startsWith("/communities")) ? "market" : "me";
 document.querySelector(`[data-tab="${tab}"]`).setAttribute("aria-current", "page");
-const theme = localStorage.getItem("wara.theme");
+const theme = localStorage.getItem(themeKey);
 if (theme === "dark" || theme === "light") document.documentElement.style.colorScheme = theme;
 document.querySelector(".theme").onclick = () => {
   const current = document.documentElement.style.colorScheme || (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
   const next = current === "dark" ? "light" : "dark";
   document.documentElement.style.colorScheme = next;
-  localStorage.setItem("wara.theme", next);
+  localStorage.setItem(themeKey, next);
 };
-const warmthKey = "wara.v03.warmth.last";
 const cooldown = 15 * 60_000;
 let lastPayment = 0;
 let coolingTimer;
@@ -122,58 +123,6 @@ async function card() {
   );
   box.querySelector("button").onclick = () => print();
 }
-function showGuide() {
-  el.innerHTML = `<h1>使い方</h1>
-    <section class="guide-intro">
-      <h2>🌾 稲を食べて命をつなぎ、藁を編んで暮らす</h2>
-      <p>ここでやりとりするのはお金ではなく、<strong>「今日という生きる時間」</strong>と<strong>「誰かの役に立った感謝」</strong>です。</p>
-      <dl>
-        <dt>🌱 INA（稲） — 毎日の食べる時間</dt>
-        <dd>毎朝、だれの財布にも等しく10枚届きます。おむすびを食べたり、日用品を買ったり、日々の食事と暮らしに使えます。<br>
-        <strong>今日使わなかったINAは消え、明日また新しい10枚が届きます。毎日の時間と同じで、貯めることはできませんが、誰かに奪われたり買い占められたりすることもありません。</strong><br>
-        今日という日を、誰かと温かく分け合って生きるためのものです。</dd>
-        <dt>🌾 WARA（藁） — ありがとうの結晶</dt>
-        <dd>誰かの役に立ち、喜ばれたあとに残る「感謝の結晶」です。昔の人が藁を編んで草履や蓑を作ったように、人の温もりや仕事が形になって残っていきます。<br>
-        <strong>日付が変わっても消えません。</strong><br>
-        現時点では、あなたが誰かの力になり、街から受け取った<strong>「感謝の証」</strong>として消えずに残ります。（仲間や公認店舗の間で送り合うこともできます）</dd>
-      </dl>
-    </section>
-    <section><h2>🤝 なぜ「1 INA」で富が生まれるの？</h2>
-      <p>あなたがおむすび屋さんに 1 INA 感謝を贈ると、<strong>お店に ＋90 WARA、あなたに ＋10 WARA</strong> が届きます。</p>
-      <p>「美味しいご飯を作ってくれてありがとう」「うちのお店に来てくれてありがとう」。感謝が交わされた瞬間、この街に新しい藁（感謝の証）が編み出されるからです。</p>
-    </section>
-    <section><h2>💡 こんなふうに遊んでみよう（日常のヒント）</h2>
-      <p><strong>🏠 1. おうちで「お母さん食堂」</strong><br>
-      お母さんが「お母さん食堂」というレジを開きます。息子が夜ご飯を食べたら、「ごちそうさま！」の合図で 1 INA をピッとお支払い。<br>
-      お母さんには <strong>＋90 WARA</strong>（料理を作った感謝の結晶）、息子にも <strong>＋10 WARA</strong>（ごちそうさまを言えた証）が貯まります。</p>
-      <p><strong>🏫 2. 学校やサークルで「ありがとうの循環」</strong><br>
-      「教室の掃除をしてくれてありがとう」「重い荷物を持ってくれてありがとう」。<br>
-      普通のお金だと生々しくて渡せないけれど、今日消えてしまう INA だからこそ、照れずに「はい、1 INA！」と贈り合えます。</p>
-    </section>
-    <section><h2>🛠️ あなたの街・家族で始めるカンタン手順</h2>
-      <ol style="padding-left:1.2rem;margin:0">
-        <li><strong>コミュニティを作る（<a href="/communities/">🏘️ 画面</a>から）</strong><br>
-        「新しいコミュニティを開設」から、名前を決めるだけ（例：「佐藤家」「〇年〇組」「〇〇カフェ仲間」）。</li>
-        <li style="margin-top:.5rem"><strong>お店（レジ）を作る</strong><br>
-        コミュニティ開設者は、自分や仲間の看板を「公認店舗」として登録できます（例：「お母さん食堂」「肩もみ処」「よろず相談」）。<br>
-        ※既存のコミュニティでお店を開きたいときは、開設者にあなたのアカウント画面の「公開アドレス」を伝えて公認してもらいましょう。</li>
-        <li style="margin-top:.5rem"><strong>スマホ一つでレジを開く</strong><br>
-        お財布画面の「レジを開く」からQRを出すだけ。高価なレジ端末も手数料も一切不要です。</li>
-      </ol>
-    </section>
-    <section><h2>👛 お店で支払う</h2>
-      <p>お財布画面の「支払う」を押し、お店の会計QRを読み取ります。店名と枚数を確かめて支払いを確定してください。</p>
-      <p>手数料（SOL）の心配はいりません。残高ゼロでそのまま使えます。</p>
-    </section>
-    <section><h2>🏪 お店のレジを開く</h2>
-      <p>お財布画面の「レジを開く」で自分の公認店舗を選びます。金額（INA）を入力し、「支払い用QRを表示」を押して、お客さんに読み取ってもらいましょう。</p>
-      <p>専用の機械は不要。スマホやタブレットがそのままレジになります。</p>
-    </section>
-    <section><h2>携帯をお持ちでない方へ</h2>
-      <p>スマホを持たないお子さんやお年寄りも、誰ひとり取り残しません。<br>
-      電話番号を登録したご家族や店員さんに、<a href="/account/">アカウント</a>で「家族・知人の財布を作る」を開いてもらい、紙のカードを受け取れば、そのカードでお買い物できます。</p>
-    </section>`;
-}
 window.addEventListener("hashchange", () => {
   if (location.hash.startsWith("#/join?")) location.reload();
 });
@@ -202,14 +151,14 @@ async function render() {
     document.addEventListener("visibilitychange", checkReceipts);
   }
   if (path === "/support") {
-    showGuide();
+    showGuide(el);
     return;
   }
   if (path === "/signup" && profile?.managed && profile.type === "phantom") { location.replace("/account/"); return; }
   if(profile?.managed) {
     const expires=managedSession()?.expires || Date.now();
     setTimeout(()=>{if(!managedSession()){signout();location.replace("/signup/");}},Math.max(0,expires-Date.now())+30);
-  } else if(profile && path!=="/signup" && await authMode()!=="local" && sessionStorage.getItem("wara.access.version")==="3") {
+  } else if(profile && path!=="/signup" && await authMode()!=="local" && sessionStorage.getItem(accessVersionKey)==="3") {
     signout();location.replace("/signup/");return;
   }
   if (path === "/signup") {
@@ -229,18 +178,18 @@ async function render() {
     if (tab === "wallet") el.insertAdjacentHTML("beforeend", twinCards(null));
     const group = new URLSearchParams(location.search).get("id");
     if (path === "/communities" && group && sessionStorage.getItem(pendingInvite(group)))
-      sessionStorage.setItem("wara.after-invite", group);
+      sessionStorage.setItem(afterInviteKey, group);
     if (path === "/shop" && location.search)
       sessionStorage.setItem(
-        "wara.v03.after-signin",
+        afterSigninKey,
         "/shop/" + location.search,
       );
     el.insertAdjacentHTML("beforeend", welcome);
     return;
   }
-  const invitedGroup = sessionStorage.getItem("wara.after-invite");
+  const invitedGroup = sessionStorage.getItem(afterInviteKey);
   if (invitedGroup && (path === "/" || path === "/account")) {
-    sessionStorage.removeItem("wara.after-invite");
+    sessionStorage.removeItem(afterInviteKey);
     location.replace("/communities/?id=" + encodeURIComponent(invitedGroup));
     return;
   }
@@ -265,7 +214,7 @@ async function render() {
       location.replace("/signup/");
     };
     if(profile.managed) {
-      if(sessionStorage.getItem("wara.introduced")) { sessionStorage.removeItem("wara.introduced"); info("ご本人の財布を作りました。紙を本人に渡してください。今の画面は紹介者の財布です。"); }
+      if(sessionStorage.getItem(introducedKey)) { sessionStorage.removeItem(introducedKey); info("ご本人の財布を作りました。紙を本人に渡してください。今の画面は紹介者の財布です。"); }
       el.querySelector(".card h2").textContent="公開アドレス";
       (await import("./member-ui.mjs")).accountTools(el,info,await authMode());
     }
@@ -274,9 +223,9 @@ async function render() {
     return;
   }
   if (path === "/") {
-    const after = sessionStorage.getItem("wara.v03.after-signin");
+    const after = sessionStorage.getItem(afterSigninKey);
     if (after) {
-      sessionStorage.removeItem("wara.v03.after-signin");
+      sessionStorage.removeItem(afterSigninKey);
       if (after.startsWith("/shop/?") || after.startsWith("/shop?"))
         el.insertAdjacentHTML(
           "beforeend",

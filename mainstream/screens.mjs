@@ -1,10 +1,10 @@
 import { shopRequestAPI } from "./shop-requests.mjs";
-import { shopProfiles, shopTitle, shopDetails } from "./shop-profile.mjs";
-import { twinCards } from "./balances.mjs";
-import { showHistory } from "./history.mjs";
+import { shopProfiles, enhanceShopProfiles } from "./shop-profile.mjs";
+import { twinCards, crystallize } from "./balances.mjs";
+import { entries, showHistory } from "./history.mjs";
 import { scannerBox } from "./scan.mjs";
 import { pendingInvite } from "./community-privacy.mjs";
-import { program, rpc, loadState, submit, checkPending, pendingSig } from "./network.mjs";
+import { program, rpc, loadState, submit, checkPending, pendingSig, settlementEvents } from "./network.mjs";
 import { createRegisterWatch } from "./shop-register-watch.mjs";
 import { communityViews } from "./views/community.mjs";
 import { shopView } from "./views/shop.mjs";
@@ -23,6 +23,7 @@ export async function dashboard(ctx) {
   const requests = shopRequestAPI(profile, wallet);
   let s = null;
   let sequence = 0, reading = false, retryTimer;
+  let recoveryNotice = "";
   const directory = path === "/communities";
   const refresh = async (force = false, retryName = true) => {
     const turn = ++sequence;
@@ -35,41 +36,19 @@ export async function dashboard(ctx) {
       const state = await loadState(who, force, requestedShop, directory);
       if (turn !== sequence) return false;
       s = state;
-      if (directory) {
-        view();
-        info(s.communitySyncError);
-        // Names and membership are already available. Enhance only visible shop labels,
-        // without replacing forms or waiting for an unrelated shop/pending transaction.
-        const labels = [...content.querySelectorAll("[data-shop-label]")];
-        const ids = new Set(labels.map(el=>el.dataset.shopLabel));
-        if (ids.size) void profiles.load(s, row=>ids.has(row.id)).then(()=>{
-          if (turn !== sequence) return;
-          const stores = new Map(state.rows.filter(r=>ids.has(r.id)).map(r=>[r.id,r]));
-          for (const el of labels) {
-            const st = stores.get(el.dataset.shopLabel);
-            if (st) el.innerHTML = h(shopTitle(st)) + (el.dataset.registerLabel ? "のレジ" : "") + shopDetails(st,h);
-          }
-        }).catch(()=>{}); // On-chain store names remain usable.
-        if (pendingSig(who)) void checkPending(who).catch(e=>{
-          if (turn === sequence && document.querySelector("#notice").textContent === state.communitySyncError)
-            info([state.communitySyncError,e.message].filter(Boolean).join(" "));
-        });
-        if (retryName && s.groups.some(g=>g.nameUnavailable)) retryTimer = setTimeout(()=>{
-          if (!document.hidden && turn === sequence && !content.querySelector("form:focus-within")) void refresh(false,false);
-        }, 30000);
-        return true;
-      }
-      let profileError = "";
-      try { await profiles.load(s); }
-      catch { profileError = "店舗プロフィールを取得できません。「更新」で再試行できます。"; }
-      let pendingNotice = "";
-      if (pendingSig(who)) {
-        try { await checkPending(who); }
-        catch (error) { pendingNotice = error.message; }
-      }
-      if (turn !== sequence) return false;
       view();
-      info([s.communitySyncError, profileError, pendingNotice].filter(Boolean).join(" "));
+      const initialNotice = [s.communitySyncError,recoveryNotice].filter(Boolean).join(" ");
+      info(initialNotice);
+      void enhanceShopProfiles(profiles, state, content, h,
+        () => turn === sequence && content.isConnected, directory).then(profileError => {
+        if (turn !== sequence || !content.isConnected || !profileError) return;
+        // A delayed profile error must not erase a payment result or its receipt.
+        if (document.querySelector("#notice")?.textContent === initialNotice)
+          info([state.communitySyncError,profileError,recoveryNotice].filter(Boolean).join(" "));
+      });
+      if (directory && retryName && s.groups.some(g=>g.nameUnavailable)) retryTimer = setTimeout(()=>{
+        if (!document.hidden && turn === sequence && !content.querySelector("form:focus-within")) void refresh(false,false);
+      }, 30000);
       return true;
     } catch (e) {
       if (turn !== sequence) return false;
@@ -78,9 +57,53 @@ export async function dashboard(ctx) {
       return false;
     } finally { if (turn === sequence) reading = false; }
   };
-  const send = async (ix, extra = [], msg = "取引が確定しました。", onConfirmed) => {
+  // Older pending records only contain the signature/receipt. Recover their
+  // currency and amount from the confirmed transaction itself.
+  async function showSettlement({address,sig,payment}) {
+    if (address !== who || !content.isConnected) return;
+    if (payment === undefined) {
+      const tx = await rpc.getTransaction(sig,{commitment:"confirmed",maxSupportedTransactionVersion:0});
+      const rows = entries(tx,sig,who);
+      if (!rows.length) return;
+      payment = {amount:rows.reduce((sum,row)=>sum+row.n,0n),currency:rows[0].kusa ? "ina" : "wara",incoming:rows[0].incoming};
+    }
+    if (payment) {
+      recordPayment();
+      crystallize(BigInt(payment.amount),payment.incoming,payment.currency);
+    }
+  }
+  settlementEvents.addEventListener("confirmed", e=>{
+    void showSettlement(e.detail).catch(()=>{}); // Confirmation stands even when legacy receipt details are unavailable.
+  });
+
+  let checking = false, pendingTimer;
+  function scheduleCheck() {
+    clearTimeout(pendingTimer);
+    if (!document.hidden && pendingSig(who)) pendingTimer = setTimeout(recover,4000);
+  }
+  async function recover() {
+    if (checking || document.hidden || !pendingSig(who)) return;
+    checking = true;
+    try {
+      const sig = await checkPending(who);
+      if (sig) {
+        recoveryNotice = "取引の確定を確認しました。";
+        await refresh();
+      }
+    } catch (error) {
+      recoveryNotice = pendingSig(who) ? "送信した取引を確認中です。支払いは再送せずにお待ちください。" : error.message;
+      info(recoveryNotice);
+    } finally {
+      checking = false;
+      scheduleCheck();
+    }
+  }
+  settlementEvents.addEventListener("waiting", e=>{ if (e.detail.address === who) scheduleCheck(); });
+  document.addEventListener("visibilitychange",()=>{ if (!document.hidden) void recover(); });
+  window.addEventListener("pageshow",e=>{ if (e.persisted) void recover(); });
+  const send = async (ix, extra = [], msg = "取引が確定しました。") => {
     const sig = await submit(profile, wallet, ix, extra);
-    onConfirmed?.();
+    recoveryNotice = "";
     const refreshed = await refresh(
       ix.some(
         (i) =>
@@ -126,7 +149,8 @@ export async function dashboard(ctx) {
   const reload = document.createElement("button");
   reload.textContent = "更新";
   reload.className = "secondary";
-  reload.onclick = () => refresh(true);
+  reload.onclick = () => { void recover(); void refresh(true); };
+  void recover();
   el.append(reload);
   if (directory) {
     const revisit = () => {

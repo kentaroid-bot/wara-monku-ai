@@ -20,7 +20,7 @@ import { privateMetadata, makePolicy, displayKeyBytes, rememberInvite, currentIn
 import { communityUpdate } from "../shared/community-metadata.mjs";
 import { privateProfileVersion } from "../shared/private-community.mjs";
 import { parseRow } from "../mainstream/protocol.mjs";
-import { program, rpc, submit, checkPending, loadState } from "../mainstream/network.mjs";
+import { program, rpc, submit, checkPending, pendingSig, settlementEvents, loadState } from "../mainstream/network.mjs";
 import {
   createGroup,
   certify, endMembership,
@@ -321,15 +321,17 @@ test("signed-in zero-SOL buyer joins, spends and transfers through Worker/D1 and
     assert.equal(balance(user),20n);
   });
   drop = true;
-  await assert.rejects(
-    submit(
-      profile,
-      wallet,
-      transfer(program, user, g, secondShop, [{ origin: g, amount: 3n }]),
-    ),
-    /送信結果を確認中/,
-  );
-  assert.equal(await checkPending(String(user)), broadcast[3]);
+  const recovered = [];
+  const onConfirmed = event => recovered.push(event.detail);
+  settlementEvents.addEventListener("confirmed",onConfirmed);
+  try {
+    const sig = await submit(profile, wallet, transfer(program, user, g, secondShop, [{ origin: g, amount: 3n }]));
+    assert.equal(sig,broadcast[3]);
+    assert.deepEqual(recovered,[{address:String(user),sig,payment:{amount:"3",currency:"wara",incoming:false}}]);
+    assert.equal(pendingSig(String(user)),null);
+    assert.equal(await checkPending(String(user)),undefined);
+    assert.equal(recovered.length,1);
+  } finally { settlementEvents.removeEventListener("confirmed",onConfirmed); }
   assert.equal(balance(merchant), 180n);
   assert.equal(balance(secondShop), 3n);
   assert.equal(balance(user), 17n);
@@ -490,6 +492,8 @@ test("signed-in zero-SOL buyer joins, spends and transfers through Worker/D1 and
     const reads = accountReads;
     assert.equal((await api(session)("community-profiles",readBody)).groups[0].name,displayedName);
     assert.equal(accountReads,reads,"D1 hit must not read RPC");
+    assert.equal((await api(session)("community-profiles",{...readBody,force:true})).groups[0].name,displayedName);
+    assert.equal(accountReads,reads,"explicit refresh must retain a verified D1 grant");
     const reset = {group:id,member:String(user)};
     assert.equal((await call("community-access-reset",{...reset,session:outsiderSession})).status,403);
     const memberAction = (...ix) => {

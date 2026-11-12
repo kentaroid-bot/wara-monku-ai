@@ -154,3 +154,6 @@ img { max-width: 100%; }
 .confirm-dialog .confirm-message { white-space: pre-wrap; overflow-wrap: anywhere; margin: 1rem 0; }
 .confirm-actions { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: .5rem; margin-top: 1.25rem; }
 .confirm-actions button { flex: 1; margin: 0; }
+
+.guide-steps { padding-left: 1.2rem; margin: 0; }
+.guide-steps > li + li { margin-top: .5rem; }

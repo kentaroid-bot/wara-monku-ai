@@ -1,3 +1,4 @@
+import { inviteKey, privateInviteKey, pendingInvite, sessionInviteKey } from "./storage-keys.mjs";
 import { Buffer } from "buffer";
 import { Keypair } from "@solana/web3.js";
 import bs58 from "bs58";
@@ -9,20 +10,19 @@ export function codeKey(code) {
   catch { throw Error("招待コードの形式が違います。"); }
 }
 
-const inviteKey = (group, wallet) => "wara.private." + wallet + "." + group;
-export const pendingInvite = group => "wara.pending-invite." + group;
+export { pendingInvite } from "./storage-keys.mjs";
 export function currentInvite(group, wallet) {
   // Match the on-chain key, not the last attempted transaction. A declined
   // signature or an ambiguous confirmation must not destroy the active link.
   const prefix = inviteKey(group.id, wallet);
-  const candidates = [sessionStorage.getItem(pendingInvite(group.id)), localStorage.getItem(prefix + "." + group.invite),
-    localStorage.getItem(prefix), sessionStorage.getItem("wara.invite." + group.id)];
+  const candidates = [sessionStorage.getItem(pendingInvite(group.id)), localStorage.getItem(privateInviteKey(group.id, wallet, group.invite)),
+    localStorage.getItem(prefix), sessionStorage.getItem(sessionInviteKey(group.id))];
   return candidates.find(code => {
     try { return code && String(codeKey(code).publicKey) === group.invite; } catch { return false; }
   }) || null;
 }
 export function rememberInvite(group, wallet, code) {
-  localStorage.setItem(inviteKey(group, wallet) + "." + codeKey(code).publicKey, code);
+  localStorage.setItem(privateInviteKey(group, wallet, codeKey(code).publicKey), code);
 }
 
 export function invitationUrl(group, code) {
@@ -83,7 +83,7 @@ export async function syncPrivateGroups(groups, wallet, rows, api, force = false
     try {
       const chunk = candidates.slice(i,i+32);
       const result = await api("community-profiles", {groups:chunk.map(g=>g.id),
-        ...(force ? {} : {versions:await Promise.all(chunk.map(privateProfileVersion))})});
+        versions:await Promise.all(chunk.map(privateProfileVersion)), ...(force ? {force:true} : {})});
       if (result.unavailable?.length) {
         result.unavailable.forEach(id=>failed.add(id));
         error = retryMessage;

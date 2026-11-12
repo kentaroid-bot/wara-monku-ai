@@ -1,0 +1,22 @@
+// Persisted names are a compatibility contract with existing browsers.
+export const themeKey = "wara.theme";
+export const warmthKey = "wara.v03.warmth.last";
+export const memberSessionKey = "wara.member";
+export const activeIdentityKey = "wara.v03.active";
+export const phantomSignedOutKey = "wara.phantom.signedout";
+export const accessVersionKey = "wara.access.version";
+export const afterInviteKey = "wara.after-invite";
+export const afterSigninKey = "wara.v03.after-signin";
+export const introducedKey = "wara.introduced";
+export const identityPrefix = "wara.v03.identity.";
+export const identitySaltKey = identityPrefix + "salt";
+export const identityBackendKey = identityPrefix + "backend";
+export const identityAccountsPrefix = identityPrefix + "account.";
+export const identityAccountKey = id => identityAccountsPrefix + id;
+export const identitySourceKey = id => identityPrefix + "source." + id;
+export const pendingKey = address => "wara.v3.pending." + address;
+export const policyDirectoryKey = program => "wara.v03.policy-directory." + program;
+export const inviteKey = (group, wallet) => "wara.private." + wallet + "." + group;
+export const privateInviteKey = (group, wallet, invite) => inviteKey(group, wallet) + "." + invite;
+export const pendingInvite = group => "wara.pending-invite." + group;
+export const sessionInviteKey = group => "wara.invite." + group;

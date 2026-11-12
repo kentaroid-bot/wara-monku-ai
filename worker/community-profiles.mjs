@@ -95,7 +95,7 @@ export async function resetCommunityAccess(db, readers, realm, viewer, body, fai
   return {ok:true};
 }
 
-export async function readCommunityProfiles(db, readers, realm, viewer, ids, hash, fail, versions = []) {
+export async function readCommunityProfiles(db, readers, realm, viewer, ids, hash, fail, versions = [], force = false) {
   if (!Array.isArray(ids) || !ids.length || ids.length > 32) fail(400, "コミュニティの指定を確認してください。");
   if (!Array.isArray(versions) || (versions.length && (versions.length !== ids.length ||
       versions.some(v=>typeof v !== "string" || !/^[a-f0-9]{64}$/.test(v))))) fail(400,"設定の版を確認してください。");
@@ -105,7 +105,7 @@ export async function readCommunityProfiles(db, readers, realm, viewer, ids, has
   const existing = await accessRows(db,realm,viewer,keys), allowed = new Map(), missing = [];
   for (const id of keys) {
     const row = existing.get(id);
-    if (!freshAccess(row,now) || row.version !== hints.get(id)) missing.push(id);
+    if (!freshAccess(row,now) || row.version !== hints.get(id) || (force && !row?.group_json)) missing.push(id);
     else if (row.group_json) allowed.set(id, JSON.parse(row.group_json));
   }
   let unavailable;
@@ -114,8 +114,17 @@ export async function readCommunityProfiles(db, readers, realm, viewer, ids, has
     let accounts;
     try { accounts = await readCommunityAccounts(readers,[...missing.map(pk),...memberships],fail); }
     catch (err) {
-      if (keys.length === missing.length) throw err;
-      unavailable = missing;
+      // Only previously verified grants for this exact policy may survive an
+      // RPC outage. Revocation clears group_json and forces live reads.
+      const unresolved = [];
+      for (const id of missing) {
+        const row = existing.get(id);
+        if (row?.group_json && row.live_until <= now && hints.get(id) && row.version === hints.get(id))
+          allowed.set(id, JSON.parse(row.group_json));
+        else unresolved.push(id);
+      }
+      if (unresolved.length === keys.length) throw err;
+      if (unresolved.length) unavailable = unresolved;
     }
     for (const [i,id] of (accounts ? missing : []).entries()) {
       const group = decode(accounts[i], id);
