@@ -88,7 +88,7 @@ export async function dashboard(ctx) {
       catch { profileError = "店舗プロフィールを取得できません。「更新」で再試行できます。"; }
       if (pendingSig(who)) await checkPending(who);
       view();
-      info(profileError);
+      info([s.communitySyncError, profileError].filter(Boolean).join(" "));
       return true;
     } catch (e) {
       ui("<p>最新の状態を表示できません。「更新」で再確認してください。</p>");
@@ -105,7 +105,7 @@ export async function dashboard(ctx) {
           i.programId.equals(program) && ((i.data[0] >= 10 && i.data[0] <= 13) || i.data[0] === 17),
       ),
     );
-    info(msg + (refreshed ? "" : " 残高は「更新」で再確認してください。"));
+    info(msg + (refreshed ? (s.communitySyncError ? " " + s.communitySyncError : "") : " 残高は「更新」で再確認してください。"));
     const a = document.createElement("a");
     a.href = receipt(sig);
     a.textContent = " Devnetの取引を見る";
@@ -198,10 +198,14 @@ export async function dashboard(ctx) {
     const secret = currentInvite(g, who);
     if (owner) {
       const locked = g.visibility === "private" && !g.unlocked;
-      const recover = locked ? '<p>この端末には現在の招待鍵がありません。控えたリンクを開くか、名称・説明を再入力して新しいリンクを発行してください。</p>' +
-        inp("name","コミュニティ名") + '<label>説明<textarea name="description"></textarea></label>' +
-        sel("category","カテゴリ", categories.map(c => opt(c,c)).join("")) : "";
-      out += '<form id="policy"><h2>コミュニティの設定</h2>' + policyFields() + recover +
+      const editFields = locked
+        ? '<p>この端末には現在の招待鍵がありません。控えたリンクを開くか、名称・説明を再入力して新しいリンクを発行してください。</p>' +
+          inp("name", "コミュニティ名") + '<label>説明<textarea name="description"></textarea></label>' +
+          sel("category", "カテゴリ", categories.map(c => opt(c, c)).join(""))
+        : inp("name", "コミュニティ名", 'value="' + h(g.name || "") + '" maxlength="50"') +
+          '<label>説明<textarea name="description" maxlength="140">' + h(g.description || "") + '</textarea></label>' +
+          sel("category", "カテゴリ", categories.map(c => opt(c, c)).join(""));
+      out += '<form id="policy"><h2>コミュニティの設定</h2>' + policyFields() + editFields +
         '<p>設定を変更すると、共有リンクは新しくなります。これまで公開した名称や取引の記録は台帳に残ります。トークンと既存の参加資格は変わりません。保存容量が増える場合、追加の口座保管料は管理者が支払います。</p>' +
         btn(locked ? "設定を更新してリンクを再発行" : "署名して設定を更新") + '</form>';
       if (g.mode === 1 && !locked)
@@ -293,14 +297,18 @@ export async function dashboard(ctx) {
       const f = content.querySelector("#policy");
       f.elements.visibility.value = g.visibility;
       f.elements.mode.value = String(g.mode);
+      if (f.elements.category && g.category) f.elements.category.value = g.category;
       const change = async (v, rotate) => {
         const mode = Number(v.mode), visibility = v.visibility;
-        if (!rotate && mode === g.mode && visibility === g.visibility && !v.name) throw Error("変更する設定を選んでください。");
+        const name = (v.name ?? g.name ?? "").trim();
+        const description = (v.description ?? g.description ?? "").trim();
+        const category = v.category || g.category;
+        if (!rotate && mode === g.mode && visibility === g.visibility && name === (g.name || "") && description === (g.description || "") && category === (g.category || "")) throw Error("変更する設定を選んでください。");
         const warning = g.visibility === "private" && visibility === "public"
           ? "名称・説明を公開します。台帳に公開した内容は消去できません。"
           : "現在の参加用リンクは更新されます。既存の参加者はそのままです。";
         if (!confirm(warning + " 設定を更新しますか？")) { info("取り消しました。"); return; }
-        const next = await makePolicy({...g, ...v, mode, visibility}, id, who, inviteSecret);
+        const next = await makePolicy({...g, ...v, name, description, category, mode, visibility}, id, who, inviteSecret);
         const ix = communityUpdate(program, who, id, g.mode, g.invite, mode, next.invite, next.bytes);
         if (next.code) rememberInvite(id, who, next.code);
         await send([ix], [], "コミュニティの設定を更新しました。");

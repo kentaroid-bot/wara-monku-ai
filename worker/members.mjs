@@ -1,4 +1,5 @@
 import { shopRequests } from "./shop-requests.mjs";
+import { readCommunityProfiles, saveCommunityProfile } from "./community-profiles.mjs";
 import { readShops, saveShop } from "./shop-profiles.mjs";
 import { requireFreshBlockhash, workerConnection } from "./devnet-rpc.mjs";
 import { feeKey, relayPayment } from "./relay.mjs";
@@ -113,6 +114,13 @@ export async function memberRequest(op, b, ctx) {
     const m = await byId(grant.id);
     if (!m || grant.revision !== m.revision) denied();
     return { m, grant };
+  }
+  if (op === "community-profiles" || op === "community-save") {
+    const {m} = await session();
+    const rpc = workerConnection(env);
+    return op === "community-save"
+      ? saveCommunityProfile(db,rpc,realm,m.address,b,hash,fail)
+      : readCommunityProfiles(db,rpc,realm,m.address,b.groups,hash,fail);
   }
   if (op === "shop-challenge") {
     if (!validSecret(b.address) || bs58.decode(b.address).length !== 32) bad();

@@ -16,8 +16,10 @@ import bs58 from "bs58";
 import { ed25519 } from "@noble/curves/ed25519";
 import { walletMessage } from "../shared/member-wire.mjs";
 import { addr } from "../mainstream/protocol.mjs";
-import { privateMetadata } from "../mainstream/community-privacy.mjs";
-import { program, rpc, submit, checkPending } from "../mainstream/network.mjs";
+import { privateMetadata, makePolicy, displayKeyBytes, rememberInvite, currentInvite, syncPrivateGroups } from "../mainstream/community-privacy.mjs";
+import { communityUpdate } from "../shared/community-metadata.mjs";
+import { parseRow } from "../mainstream/protocol.mjs";
+import { program, rpc, submit, checkPending, loadState } from "../mainstream/network.mjs";
 import {
   createGroup,
   certify,
@@ -198,6 +200,7 @@ test("signed-in zero-SOL buyer joins, spends and transfers through Worker/D1 and
     "0003_relay_receipts",
     "0004_shop_profiles",
     "0005_shop_requests",
+    "0006_private_community_profiles",
   ]) {
     const sql = await readFile("migrations/" + file + ".sql", "utf8");
     for (const stmt of sql
@@ -359,6 +362,108 @@ test("signed-in zero-SOL buyer joins, spends and transfers through Worker/D1 and
     assert.equal((await call("shop-save",{...data,group:String(f),store:String(user),session})).status,200);
     assert.deepEqual(await read(familyId),[]);assert.deepEqual(await read(familyId,{access}),[]);
     assert.equal((await read(familyId,{session}))[0].title,data.title);
+  });
+  await t.test("private community profiles sync after rotation through authenticated Worker, D1 and on-chain membership", async () => {
+    async function grant(pair, name, realm = "trial", expires = Math.floor(Date.now()/1000)+900) {
+      const token = bs58.encode(randomBytes(32));
+      await db.prepare("INSERT INTO members(id,realm,address,type,pin_mac,created) VALUES(?,?,?,'phantom','fixture',1)")
+        .bind(name,realm,String(pair.publicKey)).run();
+      await db.prepare("INSERT INTO wallet_tickets VALUES(?,?,?,?,?)")
+        .bind(createHmac("sha256",pepper).update(`wallet-access/${realm}/ticket\n${token}`).digest("base64"),
+          realm,"session",JSON.stringify({id:name,revision:1}),expires).run();
+      return token;
+    }
+    const adminSession = await grant(owner,"admin"), outsider = key(), outsiderSession = await grant(outsider,"outsider");
+    const expired = await grant(key(),"expired","trial",1);
+    const verified = await grant(key(),"verified","verified");
+    const call = (op,data) => post("/api/member/"+op,data);
+    const api = token => async (op,data) => {
+      const res = await call(op,{...data,session:token});
+      assert.equal(res.status,200,await res.clone().text());
+      assert.equal(res.headers.get("Cache-Control"),"no-store");
+      return res.json();
+    };
+    const family = key(), id = String(family.publicKey), adminId = String(owner.publicKey);
+    const policy = name => makePolicy({visibility:"private",mode:2,name,description:"内緒の集会",category:"サークル"},
+      id,adminId,()=>bs58.encode(randomBytes(32)));
+    const initial = await policy("初めの名前");
+    admin(createGroup(program,owner.publicKey,id,initial.mode,initial.invite,initial.bytes,minRent(66+initial.bytes.length)),family);
+    const row = () => parseRow(account(id).data,id);
+    const saveBody = async p => ({group:id,invite:String(p.invite),sealed:JSON.parse(p.bytes).sealed,
+      displayKey:Buffer.from(await displayKeyBytes(p.code)).toString("base64")});
+    const firstBody = await saveBody(initial);
+    for (const token of [undefined,expired,verified]) {
+      assert.equal((await call("community-profiles",{groups:[id],session:token})).status,401);
+      assert.equal((await call("community-save",{...firstBody,session:token})).status,401);
+    }
+    assert.equal((await call("community-save",{...firstBody,session})).status,403);
+    assert.equal((await call("community-save",{...firstBody,session:adminSession,displayKey:"bad"})).status,400);
+    assert.equal((await call("community-save",{...firstBody,session:adminSession,group:String(mint)})).status,403);
+    const cross = await runtime.dispatchFetch(base+"/api/member/community-profiles",{
+      method:"POST",headers:{"Content-Type":"application/json",Origin:"https://outsider.example"},
+      body:JSON.stringify({groups:[id],session:adminSession})});
+    assert.equal(cross.status,403);
+    // Opening/backfill uses the administrator's existing local key and stores no invitation seed.
+    rememberInvite(id,adminId,initial.code);
+    const opened = await syncPrivateGroups([row()],adminId,[],api(adminSession));
+    assert.equal(opened.groups[0].name,"初めの名前");
+    assert.equal(opened.communitySyncError,"");
+    const stored = JSON.stringify((await db.prepare("SELECT * FROM private_community_profiles").all()).results);
+    for (const secret of [initial.code,firstBody.displayKey,"初めの名前","内緒の集会"])
+      assert.ok(!stored.includes(secret));
+    assert.deepEqual((await api(outsiderSession)("community-profiles",{groups:[id],address:adminId})).groups,[]);
+    assert.deepEqual((await api(session)("community-profiles",{groups:[id]})).groups,[]);
+    // A pending application is not admission, even with a valid signed-in session.
+    const memberKey = addr(program,"m3",id,user);
+    svm.airdrop(String(user),10_000_000n);
+    const pendingTx = new Transaction({feePayer:user,recentBlockhash:svm.latestBlockhash()}).add(join(program,user,id,user));
+    pendingTx.sign(buyer); execute(pendingTx.serialize());
+    assert.equal(parseRow(account(memberKey).data,String(memberKey)).status,1);
+    assert.deepEqual((await api(session)("community-profiles",{groups:[id]})).groups,[]);
+    admin([join(program,owner.publicKey,id,user,true)]);
+    const memberRow = parseRow(account(memberKey).data,String(memberKey));
+    rememberInvite(id,String(user),initial.code);
+    const staleGroup = row(), next = await policy("新しい名前");
+    rememberInvite(id,adminId,next.code);
+    // Failed chain update must not publish a future profile.
+    assert.equal((await call("community-save",{...await saveBody(next),session:adminSession})).status,409);
+    admin([communityUpdate(program,owner.publicKey,id,initial.mode,initial.invite,next.mode,next.invite,next.bytes)]);
+    const beforeSave = (await api(session)("community-profiles",{groups:[id]})).groups[0];
+    assert.equal(beforeSave.unlocked,false); assert.equal(beforeSave.name,"限定公開コミュニティ");
+    const changed = await syncPrivateGroups([staleGroup],adminId,[],api(adminSession));
+    assert.equal(changed.groups[0].name,"新しい名前");
+    // Old browser directory + old invitation still produce the current name without a new link.
+    const memberView = await syncPrivateGroups([staleGroup],String(user),[memberRow],api(session));
+    assert.equal(memberView.groups[0].name,"新しい名前");
+    assert.equal(memberView.groups[0].description,"内緒の集会");
+    assert.equal(memberView.groups[0].category,"サークル");
+    assert.equal(memberView.groups[0].unlocked,true);
+    assert.equal(currentInvite(row(),String(user)),null);
+    // Exercise the actual wallet/list/detail loader with its existing 45-second directory cache.
+    sessionStorage.setItem("wara.v03.policy-directory."+program,JSON.stringify({at:Date.now(),rows:[staleGroup,memberRow]}));
+    const clock = Buffer.alloc(40); clock.writeBigInt64LE(svm.getClock().unixTimestamp,32);
+    const lookup = t.mock.method(rpc,"getMultipleAccountsInfo",async keys=>keys.map((k,i)=>
+      i===0 ? {owner:SystemProgram.programId,data:clock} : account(k)));
+    try {
+      const state = await loadState(String(user));
+      assert.equal(state.groups[0].name,"新しい名前");
+      assert.equal(state.communitySyncError,"");
+      assert.equal(state.rows[0].name,"限定公開コミュニティ");
+      assert.ok(!sessionStorage.getItem("wara.v03.policy-directory."+program).includes("新しい名前"));
+    } finally { lookup.mock.restore(); }
+    assert.equal((await call("community-save",{...firstBody,session:adminSession})).status,409);
+    assert.equal((await call("community-save",{...await saveBody(next),session:adminSession})).status,200); // retry
+    assert.deepEqual((await api(outsiderSession)("community-profiles",{groups:[id]})).groups,[]);
+    // Recheck the canonical PDA and status each time; cached D1 data confers no access.
+    const memberAccount = svm.getAccount(String(memberKey));
+    const bytes = Buffer.from(memberAccount.data); bytes[65] = 1;
+    svm.setAccount({...memberAccount,data:bytes});
+    assert.deepEqual((await api(session)("community-profiles",{groups:[id]})).groups,[]);
+    bytes[65] = 2;
+    svm.setAccount({...memberAccount,data:bytes,programAddress:String(SystemProgram.programId)});
+    assert.deepEqual((await api(session)("community-profiles",{groups:[id]})).groups,[]);
+    await db.prepare("UPDATE members SET revision=revision+1 WHERE id='admin'").run();
+    assert.equal((await call("community-profiles",{groups:[id],session:adminSession})).status,401);
   });
   await t.test("shop request queue uses authenticated membership, survives retries and resolves against the certified PDA", async () => {
     const path = base + "/api/v3/shop-requests", group = String(g);

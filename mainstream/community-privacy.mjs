@@ -2,6 +2,7 @@ import { Buffer } from "buffer";
 import { Keypair } from "@solana/web3.js";
 import bs58 from "bs58";
 import { metadata, pk } from "./protocol.mjs";
+import { openPrivateProfile } from "../shared/private-community.mjs";
 
 export function codeKey(code) {
   try { return Keypair.fromSeed(bs58.decode(code.trim())); }
@@ -37,16 +38,16 @@ export function parseInvitation(hash) {
   return { group, code };
 }
 
-async function displayKey(code) {
+export async function displayKeyBytes(code) {
   // Domain separation from the Ed25519 invitation signing key.
-  const raw = await crypto.subtle.digest("SHA-256", Buffer.concat([Buffer.from("WARA private display v1"), bs58.decode(code)]));
-  return crypto.subtle.importKey("raw", raw, "AES-GCM", false, ["encrypt","decrypt"]);
+  return new Uint8Array(await crypto.subtle.digest("SHA-256", Buffer.concat([Buffer.from("WARA private display v1"), bs58.decode(code)])));
 }
 
 export async function privateMetadata(name, description, category, code, group) {
   const bytes = metadata(name, description, category);
   const iv = crypto.getRandomValues(new Uint8Array(12));
-  const encrypted = await crypto.subtle.encrypt({ name:"AES-GCM", iv, additionalData:pk(group).toBytes() }, await displayKey(code), bytes);
+  const key = await crypto.subtle.importKey("raw", await displayKeyBytes(code), "AES-GCM", false, ["encrypt"]);
+  const encrypted = await crypto.subtle.encrypt({ name:"AES-GCM", iv, additionalData:pk(group).toBytes() }, key, bytes);
   const sealed = Buffer.concat([iv, new Uint8Array(encrypted)]).toString("base64");
   const envelope = Buffer.from(JSON.stringify({visibility:"private", sealed}));
   if (envelope.length > 400) throw Error("限定公開の名称・説明をもう少し短くしてください。");
@@ -59,10 +60,7 @@ export async function privateGroupView(group, wallet, rows) {
   const code = currentInvite(group, wallet);
   if (code) {
     try {
-      const bytes = Buffer.from(group.sealed, "base64");
-      const plain = await crypto.subtle.decrypt({ name:"AES-GCM", iv:bytes.subarray(0,12),
-        additionalData:pk(group.id).toBytes() }, await displayKey(code), bytes.subarray(12));
-      const {name, description, category} = JSON.parse(Buffer.from(plain).toString("utf8"));
+      const {name, description, category} = await openPrivateProfile(group, await displayKeyBytes(code));
       if (member && pending === code) {
         rememberInvite(group.id, wallet, code);
         sessionStorage.removeItem(pendingInvite(group.id));
@@ -71,6 +69,48 @@ export async function privateGroupView(group, wallet, rows) {
     } catch { /* A stale invitation cannot unlock this group. */ }
   }
   return member ? { ...group, joined:true } : null;
+}
+
+// Called on every wallet/directory/detail load. Synced plaintext is kept only
+// in this view, never in browser storage or the public on-chain row cache.
+export async function syncPrivateGroups(groups, wallet, rows, api) {
+  const synced = new Map();
+  let error = "";
+  const candidates = groups.filter(g => g.visibility === "private");
+  if (api) for (let i=0; i<candidates.length; i+=32) {
+    try {
+      const result = await api("community-profiles", {groups:candidates.slice(i,i+32).map(g=>g.id)});
+      for (let group of result.groups) {
+        if (group.visibility === "private" && !group.unlocked && group.owner === wallet) {
+          const code = currentInvite(group, wallet);
+          if (code) {
+            try {
+              ({group} = await api("community-save", {group:group.id, sealed:group.sealed, invite:group.invite,
+                displayKey:Buffer.from(await displayKeyBytes(code)).toString("base64")}));
+            } catch { error = "コミュニティ情報の同期が未完了です。「更新」で再試行できます。"; }
+          }
+        }
+        synced.set(group.id, group);
+      }
+    } catch { error = "コミュニティの最新情報を取得できません。「更新」で再試行できます。"; }
+  }
+  const views = await Promise.all(groups.map(async original => {
+    const group = synced.get(original.id) || original;
+    if (group.visibility !== "private") return group;
+    if (group.unlocked) {
+      const code = currentInvite(group, wallet);
+      if (code && sessionStorage.getItem(pendingInvite(group.id)) === code) {
+        rememberInvite(group.id, wallet, code);
+        sessionStorage.removeItem(pendingInvite(group.id));
+      }
+      return group;
+    }
+    const view = await privateGroupView(group, wallet, rows) || (group.joined ? group : null);
+    if (api && view?.joined && !view.unlocked && !error)
+      error = "コミュニティ情報の同期を待っています。管理者が情報を同期した後、「更新」で確認できます。";
+    return view;
+  }));
+  return {groups:views.filter(Boolean), communitySyncError:error};
 }
 
 // Limited groups need a display key in every mode. Only mode 1 uses it as

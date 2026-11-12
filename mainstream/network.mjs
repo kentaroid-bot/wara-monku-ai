@@ -1,4 +1,5 @@
-import { privateGroupView } from "./community-privacy.mjs";
+import { syncPrivateGroups } from "./community-privacy.mjs";
+import { memberApi } from "./member-ui.mjs";
 export { codeKey } from "./community-privacy.mjs";
 import { managedSession } from "./identity.mjs";
 import { eligible, sponsoredInstructions, rentShortfall } from "../shared/sponsorship.mjs";
@@ -78,10 +79,11 @@ export async function loadState(address, force = false, requestedShop = null) {
     if (a?.owner.equals(tok) && a.data.length === 165 && a.data[108] === 1)
       funds.set(g.id, Buffer.from(a.data).readBigUInt64LE(64));
   });
-  const views = await Promise.all(groups.map(group => group.visibility === "private"
-    ? privateGroupView(group, String(who), rows) : group));
+  const session = managedSession();
+  const views = await syncPrivateGroups(groups, String(who), rows,
+    session?.profile.address === String(who) ? memberApi : null);
   return {
-    groups: views.filter(Boolean),
+    ...views,
     rows,
     funds,
     day,
