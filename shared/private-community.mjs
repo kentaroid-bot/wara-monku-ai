@@ -1,5 +1,5 @@
 import { Buffer } from "buffer";
-import { metadata, pk } from "../mainstream/protocol.mjs";
+import { metadata, pk } from "./protocol.mjs";
 
 // This key opens display text only; it cannot sign an invitation transaction.
 export async function openPrivateProfile(group, rawKey) {

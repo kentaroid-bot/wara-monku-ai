@@ -1,5 +1,5 @@
-import manifest from "../deployments/devnet.json" with {type:"json"};
-import { addr, parseRow, pk } from "../mainstream/protocol.mjs";
+import manifest from "../shared/deployment.mjs";
+import { addr, parseRow, pk } from "../shared/protocol.mjs";
 import { shopFields } from "../shared/shop-profile.mjs";
 
 const program = pk(manifest.program);

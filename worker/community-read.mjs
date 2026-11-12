@@ -1,6 +1,6 @@
 // Only repeat idempotent public account reads; admission and D1 decryption stay in the Worker.
 import { Connection } from "@solana/web3.js";
-import { assertDevnet, DEVNET_GENESIS } from "../app/protocol.mjs";
+import { assertDevnet, DEVNET_GENESIS } from "../shared/protocol.mjs";
 import { workerDevnetUrl } from "./devnet-rpc.mjs";
 
 const sharedDevnetRead = "https://solana-devnet.g.alchemy.com/v2/demo";

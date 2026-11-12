@@ -14,9 +14,11 @@ export function twinCards(state) {
 }
 
 let toastTimeout;
-export function crystallize(amount, incoming) {
+export function crystallize(amount, incoming, currency = "ina") {
   const toast = document.querySelector("#crystal-toast");
-  toast.textContent = incoming
+  toast.textContent = currency === "wara"
+    ? `💖 ありがとう！ あなたの店に +${amount} WARA が届きました！`
+    : incoming
     ? `💖 ありがとう！ あなたの店に +${amount * 90n} / お客さんに +${amount * 10n} WARA 結晶化！`
     : `💖 ありがとう！ 店に +${amount * 90n} / あなたに +${amount * 10n} WARA 結晶化！`;
   document.querySelector(".orb.wara")?.animate(

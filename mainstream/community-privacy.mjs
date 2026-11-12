@@ -26,7 +26,7 @@ export function rememberInvite(group, wallet, code) {
 }
 
 export function invitationUrl(group, code) {
-  return "https://wara.monku.ai/#/join?" + new URLSearchParams({ g: group, code });
+  return (globalThis.location?.origin || "https://wara.monku.ai") + "/#/join?" + new URLSearchParams({ g: group, code });
 }
 
 export function parseInvitation(hash) {

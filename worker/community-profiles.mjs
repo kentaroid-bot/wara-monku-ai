@@ -1,7 +1,7 @@
 import { Buffer } from "buffer";
-import manifest from "../deployments/devnet.json" with {type:"json"};
-import { assertDevnet } from "../app/protocol.mjs";
-import { addr, pk } from "../mainstream/protocol.mjs";
+import manifest from "../shared/deployment.mjs";
+import { assertDevnet } from "../shared/protocol.mjs";
+import { addr, pk } from "../shared/protocol.mjs";
 import { openPrivateProfile, privateProfileVersion } from "../shared/private-community.mjs";
 import { address, decode } from "./shop-profiles.mjs";
 

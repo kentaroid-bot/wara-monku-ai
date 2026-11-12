@@ -1,7 +1,7 @@
 import { TransactionInstruction, SystemProgram } from "@solana/web3.js";
 import { Buffer } from "buffer";
-import { createGroup, mintFor, pk, metadata } from "../mainstream/protocol.mjs";
-import { createCommunityMetadataInstruction } from "../scripts/token-metadata.mjs";
+import { createGroup, mintFor, pk, metadata } from "./protocol.mjs";
+import { createCommunityMetadataInstruction } from "./token-metadata.mjs";
 
 const origin = "https://wara.monku.ai";
 export const avatar = origin + "/assets/wara-avatar.png";

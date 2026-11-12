@@ -5,10 +5,10 @@ import {
   Transaction,
   VersionedTransaction,
 } from "@solana/web3.js";
-import manifest from "../deployments/devnet.json" with { type: "json" };
+import manifest from "../shared/deployment.mjs";
 import { requireFreshBlockhash } from "./devnet-rpc.mjs";
 import { eligible, rentShortfall } from "../shared/sponsorship.mjs";
-import { pk } from "../mainstream/protocol.mjs";
+import { pk } from "../shared/protocol.mjs";
 import {
   ordinaryMessage,
   confirmedMessage,

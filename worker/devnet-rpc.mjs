@@ -1,5 +1,5 @@
 import { Connection } from "@solana/web3.js";
-import { assertDevnet } from "../app/protocol.mjs";
+import { assertDevnet } from "../shared/protocol.mjs";
 
 // The Solana public endpoint refuses requests from Workers' shared egress.
 import { publicDevnetFallback as workerDevnetUrl } from "../shared/devnet.mjs";

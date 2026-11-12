@@ -1,6 +1,6 @@
-import { assertDevnet } from "../app/protocol.mjs";
-import manifest from "../deployments/devnet.json" with { type: "json" };
-import { addr, pk } from "../mainstream/protocol.mjs";
+import { assertDevnet } from "../shared/protocol.mjs";
+import manifest from "../shared/deployment.mjs";
+import { addr, pk } from "../shared/protocol.mjs";
 import { address, decode } from "./shop-profiles.mjs";
 
 const program = pk(manifest.program);

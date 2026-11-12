@@ -16,8 +16,8 @@ import {
   certify,
   offer,
   transfer,
-} from "../mainstream/protocol.mjs";
-import manifest from "../deployments/devnet.json" with { type: "json" };
+} from "../shared/protocol.mjs";
+import manifest from "../shared/deployment.mjs";
 const program = pk(manifest.program);
 const price = () =>
   ComputeBudgetProgram.setComputeUnitPrice({ microLamports: 0 });

@@ -1,17 +1,25 @@
+import securityHeaders from "../shared/security-headers.cjs";
 import bs58 from "bs58";
-import { metadataAddress, METADATA_PROGRAM, decodeMetadata } from "../scripts/token-metadata.mjs";
+import { metadataAddress, METADATA_PROGRAM, decodeMetadata } from "../shared/token-metadata.mjs";
 import { avatar } from "../shared/community-metadata.mjs";
-import { mintFor, parseRow, pk, tok } from "../mainstream/protocol.mjs";
-import manifest from "../deployments/devnet.json" with { type: "json" };
+import { mintFor, parseRow, pk, tok } from "../shared/protocol.mjs";
+import manifest from "../shared/deployment.mjs";
 import { workerConnection } from "./devnet-rpc.mjs";
 
 const program = pk(manifest.program);
+// Only immutable addresses are cached; public/private policy is always read live.
+const groupsByMint = new Map();
+const maxCachedGroups = 4096;
+function rememberGroup(mint, group) {
+  if (!groupsByMint.has(mint) && groupsByMint.size >= maxCachedGroups) groupsByMint.delete(groupsByMint.keys().next().value);
+  groupsByMint.set(mint, group);
+}
 
 function reply(body, status = 200) {
   return Response.json(body, { status, headers: {
     "Access-Control-Allow-Origin": "*",
     "Cache-Control": status === 200 ? "public, max-age=0, must-revalidate" : "no-store",
-    "X-Content-Type-Options": "nosniff",
+    ...securityHeaders,
   } });
 }
 
@@ -31,8 +39,8 @@ export async function communityMetadata(req, env, ctx, connection = workerConnec
     // Older groups also derive their mint from the immutable group address.
     // Cache only immutable mint-to-group discovery. Re-read the live policy
     // on every response, including immediately after a public group is unlisted.
-    let group;
-    const hit = await cache?.match(cacheKey);
+    let group = groupsByMint.get(address);
+    const hit = !group && await cache?.match(cacheKey);
     if (hit) group = pk(await hit.text());
     if (!group || !mintFor(program,group).equals(mint)) {
       const candidates = await connection.getProgramAccounts(program, {commitment:"confirmed",
@@ -42,6 +50,7 @@ export async function communityMetadata(req, env, ctx, connection = workerConnec
         headers:{"Cache-Control":"public, max-age=300"}
       })));
     }
+    if (group && mintFor(program, group).equals(mint)) rememberGroup(address, group);
     const info = group && await connection.getAccountInfo(group, "confirmed");
     const row = info?.owner.equals(program) && parseRow(info.data, String(group));
     if (row?.tag !== 31) return reply({error:"コミュニティは見つかりません。"}, 404);

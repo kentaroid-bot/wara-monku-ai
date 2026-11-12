@@ -6,8 +6,8 @@ import {
   ComputeBudgetProgram,
 } from "@solana/web3.js";
 import { ASSOCIATED_TOKEN_PROGRAM_ID } from "@solana/spl-token";
-import { metadataAddress } from "../scripts/token-metadata.mjs";
-import { addr, mintFor } from "../mainstream/protocol.mjs";
+import { metadataAddress } from "./token-metadata.mjs";
+import { addr, mintFor } from "./protocol.mjs";
 
 export function eligible(ix, program) {
   const last = ix.at(-1);

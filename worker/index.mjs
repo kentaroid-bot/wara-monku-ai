@@ -1,3 +1,5 @@
+import securityHeaders from "../shared/security-headers.cjs";
+import { Failure } from "./failure.mjs";
 import { communityMetadata } from "./community-metadata.mjs";
 import { feeKey } from "./relay.mjs";
 import { verifiedPhoneEvent } from "./google-phone.mjs";
@@ -14,12 +16,6 @@ const ttl = 300,
   windowSeconds = 900,
   maxBody = 4096;
 const enc = new TextEncoder();
-class Failure extends Error {
-  constructor(status, message) {
-    super(message);
-    this.status = status;
-  }
-}
 const fail = (status, text) => {
   throw new Failure(status, text);
 };
@@ -35,7 +31,7 @@ function json(body, status = 200) {
     headers: {
       "Cache-Control": "no-store",
       "X-Wara-Auth": "1",
-      "X-Content-Type-Options": "nosniff",
+      ...securityHeaders,
     },
   });
 }
@@ -519,7 +515,7 @@ export default {
           error:
             e instanceof Failure
               ? e.message
-              : `認証APIを利用できません。(${e?.message || e})`,
+              : "認証APIを利用できません。時間をおいて再試行してください。",
         },
         e instanceof Failure ? e.status : 503,
       );
