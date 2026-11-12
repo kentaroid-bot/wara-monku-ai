@@ -1,6 +1,7 @@
 import { ed25519 } from "@noble/curves/ed25519";
 import { toBase64 } from "../shared/auth-wire.mjs";
-import { requireFreshBlockhash, workerConnection } from "./devnet-rpc.mjs";
+import { requireFreshBlockhash } from "./devnet-rpc.mjs";
+import { paymentConnection } from "./payment-rpc.mjs";
 import { feeKey } from "./relay.mjs";
 import { ordinaryMessage, confirmedMessage, decodeTransaction } from "./member-transactions.mjs";
 import { validSecret } from "./member-core.mjs";
@@ -43,7 +44,7 @@ export async function memberSigning(op, core) {
       bad();
     }
     if (card && !ordinary) denied();
-    await requireFreshBlockhash(workerConnection(env), tx.blockhash, fail);
+    await requireFreshBlockhash(paymentConnection(env), tx.blockhash, fail);
     if (!card && !ordinary) await strong(m, "payment");
     const seed = await encryptSeed(m.id, m.sealed_seed, true);
     return { signature: toBase64(ed25519.sign(tx.message, seed)) };

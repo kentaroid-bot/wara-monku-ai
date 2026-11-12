@@ -3,6 +3,7 @@ import { shopRequests } from "./shop-requests.mjs";
 import { communityReaders } from "./community-read.mjs";
 import { resetCommunityAccess, readCommunityProfiles, saveCommunityProfile, renameCommunity } from "./community-profiles.mjs";
 import { readShops, saveShop } from "./shop-profiles.mjs";
+import { paymentConnection } from "./payment-rpc.mjs";
 import { workerConnection } from "./devnet-rpc.mjs";
 import { feeKey, relayPayment } from "./relay.mjs";
 import bs58 from "bs58";
@@ -67,7 +68,7 @@ export async function memberRequest(op, b, ctx) {
     }
     const sponsor = feeKey(env);
     if (!sponsor) fail(503, "手数料支援は設定されていません。");
-    return relayPayment({encoded:b.tx, sponsor, member:m.address, receipts, fail, rpc:workerConnection(env),
+    return relayPayment({encoded:b.tx, sponsor, member:m.address, receipts, fail, rpc:paymentConnection(env),
       beforeMembershipEnd: (group,viewer) => invalidateAccess(db,realm,viewer,group),
       reserveBudget: async () => {
         await limited("relay-member:" + m.id, 20);
