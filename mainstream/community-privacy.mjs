@@ -2,7 +2,7 @@ import { Buffer } from "buffer";
 import { Keypair } from "@solana/web3.js";
 import bs58 from "bs58";
 import { metadata, pk } from "./protocol.mjs";
-import { openPrivateProfile } from "../shared/private-community.mjs";
+import { openPrivateProfile, privateProfileVersion } from "../shared/private-community.mjs";
 
 export function codeKey(code) {
   try { return Keypair.fromSeed(bs58.decode(code.trim())); }
@@ -73,14 +73,21 @@ export async function privateGroupView(group, wallet, rows) {
 
 // Called on every wallet/directory/detail load. Synced plaintext is kept only
 // in this view, never in browser storage or the public on-chain row cache.
-export async function syncPrivateGroups(groups, wallet, rows, api) {
+export async function syncPrivateGroups(groups, wallet, rows, api, force = false) {
   const synced = new Map();
   const failed = new Set();
   let error = "";
+  const retryMessage = "コミュニティの最新情報を取得できません。「更新」で再試行できます。参加済みの方は招待リンク不要です。";
   const candidates = groups.filter(g => g.visibility === "private");
   if (api) for (let i=0; i<candidates.length; i+=32) {
     try {
-      const result = await api("community-profiles", {groups:candidates.slice(i,i+32).map(g=>g.id)});
+      const chunk = candidates.slice(i,i+32);
+      const result = await api("community-profiles", {groups:chunk.map(g=>g.id),
+        ...(force ? {} : {versions:await Promise.all(chunk.map(privateProfileVersion))})});
+      if (result.unavailable?.length) {
+        result.unavailable.forEach(id=>failed.add(id));
+        error = retryMessage;
+      }
       for (let group of result.groups) {
         if (group.visibility === "private" && !group.unlocked && group.owner === wallet) {
           const code = currentInvite(group, wallet);
@@ -95,7 +102,7 @@ export async function syncPrivateGroups(groups, wallet, rows, api) {
       }
     } catch {
       for (const g of candidates.slice(i,i+32)) failed.add(g.id);
-      error = "コミュニティの最新情報を取得できません。「更新」で再試行できます。参加済みの方は招待リンク不要です。";
+      error = retryMessage;
     }
   }
   const views = await Promise.all(groups.map(async original => {
@@ -109,7 +116,10 @@ export async function syncPrivateGroups(groups, wallet, rows, api) {
       }
       return group;
     }
-    const view = await privateGroupView(group, wallet, rows) || (group.joined ? group : null);
+    const denied = api && !failed.has(group.id) && !synced.has(group.id);
+    if (denied && (!sessionStorage.getItem(pendingInvite(group.id)) ||
+        rows.some(r=>r.tag===33 && r.group===group.id && r.to===wallet && r.status===4))) return null;
+    const view = await privateGroupView(group, wallet, denied ? [] : rows) || (group.joined ? group : null);
     if (failed.has(group.id) && view && (view.joined || !sessionStorage.getItem(pendingInvite(group.id))))
       return {...group, name:"限定公開コミュニティ（名称未確認）", joined:view.joined, nameUnavailable:true};
     if (api && view?.joined && !view.unlocked && !view.nameRevision && !error)

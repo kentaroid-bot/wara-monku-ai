@@ -3,13 +3,12 @@ import { Connection } from "@solana/web3.js";
 import { assertDevnet, DEVNET_GENESIS } from "../shared/protocol.mjs";
 import { workerDevnetUrl } from "./devnet-rpc.mjs";
 
-const sharedDevnetRead = "https://solana-devnet.g.alchemy.com/v2/demo";
 const checked = new WeakSet();
 async function verifyReader(reader) {
   if (checked.has(reader)) return;
-  // The identity of these two fixed public Devnet URLs is shared across cold starts.
+  // The identity of the fixed public Devnet URL is shared across cold starts.
   // No user, RPC credential, account data or admission decision goes into this cache.
-  const publicId = [workerDevnetUrl, sharedDevnetRead].indexOf(reader.rpcEndpoint);
+  const publicId = reader.rpcEndpoint === workerDevnetUrl ? 0 : -1;
   const cache = publicId >= 0 && globalThis.caches?.default;
   const key = cache && new Request("https://wara.monku.ai/.wara-cache/devnet-genesis-v1/"+publicId);
   let hit;
@@ -25,7 +24,7 @@ async function verifyReader(reader) {
 let connections, config;
 export function communityReaders(env) {
   const primary = env.DEVNET_RPC_URL || workerDevnetUrl;
-  const alternate = env.DEVNET_READ_FALLBACK_URL || (!env.DEVNET_RPC_URL && sharedDevnetRead);
+  const alternate = env.DEVNET_READ_FALLBACK_URL;
   const urls = [...new Set([primary, alternate].filter(Boolean))];
   if (config !== JSON.stringify(urls)) {
     connections = urls.map(url => new Connection(url, {commitment:"confirmed", disableRetryOnRateLimit:true,

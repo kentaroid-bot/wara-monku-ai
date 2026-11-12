@@ -114,6 +114,10 @@ export function join(p, who, g, user, approve = false, invite = null) {
     data(12, byte(approve ? 1 : 0)),
   );
 }
+export function endMembership(program, signer, group, member, ban) {
+  return ix(program, [actor(signer), key(group), key(member), rw(addr(program, "m3", group, member))],
+    data(18, byte(ban ? 1 : 0)));
+}
 export const offer = (p, who, g, peer, yes) =>
   ix(
     p,

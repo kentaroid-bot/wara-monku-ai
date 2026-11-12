@@ -41,7 +41,7 @@ test("fresh member browser displays synchronized fields without storing plaintex
   const stores = storage(t), {group} = await fixture(), wallet = address();
   const latest = {...group,name:"改名後",description:"新しい説明",category:"学校",joined:true,unlocked:true};
   const result = await syncPrivateGroups([group],wallet,[],async (op,data)=>{
-    assert.equal(op,"community-profiles"); assert.deepEqual(data,{groups:[group.id]});
+    assert.equal(op,"community-profiles"); assert.deepEqual(data,{groups:[group.id],versions:[await privateProfileVersion(group)]});
     return {groups:[latest]};
   });
   assert.deepEqual(result.groups,[latest]); assert.equal(result.communitySyncError,"");

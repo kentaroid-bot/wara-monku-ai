@@ -10,6 +10,7 @@ import {
 } from "@solana/web3.js";
 import {
   join,
+  endMembership,
   spend,
   pk,
   createGroup,
@@ -139,8 +140,12 @@ export function confirmedMessage(raw, address, sponsor = null) {
     const data = last.data,
       accounts = last.keys.map((k) => k.pubkey);
     let expected;
-    if (sponsor && data[0] !== 15 && data[0] !== 16 && data[0] !== 17) return false;
+    if (sponsor && data[0] !== 15 && data[0] !== 16 && data[0] !== 17 && data[0] !== 18) return false;
     switch (data[0]) {
+      case 18:
+        if (data.length !== 2 || data[1] > 1 || (data[1] === 0 && String(accounts[2]) !== address)) return false;
+        expected = [limit(), price(), endMembership(program,address,accounts[1],accounts[2],data[1] === 1)];
+        break;
       case 17:
         if (data.length <= 67 || data.length > 467) return false;
         expected = [limit(), price(), communityUpdate(program, address, accounts[1],

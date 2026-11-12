@@ -37,7 +37,7 @@ function inspect(encoded, sponsor, member) {
   )
     throw Error();
   const valid =
-    ([15,16,17].includes(last.data[0]))
+    ([15,16,17,18].includes(last.data[0]))
       ? confirmedMessage(raw, actor, sponsor)
       : ordinaryMessage(raw, actor, "session", null, sponsor);
   if (
@@ -59,6 +59,7 @@ export async function relayPayment({
   member,
   receipts,
   reserveBudget,
+  beforeMembershipEnd,
   fail,
   rpc,
 }) {
@@ -94,6 +95,8 @@ export async function relayPayment({
   }
   if (simulation.value.err)
     fail(422, "Devnetの事前検証で取引が拒否されました。");
+  // Also invalidate direct relay clients, immediately before a verified broadcast.
+  if (last.data[0] === 18) await beforeMembershipEnd(String(last.keys[1].pubkey),String(last.keys[2].pubkey));
   // Commit the ID before broadcasting. Even a dropped HTTP response can then
   // be reconciled by the user's signature without creating a second payment.
   if (await receipts.insert(receipt, signature)) {

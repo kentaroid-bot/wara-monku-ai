@@ -5,6 +5,7 @@ import { addr, pk } from "../shared/protocol.mjs";
 import { openPrivateProfile, privateProfileVersion } from "../shared/private-community.mjs";
 import { address, decode } from "./shop-profiles.mjs";
 
+import { accessRows, freshAccess, observeAccess, invalidateAccess } from "./community-access.mjs";
 import { readCommunityAccounts } from "./community-read.mjs";
 
 const program = pk(manifest.program);
@@ -83,19 +84,58 @@ export async function saveCommunityProfile(db, rpc, realm, viewer, body, hash, f
   return {group:await currentProfile(db,realm,group,hash)};
 }
 
-export async function readCommunityProfiles(db, readers, realm, viewer, ids, hash, fail) {
-  if (!Array.isArray(ids) || !ids.length || ids.length > 32) fail(400, "コミュニティの指定を確認してください。");
-  const keys = [...new Set(ids.map(id => address(id, fail)))];
-  const memberships = keys.map(id => addr(program,"m3",id,viewer));
-  const accounts = await readCommunityAccounts(readers,[...keys.map(pk),...memberships],fail);
-  const groups = [];
-  for (const [i,id] of keys.entries()) {
-    const group = decode(accounts[i], id);
-    const member = decode(accounts[i+keys.length], String(memberships[i]));
-    if (group?.tag !== 31 || (group.owner !== viewer && !(member?.tag === 33 &&
-        member.group === id && member.to === viewer && member.status === 2))) continue;
-    if (group.visibility !== "private") { groups.push(group); continue; }
-    groups.push(await currentProfile(db,realm,group,hash));
+export async function resetCommunityAccess(db, readers, realm, viewer, body, fail) {
+  const id = address(body.group,fail), target = address(body.member,fail);
+  if (target !== viewer) {
+    const [account] = await readCommunityAccounts(readers,[pk(id)],fail);
+    const group = decode(account,id);
+    if (group?.tag !== 31 || group.owner !== viewer) fail(403,"管理者だけが他の参加者の資格を更新できます。");
   }
-  return {groups};
+  await invalidateAccess(db,realm,target,id);
+  return {ok:true};
+}
+
+export async function readCommunityProfiles(db, readers, realm, viewer, ids, hash, fail, versions = []) {
+  if (!Array.isArray(ids) || !ids.length || ids.length > 32) fail(400, "コミュニティの指定を確認してください。");
+  if (!Array.isArray(versions) || (versions.length && (versions.length !== ids.length ||
+      versions.some(v=>typeof v !== "string" || !/^[a-f0-9]{64}$/.test(v))))) fail(400,"設定の版を確認してください。");
+  const keys = [...new Set(ids.map(id => address(id, fail)))];
+  const hints = new Map(ids.map((id,i)=>[id,versions[i]]));
+  const now = Math.floor(Date.now()/1000);
+  const existing = await accessRows(db,realm,viewer,keys), allowed = new Map(), missing = [];
+  for (const id of keys) {
+    const row = existing.get(id);
+    if (!freshAccess(row,now) || row.version !== hints.get(id)) missing.push(id);
+    else if (row.group_json) allowed.set(id, JSON.parse(row.group_json));
+  }
+  let unavailable;
+  if (missing.length) {
+    const memberships = missing.map(id => addr(program,"m3",id,viewer));
+    let accounts;
+    try { accounts = await readCommunityAccounts(readers,[...missing.map(pk),...memberships],fail); }
+    catch (err) {
+      if (keys.length === missing.length) throw err;
+      unavailable = missing;
+    }
+    for (const [i,id] of (accounts ? missing : []).entries()) {
+      const group = decode(accounts[i], id);
+      if (group?.tag !== 31) continue;
+      const member = decode(accounts[i+missing.length], String(memberships[i]));
+      const admitted = group.owner === viewer || (member?.tag === 33 &&
+          member.group === id && member.to === viewer && member.status === 2);
+      const version = await privateProfileVersion(group);
+      // A verified policy change also invalidates other viewers' old snapshots.
+      await db.prepare("UPDATE community_access SET generation=generation+1, valid_until=0 WHERE realm=? AND program=? AND group_id=? AND viewer<>? AND version<>? AND valid_until>0")
+        .bind(realm,manifest.program,id,viewer,version).run();
+      const prior = existing.get(id);
+      const generation = prior?.generation || 0;
+      await observeAccess(db,realm,viewer,id,version,admitted ? group : null,generation,now);
+      if (admitted) allowed.set(id,group);
+    }
+  }
+  const groups = await Promise.all(keys.filter(id=>allowed.has(id)).map(id=>{
+    const g = allowed.get(id);
+    return g.visibility === "private" ? currentProfile(db,realm,g,hash) : g;
+  }));
+  return {groups,...(unavailable ? {unavailable} : {})};
 }

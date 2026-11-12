@@ -1,6 +1,7 @@
+import { invalidateAccess } from "./community-access.mjs";
 import { shopRequests } from "./shop-requests.mjs";
 import { communityReaders } from "./community-read.mjs";
-import { readCommunityProfiles, saveCommunityProfile, renameCommunity } from "./community-profiles.mjs";
+import { resetCommunityAccess, readCommunityProfiles, saveCommunityProfile, renameCommunity } from "./community-profiles.mjs";
 import { readShops, saveShop } from "./shop-profiles.mjs";
 import { workerConnection } from "./devnet-rpc.mjs";
 import { feeKey, relayPayment } from "./relay.mjs";
@@ -21,18 +22,23 @@ export async function memberRequest(op, b, ctx) {
     if (op === "community-rename") return renameCommunity(db,rpc,realm,m.address,b,hash,fail);
     return op === "community-save"
       ? saveCommunityProfile(db,rpc,realm,m.address,b,hash,fail)
-      : readCommunityProfiles(db,communityReaders(env),realm,m.address,b.groups,hash,fail);
+      : readCommunityProfiles(db,communityReaders(env),realm,m.address,b.groups,hash,fail,b.versions);
+  }
+  if (op === "community-access-reset") {
+    const viewer = b.session ? (await session()).m.address : (await readTicket(b.access,"community-access",false)).address;
+    await limited("community-reset:"+viewer,60);
+    return resetCommunityAccess(db,communityReaders(env),realm,viewer,b,fail);
   }
   if (op === "shop-challenge") {
     if (!validSecret(b.address) || bs58.decode(b.address).length !== 32) bad();
     const purpose = b.purpose ?? "shop-profile";
-    if (!["shop-profile","shop-requests"].includes(purpose)) bad();
+    if (!["shop-profile","shop-requests","community-access"].includes(purpose)) bad();
     return {ticket:await ticket("shop-proof", {address:b.address,purpose}), audience:origin};
   }
   if (op === "shop-access") {
     const {address, purpose = "shop-profile"} = await readTicket(b.ticket, "shop-proof");
     await checkSignature(bs58.decode(address), b.proof, walletMessage(origin, purpose, b.ticket, address));
-    return {access:await ticket(purpose === "shop-profile" ? "shop-access" : "shop-requests", {address}, 900)};
+    return {access:await ticket(purpose === "shop-profile" ? "shop-access" : purpose, {address}, 900)};
   }
   if (op === "shopRequests") {
     const auth = /^(Bearer|ShopRequest) ([1-9A-HJ-NP-Za-km-z]{32,44})$/.exec(req.headers.get("Authorization") || "");
@@ -62,6 +68,7 @@ export async function memberRequest(op, b, ctx) {
     const sponsor = feeKey(env);
     if (!sponsor) fail(503, "手数料支援は設定されていません。");
     return relayPayment({encoded:b.tx, sponsor, member:m.address, receipts, fail, rpc:workerConnection(env),
+      beforeMembershipEnd: (group,viewer) => invalidateAccess(db,realm,viewer,group),
       reserveBudget: async () => {
         await limited("relay-member:" + m.id, 20);
         await limited("relay-global", 200);

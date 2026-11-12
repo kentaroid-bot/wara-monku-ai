@@ -73,7 +73,7 @@ export async function loadState(address, force = false, requestedShop = null, di
     funds = new Map();
   const session = managedSession();
   const sync = () => syncPrivateGroups(groups, String(who), rows,
-    session?.profile.address === String(who) ? memberApi : null);
+    session?.profile.address === String(who) ? memberApi : null, force);
   if (directoryOnly) return {rows,...await sync()};
   const keys = [
       SYSVAR_CLOCK_PUBKEY,

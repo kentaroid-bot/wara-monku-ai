@@ -1,20 +1,21 @@
 import { memberApi } from "../member-ui.mjs";
 import { joinedGroupIds, listedGroups } from "../shop-directory.mjs";
 import { requestPanel } from "../shop-requests.mjs";
-import { shopTitle, shopDetails } from "../shop-profile.mjs";
+import { shopTitle, shopDetails, shopWalletAccess } from "../shop-profile.mjs";
 import { Keypair } from "@solana/web3.js";
 import QRCode from "qrcode";
 import { communityOpening, communityUpdate } from "../../shared/community-metadata.mjs";
 import { makePolicy, rememberInvite, currentInvite, invitationUrl } from "../community-privacy.mjs";
-import { inviteSecret } from "../identity.mjs";
+import { inviteSecret, authMode } from "../identity.mjs";
 import { program, rpc, codeKey } from "../network.mjs";
-import { categories, modes, pk, certify, join, offer } from "../protocol.mjs";
+import { categories, modes, pk, certify, join, endMembership, offer } from "../protocol.mjs";
 import { scannerBox } from "../scan.mjs";
 import { confirmDialog } from "../confirm-dialog.mjs";
 
 export function communityViews(ctx) {
   const { state, content, params, who, profile, requests, ui, form, btn, inp, sel,
     opt, link, gid, register, by, outgoing, send, view, h, info, action } = ctx;
+  const access = shopWalletAccess(profile, ctx.wallet, "community-access");
   const policyFields = () => sel("visibility", "公開範囲", opt("public", "公開（市場に掲載）") + opt("private", "限定公開（リンク限定）")) +
     sel("mode", "参加方式", modes.map((v, i) => opt(i, v)).join(""));
   function newGroup() {
@@ -65,7 +66,7 @@ export function communityViews(ctx) {
       own = s.rows.find(
         (r) => r.tag === 33 && r.group === g.id && r.to === who,
       );
-    const admitted = Boolean(g.joined || own?.status === 2);
+    const admitted = g.visibility === "private" ? Boolean(g.joined) : own?.status === 2;
     const shops = s.rows.filter((r) => r.tag === 32 && r.group === g.id);
     let out =
       "<section><h2>" +
@@ -83,14 +84,23 @@ export function communityViews(ctx) {
           ? "参加中"
           : own?.status === 1
             ? "参加申請中"
-            : g.nameUnavailable ? "参加状況を確認できません" : "未参加") +
+            : own?.status === 4 ? "参加停止中" : own?.status === 3 ? "退会済み" : g.nameUnavailable ? "参加状況を確認できません" : "未参加") +
       "</small></section>";
-    if (!owner && !admitted && !g.nameUnavailable && (!own || (own.status === 1 && g.mode !== 2)))
+    if (!owner && !admitted && !g.nameUnavailable && (!own || own.status === 3 || (own.status === 1 && g.mode !== 2)))
       out +=
         '<form id="join">' +
         (g.mode === 1 ? inp("code", "招待コード", 'autocomplete="off"') : "") +
         btn(g.mode === 2 ? "参加を申請する" : "この地域に参加する") +
         "</form>";
+    if (!owner && (admitted || own?.status === 1))
+      out += '<form id="leave">' + btn(own?.status === 1 ? "参加申請を取り消す" : "このコミュニティを退会") + '</form>';
+    if (owner) {
+      const members = s.rows.filter(r=>r.tag===33 && r.group===id && r.to!==who);
+      if (members.length) out += '<details><summary>参加者の管理</summary>' + members.map(r=>
+        '<article><p class="wrap">' + h(r.to) + '</p><small>' + ({1:"申請中",2:"参加中",3:"退会済み",4:"参加停止中"}[r.status] || "") +
+        '</small>' + ([1,2,3].includes(r.status) ? '<form class="ban"><input type="hidden" name="member" value="' + h(r.to) +
+        '">' + btn("参加を停止する（BAN）") + '</form>' : '') + '</article>').join("") + '</details>';
+    }
     const secret = currentInvite(g, who);
     const privateNameEditor = owner && profile.managed && g.visibility === "private";
     if (owner) {
@@ -239,6 +249,19 @@ export function communityViews(ctx) {
       codeInput.value = secret || "";
       codeInput.parentElement.hidden = Boolean(codeInput.value);
     }
+    const end = async (target,ban) => {
+      const title = ban ? "この財布の参加を停止" : own?.status === 1 ? "参加申請の取り消し" : "コミュニティから退会";
+      const message = ban ? target + " はこのコミュニティに再参加できなくなります。" :
+        "このコミュニティの参加資格を手放します。再参加する場合は、その時点の参加手続きが必要です。";
+      if (!await confirmDialog({title,message,confirmLabel:ban ? "参加を停止する" : "手続きを進める"})) return;
+      if (profile.managed || await authMode() !== "local") {
+        await access.authenticate();
+        await memberApi("community-access-reset",{group:id,member:target,access:access.token()});
+      }
+      await send([endMembership(program,who,id,target,ban)],[],ban ? "参加を停止しました。" : "参加資格を解除しました。");
+    };
+    form("leave",()=>end(who,false));
+    for (const f of content.querySelectorAll(".ban")) action(f,v=>end(v.member,true));
     form("join", async (v) => {
       const inv = g.mode === 1 ? codeKey(v.code) : null;
       if (inv && String(inv.publicKey) !== g.invite) throw Error("この招待コードは無効です。最新のリンクを管理者に依頼してください。");

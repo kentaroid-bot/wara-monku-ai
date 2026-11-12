@@ -47,6 +47,13 @@ export async function checkRenameInBrowsers({runtime,base,rows,code,rpcRequest,a
     await participant.getByRole("link",{name:"月夜の集会",exact:true}).click();
     await participant.getByRole("heading",{name:"月夜の集会",exact:true}).waitFor();
     assert.equal(await participant.locator("#private-name").count(),0);
+    await participant.getByRole("button",{name:"このコミュニティを退会"}).click();
+    await participant.getByRole("dialog").getByRole("button",{name:"キャンセル"}).click();
+    assert.equal(await participant.locator(".ban").count(),0);
+    await owner.getByText("参加者の管理",{exact:true}).click();
+    await owner.getByRole("button",{name:"参加を停止する（BAN）"}).click();
+    assert.ok((await owner.getByRole("dialog").innerText()).includes(member.address));
+    await owner.getByRole("dialog").getByRole("button",{name:"キャンセル"}).click();
     const returning = await open(member,true);
     await returning.goto(base+"/communities/?id="+rows[0].id);
     await returning.getByRole("heading",{name:"月夜の集会",exact:true}).waitFor();

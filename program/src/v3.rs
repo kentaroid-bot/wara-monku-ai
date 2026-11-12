@@ -14,6 +14,9 @@ const SPEND_INA: u8 = 14;
 pub(super) const TRANSFER_WARA: u8 = 15;
 pub(super) const CREATE_METADATA: u8 = 16;
 pub(super) const UPDATE_GROUP: u8 = 17;
+pub(super) const END_MEMBERSHIP: u8 = 18;
+const LEFT: u8 = 3;
+const BANNED: u8 = 4;
 
 // Account byte layouts (tag/key fields precede variable-length display text).
 const GROUP_HEADER_LEN: usize = 66; // tag + owner + mode + invitation key
@@ -202,8 +205,9 @@ pub fn process(program: &Pubkey, accounts: &[AccountInfo], op: u8, rest: &[u8]) 
                 require(rest[0] == 0 && who.key == user.key, 5)?;
                 // A pending applicant may join under the current policy after a mode change.
                 if row.owner == program {
-                    require(mode != 2, 5)?;
-                    edge_is(program, row, b"m3", MEMBER, g.key, user.key, 1)?;
+                    let previous = *row.try_borrow_data()?.last().ok_or(err(5))?;
+                    require(previous == LEFT || (previous == 1 && mode != 2), 5)?;
+                    edge_is(program, row, b"m3", MEMBER, g.key, user.key, previous)?;
                 }
                 if mode == 1 {
                     let code = next_account_info(&mut it)?;
@@ -219,6 +223,21 @@ pub fn process(program: &Pubkey, accounts: &[AccountInfo], op: u8, rest: &[u8]) 
             edge_set(
                 program, who, row, sys, b"m3", MEMBER, g.key, user.key, status,
             )
+        }
+        END_MEMBERSHIP => {
+            let user = next_account_info(&mut it)?;
+            let row = next_account_info(&mut it)?;
+            require(it.next().is_none() && *user.key != owner, 5)?;
+            let next = match rest {
+                [0] if who.key == user.key => LEFT,
+                [1] if *who.key == owner => BANNED,
+                _ => return Err(err(5)),
+            };
+            let previous = *row.try_borrow_data()?.last().ok_or(err(5))?;
+            require(previous == 1 || previous == 2 || (next == BANNED && previous == LEFT), 5)?;
+            edge_is(program, row, b"m3", MEMBER, g.key, user.key, previous)?;
+            row.try_borrow_mut_data()?[65] = next;
+            Ok(())
         }
         OFFER_ALLIANCE => {
             // outgoing offer; approval requires the other owner's signature on its own offer.

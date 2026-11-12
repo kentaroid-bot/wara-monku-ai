@@ -84,7 +84,7 @@ export async function dashboard(ctx) {
     const refreshed = await refresh(
       ix.some(
         (i) =>
-          i.programId.equals(program) && ((i.data[0] >= 10 && i.data[0] <= 13) || i.data[0] === 17),
+          i.programId.equals(program) && ((i.data[0] >= 10 && i.data[0] <= 13) || i.data[0] === 17 || i.data[0] === 18),
       ),
     );
     info(msg + (refreshed ? (s.communitySyncError ? " " + s.communitySyncError : "") : " 残高は「更新」で再確認してください。"));

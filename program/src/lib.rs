@@ -403,7 +403,7 @@ pub fn process_instruction(
                 .decimals(0)
                 .invoke_signed(&[&[seed, cfg.key.as_ref(), &[bump]]])
         }
-        v3::CREATE_GROUP..=v3::TRANSFER_WARA | v3::UPDATE_GROUP => {
+        v3::CREATE_GROUP..=v3::TRANSFER_WARA | v3::UPDATE_GROUP | v3::END_MEMBERSHIP => {
             v3::process(program, accounts, op, rest)
         }
         _ => Err(ProgramError::InvalidInstructionData),

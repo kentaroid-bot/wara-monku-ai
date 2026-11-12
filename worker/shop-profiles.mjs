@@ -1,3 +1,4 @@
+import { accessRows, freshAccess } from "./community-access.mjs";
 import manifest from "../shared/deployment.mjs";
 import { addr, parseRow, pk } from "../shared/protocol.mjs";
 import { shopFields } from "../shared/shop-profile.mjs";
@@ -46,21 +47,25 @@ export async function readShops(db, rpc, realm, viewer, ids, fail) {
   if (!results.length) return {profiles:[]};
   // Group visibility can change after an edit. Return a private profile only
   // to its merchant, community administrator or an admitted wallet.
-  const groups = [...new Set(results.map(row=>row.group_id))];
+  const idsToCheck = [...new Set(results.filter(row=>row.merchant !== viewer).map(row=>row.group_id))];
+  const mirror = await accessRows(db,realm,viewer,idsToCheck);
+  const now = Math.floor(Date.now()/1000);
+  const allowed = new Set(idsToCheck.filter(id=>freshAccess(mirror.get(id),now) && mirror.get(id).group_json));
+  const groups = idsToCheck.filter(id=>!allowed.has(id));
   const memberships = viewer ? groups.map(group=>addr(program,"m3",group,viewer)) : [];
   let accounts;
   try {
-    accounts = await rpc.getMultipleAccountsInfo([...groups.map(pk),...memberships],"confirmed");
+    accounts = groups.length ? await rpc.getMultipleAccountsInfo([...groups.map(pk),...memberships],"confirmed") : [];
   } catch {
     fail(503, "Devnetからコミュニティ情報を取得できませんでした。少し待ってから再試行してください。");
   }
-  const allowed = new Set(groups.filter((group,i)=>{
+  groups.filter((group,i)=>{
     const g = decode(accounts[i],group);
     if (g?.tag !== 31) return false;
     if (g.visibility !== "private" || g.owner === viewer) return true;
     const member = decode(accounts[i+groups.length],String(memberships[i]));
     return member?.tag === 33 && member.group === group && member.to === viewer && member.status === 2;
-  }));
+  }).forEach(id=>allowed.add(id));
   return {profiles:results.filter(row=>allowed.has(row.group_id) || row.merchant === viewer)
     .map(({shop,title,caption,icon,is_test,revision})=>({shop,title,caption,icon,is_test:Boolean(is_test),revision}))};
 }

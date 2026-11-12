@@ -18,11 +18,12 @@ import { walletMessage } from "../shared/member-wire.mjs";
 import { addr } from "../mainstream/protocol.mjs";
 import { privateMetadata, makePolicy, displayKeyBytes, rememberInvite, currentInvite, syncPrivateGroups } from "../mainstream/community-privacy.mjs";
 import { communityUpdate } from "../shared/community-metadata.mjs";
+import { privateProfileVersion } from "../shared/private-community.mjs";
 import { parseRow } from "../mainstream/protocol.mjs";
 import { program, rpc, submit, checkPending, loadState } from "../mainstream/network.mjs";
 import {
   createGroup,
-  certify,
+  certify, endMembership,
   join,
   spend,
   transfer,
@@ -92,7 +93,7 @@ test("signed-in zero-SOL buyer joins, spends and transfers through Worker/D1 and
       : null;
   };
   const broadcast = [];
-  let rateLimitedWire;
+  let rateLimitedWire, accountReads = 0;
   async function rpcRequest(req) {
     const { id, method, params } = await req.json();
     const ctx = (value) => ({ context: { slot: 1 }, value });
@@ -121,6 +122,7 @@ test("signed-in zero-SOL buyer joins, spends and transfers through Worker/D1 and
         break;
       }
       case "getMultipleAccounts":
+        accountReads++;
         result = ctx(params[0].map(k => {
           const a = account(k);
           return a && {...a, owner:String(a.owner), executable:false, rentEpoch:0, data:[a.data.toString("base64"),"base64"]};
@@ -202,6 +204,7 @@ test("signed-in zero-SOL buyer joins, spends and transfers through Worker/D1 and
     "0005_shop_requests",
     "0006_private_community_profiles",
     "0007_private_community_names",
+    "0008_community_access",
   ]) {
     const sql = await readFile("migrations/" + file + ".sql", "utf8");
     for (const stmt of sql
@@ -481,6 +484,36 @@ test("signed-in zero-SOL buyer joins, spends and transfers through Worker/D1 and
       await checkRenameInBrowsers({runtime,base, rows:[row(),memberRow], code:next.code, rpcRequest,
         admin:{address:adminId,session:adminSession}, member:{address:String(user),session}});
     }
+    const displayedName = process.env.WARA_RENAME_BROWSER ? "月夜の集会" : editable.name;
+    const readBody = {groups:[id],versions:[await privateProfileVersion(row())]};
+    await api(session)("community-profiles",readBody);
+    const reads = accountReads;
+    assert.equal((await api(session)("community-profiles",readBody)).groups[0].name,displayedName);
+    assert.equal(accountReads,reads,"D1 hit must not read RPC");
+    const reset = {group:id,member:String(user)};
+    assert.equal((await call("community-access-reset",{...reset,session:outsiderSession})).status,403);
+    const memberAction = (...ix) => {
+      svm.expireBlockhash();
+      const tx = new Transaction({feePayer:user,recentBlockhash:svm.latestBlockhash()}).add(...ix);
+      tx.sign(buyer); execute(tx.serialize());
+    };
+    await api(session)("community-access-reset", reset);
+    drop = false;
+    await submit(profile,wallet,[endMembership(program,user,id,user,false)]);
+    assert.equal(parseRow(account(memberKey).data,String(memberKey)).status,3);
+    assert.deepEqual((await api(session)("community-profiles",readBody)).groups,[]);
+    memberAction(join(program,user,id,user));
+    assert.equal(parseRow(account(memberKey).data,String(memberKey)).status,1);
+    svm.expireBlockhash();
+    admin([join(program,owner.publicKey,id,user,true)]);
+    assert.equal((await api(session)("community-profiles",readBody)).groups[0].name,displayedName);
+    assert.throws(()=>memberAction(endMembership(program,user,id,user,true)));
+    await api(adminSession)("community-access-reset", reset);
+    admin([endMembership(program,owner.publicKey,id,user,true)]);
+    assert.equal(parseRow(account(memberKey).data,String(memberKey)).status,4);
+    assert.deepEqual((await api(session)("community-profiles",readBody)).groups,[]);
+    assert.throws(()=>memberAction(join(program,user,id,user)));
+    assert.throws(()=>memberAction(endMembership(program,user,id,user,false)));
     // Recheck the canonical PDA and status each time; cached D1 data confers no access.
     const memberAccount = svm.getAccount(String(memberKey));
     const bytes = Buffer.from(memberAccount.data); bytes[65] = 1;
