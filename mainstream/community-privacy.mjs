@@ -55,7 +55,7 @@ export async function privateMetadata(name, description, category, code, group) 
 }
 
 export async function privateGroupView(group, wallet, rows) {
-  const member = group.owner === wallet || rows.some(r => r.tag === 33 && r.group === group.id && r.to === wallet && r.status === 2);
+  const member = group.joined === true || group.owner === wallet || rows.some(r => r.tag === 33 && r.group === group.id && r.to === wallet && r.status === 2);
   const pending = sessionStorage.getItem(pendingInvite(group.id));
   const code = currentInvite(group, wallet);
   if (code) {
@@ -75,6 +75,7 @@ export async function privateGroupView(group, wallet, rows) {
 // in this view, never in browser storage or the public on-chain row cache.
 export async function syncPrivateGroups(groups, wallet, rows, api) {
   const synced = new Map();
+  const failed = new Set();
   let error = "";
   const candidates = groups.filter(g => g.visibility === "private");
   if (api) for (let i=0; i<candidates.length; i+=32) {
@@ -92,7 +93,10 @@ export async function syncPrivateGroups(groups, wallet, rows, api) {
         }
         synced.set(group.id, group);
       }
-    } catch { error = "コミュニティの最新情報を取得できません。「更新」で再試行できます。"; }
+    } catch {
+      for (const g of candidates.slice(i,i+32)) failed.add(g.id);
+      error = "コミュニティの最新情報を取得できません。「更新」で再試行できます。参加済みの方は招待リンク不要です。";
+    }
   }
   const views = await Promise.all(groups.map(async original => {
     const group = synced.get(original.id) || original;
@@ -106,6 +110,8 @@ export async function syncPrivateGroups(groups, wallet, rows, api) {
       return group;
     }
     const view = await privateGroupView(group, wallet, rows) || (group.joined ? group : null);
+    if (failed.has(group.id) && view && (view.joined || !sessionStorage.getItem(pendingInvite(group.id))))
+      return {...group, name:"限定公開コミュニティ（名称未確認）", joined:view.joined, nameUnavailable:true};
     if (api && view?.joined && !view.unlocked && !view.nameRevision && !error)
       error = "コミュニティ情報の同期を待っています。管理者が情報を同期した後、「更新」で確認できます。";
     return view;

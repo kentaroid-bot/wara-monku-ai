@@ -1,4 +1,5 @@
 import { shopRequests } from "./shop-requests.mjs";
+import { communityReaders } from "./community-read.mjs";
 import { readCommunityProfiles, saveCommunityProfile, renameCommunity } from "./community-profiles.mjs";
 import { readShops, saveShop } from "./shop-profiles.mjs";
 import { requireFreshBlockhash, workerConnection } from "./devnet-rpc.mjs";
@@ -121,7 +122,7 @@ export async function memberRequest(op, b, ctx) {
     if (op === "community-rename") return renameCommunity(db,rpc,realm,m.address,b,hash,fail);
     return op === "community-save"
       ? saveCommunityProfile(db,rpc,realm,m.address,b,hash,fail)
-      : readCommunityProfiles(db,rpc,realm,m.address,b.groups,hash,fail);
+      : readCommunityProfiles(db,communityReaders(env),realm,m.address,b.groups,hash,fail);
   }
   if (op === "shop-challenge") {
     if (!validSecret(b.address) || bs58.decode(b.address).length !== 32) bad();

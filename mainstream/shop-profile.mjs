@@ -21,9 +21,9 @@ export function shopProfiles(profile, wallet) {
   const auth = shopWalletAccess(profile, wallet, "shop-profile");
   return {
     authenticate:auth.authenticate,
-    async load(state) {
+    async load(state, include = () => true) {
       const visible = new Set(state.groups.map(g=>g.id));
-      const stores = state.rows.filter(row=>row.tag === 32 && (visible.has(row.group) || row.to === profile.address));
+      const stores = state.rows.filter(row=>row.tag === 32 && include(row) && (visible.has(row.group) || row.to === profile.address));
       for (let i=0; i<stores.length; i+=32) {
         const chunk = stores.slice(i,i+32);
         const data = await memberApi("shop-profiles",{shops:chunk.map(row=>row.id), access:auth.token()});

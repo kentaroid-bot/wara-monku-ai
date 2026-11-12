@@ -477,7 +477,8 @@ test("signed-in zero-SOL buyer joins, spends and transfers through Worker/D1 and
     assert.equal((await call("community-rename",{...editable,name:"他人の編集",revision:1,session})).status,403);
     if (process.env.WARA_RENAME_BROWSER) {
       const { checkRenameInBrowsers } = await import("./private-rename.browser.mjs");
-      await checkRenameInBrowsers({runtime,base, rows:[row(),memberRow], rpcRequest,
+      await db.prepare("DELETE FROM private_community_profiles").run(); // production can have only a renamed field
+      await checkRenameInBrowsers({runtime,base, rows:[row(),memberRow], code:next.code, rpcRequest,
         admin:{address:adminId,session:adminSession}, member:{address:String(user),session}});
     }
     // Recheck the canonical PDA and status each time; cached D1 data confers no access.

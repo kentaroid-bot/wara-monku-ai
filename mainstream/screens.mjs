@@ -78,12 +78,43 @@ export async function dashboard(ctx) {
   const profiles = shopProfiles(profile, wallet);
   const requests = shopRequestAPI(profile, wallet);
   let s = null;
-  const refresh = async (force = false) => {
+  let sequence = 0, reading = false, retryTimer;
+  const directory = path === "/communities";
+  const refresh = async (force = false, retryName = true) => {
+    const turn = ++sequence;
+    reading = true;
+    clearTimeout(retryTimer);
     info("Devnetを読み込み中…");
     try {
       const requestedShop = path === "/shop" && params.has("group") && params.has("store")
         ? {group:params.get("group"), store:params.get("store")} : null;
-      s = await loadState(who, force, requestedShop);
+      const state = await loadState(who, force, requestedShop, directory);
+      if (turn !== sequence) return false;
+      s = state;
+      if (directory) {
+        view();
+        info(s.communitySyncError);
+        // Names and membership are already available. Enhance only visible shop labels,
+        // without replacing forms or waiting for an unrelated shop/pending transaction.
+        const labels = [...content.querySelectorAll("[data-shop-label]")];
+        const ids = new Set(labels.map(el=>el.dataset.shopLabel));
+        if (ids.size) void profiles.load(s, row=>ids.has(row.id)).then(()=>{
+          if (turn !== sequence) return;
+          const stores = new Map(state.rows.filter(r=>ids.has(r.id)).map(r=>[r.id,r]));
+          for (const el of labels) {
+            const st = stores.get(el.dataset.shopLabel);
+            if (st) el.innerHTML = h(shopTitle(st)) + (el.dataset.registerLabel ? "のレジ" : "") + shopDetails(st,h);
+          }
+        }).catch(()=>{}); // On-chain store names remain usable.
+        if (pendingSig(who)) void checkPending(who).catch(e=>{
+          if (turn === sequence && document.querySelector("#notice").textContent === state.communitySyncError)
+            info([state.communitySyncError,e.message].filter(Boolean).join(" "));
+        });
+        if (retryName && s.groups.some(g=>g.nameUnavailable)) retryTimer = setTimeout(()=>{
+          if (!document.hidden && turn === sequence && !content.querySelector("form:focus-within")) void refresh(false,false);
+        }, 30000);
+        return true;
+      }
       let profileError = "";
       try { await profiles.load(s); }
       catch { profileError = "店舗プロフィールを取得できません。「更新」で再試行できます。"; }
@@ -92,14 +123,16 @@ export async function dashboard(ctx) {
         try { await checkPending(who); }
         catch (error) { pendingNotice = error.message; }
       }
+      if (turn !== sequence) return false;
       view();
       info([s.communitySyncError, profileError, pendingNotice].filter(Boolean).join(" "));
       return true;
     } catch (e) {
+      if (turn !== sequence) return false;
       ui("<p>最新の状態を表示できません。「更新」で再確認してください。</p>");
       info("取得できません：" + e.message);
       return false;
-    }
+    } finally { if (turn === sequence) reading = false; }
   };
   const send = async (ix, extra = [], msg = "取引が確定しました。", onConfirmed) => {
     const sig = await submit(profile, wallet, ix, extra);
@@ -160,7 +193,7 @@ export async function dashboard(ctx) {
             const stores = s.rows.filter(r => r.tag === 32 && r.group === g.id);
             return `<article class="market-row"><a href="${h(gid(g.id))}"><strong>${h(g.name)}</strong></a>
               <small>${h(g.category)} · ${modes[g.mode]} · 公認店舗 ${stores.length}店${joined.has(g.id) ? " · 参加中" : ""}</small>
-              ${stores.map(st => `<a class="shop-row" href="${h(register(g.id, st.to))}"><span>${h(shopTitle(st))}${shopDetails(st,h)}</span><small>レジを開く ›</small></a>`).join("")}</article>`;
+              ${stores.map(st => `<a class="shop-row" href="${h(register(g.id, st.to))}"><span data-shop-label="${h(st.id)}">${h(shopTitle(st))}${shopDetails(st,h)}</span><small>レジを開く ›</small></a>`).join("")}</article>`;
           }).join("") || "<p>まだ登録がありません。</p>"}</section>
         ${privateGroups.length ? '<section><h2>自分の限定公開コミュニティ</h2>' +
           privateGroups.map(g => link(gid(g.id), g.name)).join("") + '</section>' : ''}`,
@@ -175,6 +208,7 @@ export async function dashboard(ctx) {
       own = s.rows.find(
         (r) => r.tag === 33 && r.group === g.id && r.to === who,
       );
+    const admitted = Boolean(g.joined || own?.status === 2);
     const shops = s.rows.filter((r) => r.tag === 32 && r.group === g.id);
     let out =
       "<section><h2>" +
@@ -184,17 +218,17 @@ export async function dashboard(ctx) {
       "</p><small>" +
       h(g.category) +
       " · " +
-      modes[g.mode] +
+      (g.mode === 1 ? "新規参加は招待制" : modes[g.mode]) +
       " · " +
       (owner
         ? "あなたは管理者"
-        : own?.status === 2
+        : admitted
           ? "参加中"
           : own?.status === 1
             ? "参加申請中"
-            : "未参加") +
+            : g.nameUnavailable ? "参加状況を確認できません" : "未参加") +
       "</small></section>";
-    if (!owner && (!own || (own.status === 1 && g.mode !== 2)))
+    if (!owner && !admitted && !g.nameUnavailable && (!own || (own.status === 1 && g.mode !== 2)))
       out +=
         '<form id="join">' +
         (g.mode === 1 ? inp("code", "招待コード", 'autocomplete="off"') : "") +
@@ -204,7 +238,7 @@ export async function dashboard(ctx) {
     const privateNameEditor = owner && profile.managed && g.visibility === "private";
     if (owner) {
       const locked = g.visibility === "private" && !g.unlocked;
-      if (privateNameEditor) {
+      if (privateNameEditor && !g.nameUnavailable) {
         const currentName = g.unlocked || g.nameRevision ? g.name : "";
         out += '<form id="private-name"><h2>コミュニティ名の変更</h2>' +
           inp("name", "コミュニティ名", 'maxlength="50" value="' + h(currentName) + '"') +
@@ -248,11 +282,11 @@ export async function dashboard(ctx) {
       "<section><h2>公認店舗</h2>" +
       (shops
         .map(
-          (r) => "<p>" + link(register(g.id, r.to), shopTitle(r) + "のレジ") + shopDetails(r,h) + "</p>",
+          (r) => `<p><a class="action" href="${h(register(g.id,r.to))}"><span data-shop-label="${h(r.id)}" data-register-label="1">${h(shopTitle(r))}のレジ${shopDetails(r,h)}</span></a></p>`,
         )
         .join("") || "<p>まだ公認店舗はありません。</p>") +
       "</section>";
-    if (owner || own?.status === 2) out += '<section data-shop-requests></section>';
+    if (owner || admitted) out += '<section data-shop-requests></section>';
     if (owner)
       out +=
         '<details><summary>直接アドレスを指定して公認</summary><form id="certify">' +
@@ -264,7 +298,7 @@ export async function dashboard(ctx) {
         ) +
         btn("公認してレジを作る") +
         "</form></details>";
-    if (!owner && own?.status !== 2)
+    if (!owner && !admitted)
       out += '<section><h2>お店（レジ）を開きたい方へ</h2><p>コミュニティに参加すると、この画面から店舗の開設を申請できます。</p></section>';
     const peers = s.groups
       .filter((p) => p.id !== id && p.visibility !== "private")
@@ -574,6 +608,14 @@ export async function dashboard(ctx) {
   reload.className = "secondary";
   reload.onclick = () => refresh(true);
   el.append(reload);
+  if (directory) {
+    const revisit = () => {
+      if (!reading && !document.hidden && !content.querySelector("form:focus-within") &&
+          !s?.groups.some(g=>g.owner === who && g.id === params.get("id"))) void refresh();
+    };
+    document.addEventListener("visibilitychange",revisit);
+    window.addEventListener("pageshow",e=>{ if(e.persisted) revisit(); });
+  }
   const invited = params.get("id");
   await refresh(path === "/communities" && Boolean(invited && sessionStorage.getItem(pendingInvite(invited))));
 }

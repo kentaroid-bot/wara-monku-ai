@@ -84,10 +84,12 @@ test("API outage preserves wallet rows and reports incomplete sync; static invit
   storage(t);
   const {group,policy} = await fixture(), wallet = address();
   const rows = [{tag:33,group:group.id,to:wallet,status:2}];
+  rememberInvite(group.id,wallet,policy.code); // old plaintext must not reappear on a failed read
   const result = await syncPrivateGroups([group],wallet,rows,async()=>{throw Error("offline");});
-  assert.equal(result.groups[0].name,"限定公開コミュニティ");
+  assert.equal(result.groups[0].nameUnavailable,true);
+  assert.notEqual(result.groups[0].name,"仲間の町");
   assert.match(result.communitySyncError,/最新情報を取得できません/);
-  assert.equal((await syncPrivateGroups([group],wallet,[],null)).groups.length,0);
+  assert.equal((await syncPrivateGroups([group],address(),[],null)).groups.length,0);
   sessionStorage.setItem(pendingInvite(group.id),policy.code);
   assert.equal((await syncPrivateGroups([group],wallet,[],null)).groups[0].name,"仲間の町");
   // An authenticated outsider receives nothing from D1, but retains an explicit invitation preview.
@@ -108,4 +110,20 @@ test("profile lookup batches at 32, skips public groups and never saves for a re
   assert.deepEqual(sizes,[32,32,1]); assert.equal(result.groups.length,66);
   assert.equal(result.groups.at(-1),publicGroup);
   assert.match(result.communitySyncError,/同期を待っています/);
+});
+
+test("a throttled community read uses another verified Devnet; an unknown chain cannot disclose data", async () => {
+  const {readCommunityAccounts} = await import("../worker/community-read.mjs");
+  const {DEVNET_GENESIS} = await import("../app/protocol.mjs");
+  const keys = [address(),address()], calls=[];
+  const reader=(name,genesis,read)=>({getGenesisHash:async()=>genesis,getMultipleAccountsInfo:async(k,c)=>{
+    calls.push(name); assert.equal(c,"confirmed"); assert.deepEqual(k,keys); return read();
+  }});
+  const rows=[{},null];
+  const result=await readCommunityAccounts([
+    reader("primary",DEVNET_GENESIS,()=>{throw Error("429")}),
+    reader("wrong chain","mainnet",()=>{throw Error("must not read")}),
+    reader("secondary",DEVNET_GENESIS,()=>rows),
+  ],keys,()=>assert.fail());
+  assert.deepEqual(calls,["primary","secondary"]); assert.equal(result,rows);
 });

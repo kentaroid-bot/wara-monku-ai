@@ -197,7 +197,7 @@ async function render() {
       else void readHistory().catch(() => {});
     };
     // Wallet and shop history panels fetch on mount.
-    if (!["/", "/user", "/shop"].includes(path)) checkReceipts();
+    if (!["/", "/user", "/shop", "/communities"].includes(path)) checkReceipts();
     setInterval(checkReceipts, 60_000);
     document.addEventListener("visibilitychange", checkReceipts);
   }

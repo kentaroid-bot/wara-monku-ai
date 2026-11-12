@@ -46,7 +46,7 @@ async function ready() {
     throw e;
   }));
 }
-export async function loadState(address, force = false, requestedShop = null) {
+export async function loadState(address, force = false, requestedShop = null, directoryOnly = false) {
   await ready();
   const who = pk(address);
   let cached;
@@ -71,6 +71,10 @@ export async function loadState(address, force = false, requestedShop = null) {
   }
   const groups = rows.filter((r) => r.tag === 31),
     funds = new Map();
+  const session = managedSession();
+  const sync = () => syncPrivateGroups(groups, String(who), rows,
+    session?.profile.address === String(who) ? memberApi : null);
+  if (directoryOnly) return {rows,...await sync()};
   const keys = [
       SYSVAR_CLOCK_PUBKEY,
       addr(program, "p3", who),
@@ -97,9 +101,7 @@ export async function loadState(address, force = false, requestedShop = null) {
     if (a?.owner.equals(tok) && a.data.length === 165 && a.data[108] === 1)
       funds.set(g.id, Buffer.from(a.data).readBigUInt64LE(64));
   });
-  const session = managedSession();
-  const views = await syncPrivateGroups(groups, String(who), rows,
-    session?.profile.address === String(who) ? memberApi : null);
+  const views = await sync();
   return {
     ...views,
     rows,

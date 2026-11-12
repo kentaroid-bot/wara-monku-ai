@@ -5,6 +5,8 @@ import { addr, pk } from "../mainstream/protocol.mjs";
 import { openPrivateProfile, privateProfileVersion } from "../shared/private-community.mjs";
 import { address, decode } from "./shop-profiles.mjs";
 
+import { readCommunityAccounts } from "./community-read.mjs";
+
 const program = pk(manifest.program);
 
 // Separate from wallet encryption, scoped to realm, program, group and version.
@@ -81,17 +83,11 @@ export async function saveCommunityProfile(db, rpc, realm, viewer, body, hash, f
   return {group:await currentProfile(db,realm,group,hash)};
 }
 
-export async function readCommunityProfiles(db, rpc, realm, viewer, ids, hash, fail) {
+export async function readCommunityProfiles(db, readers, realm, viewer, ids, hash, fail) {
   if (!Array.isArray(ids) || !ids.length || ids.length > 32) fail(400, "コミュニティの指定を確認してください。");
   const keys = [...new Set(ids.map(id => address(id, fail)))];
   const memberships = keys.map(id => addr(program,"m3",id,viewer));
-  let accounts;
-  try {
-    await assertDevnet(rpc);
-    accounts = await rpc.getMultipleAccountsInfo([...keys.map(pk),...memberships], "confirmed");
-  } catch {
-    fail(503, "Devnetからコミュニティ一覧を取得できませんでした。少し待ってから再試行してください。");
-  }
+  const accounts = await readCommunityAccounts(readers,[...keys.map(pk),...memberships],fail);
   const groups = [];
   for (const [i,id] of keys.entries()) {
     const group = decode(accounts[i], id);
