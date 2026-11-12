@@ -1,5 +1,5 @@
 import { shopRequests } from "./shop-requests.mjs";
-import { readCommunityProfiles, saveCommunityProfile } from "./community-profiles.mjs";
+import { readCommunityProfiles, saveCommunityProfile, renameCommunity } from "./community-profiles.mjs";
 import { readShops, saveShop } from "./shop-profiles.mjs";
 import { requireFreshBlockhash, workerConnection } from "./devnet-rpc.mjs";
 import { feeKey, relayPayment } from "./relay.mjs";
@@ -115,9 +115,10 @@ export async function memberRequest(op, b, ctx) {
     if (!m || grant.revision !== m.revision) denied();
     return { m, grant };
   }
-  if (op === "community-profiles" || op === "community-save") {
+  if (["community-profiles","community-save","community-rename"].includes(op)) {
     const {m} = await session();
     const rpc = workerConnection(env);
+    if (op === "community-rename") return renameCommunity(db,rpc,realm,m.address,b,hash,fail);
     return op === "community-save"
       ? saveCommunityProfile(db,rpc,realm,m.address,b,hash,fail)
       : readCommunityProfiles(db,rpc,realm,m.address,b.groups,hash,fail);

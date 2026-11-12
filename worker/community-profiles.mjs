@@ -19,7 +19,7 @@ async function protect(hash, group, version, value, decrypt = false) {
   return Buffer.concat([iv, new Uint8Array(await crypto.subtle.encrypt(params,key,Buffer.from(JSON.stringify(value))))]).toString("base64");
 }
 
-export async function saveCommunityProfile(db, rpc, realm, viewer, body, hash, fail) {
+async function ownedPrivateGroup(rpc, viewer, body, fail) {
   const id = address(body.group, fail);
   let groupAccount;
   try {
@@ -32,6 +32,41 @@ export async function saveCommunityProfile(db, rpc, realm, viewer, body, hash, f
   if (group?.tag !== 31 || group.owner !== viewer) fail(403, "管理者だけがコミュニティ情報を同期できます。");
   if (group.visibility !== "private" || body.sealed !== group.sealed || body.invite !== group.invite)
     fail(409, "コミュニティの設定が更新されています。画面を更新してください。");
+  return group;
+}
+
+async function currentProfile(db, realm, group, hash) {
+  const version = await privateProfileVersion(group);
+  const row = await db.prepare(`SELECT p.sealed_profile, n.sealed_name, n.revision
+    FROM (SELECT ? AS realm, ? AS group_id, ? AS version) AS k
+    LEFT JOIN private_community_profiles AS p USING (realm,group_id,version)
+    LEFT JOIN private_community_names AS n USING (realm,group_id,version)`)
+    .bind(realm,group.id,version).first();
+  const profile = row.sealed_profile ? await protect(hash,group.id,version,row.sealed_profile,true) : null;
+  const name = row.sealed_name ? await protect(hash,group.id,"name/"+version,row.sealed_name,true) : null;
+  return {...group,...profile,...(name ? {name, nameRevision:row.revision} : {}), joined:true, unlocked:Boolean(profile)};
+}
+
+export async function renameCommunity(db, rpc, realm, viewer, body, hash, fail) {
+  const name = typeof body.name === "string" && body.name.trim();
+  const revision = body.revision;
+  if (!name || name.length > 50 || /[\p{Cc}\u202a-\u202e\u2066-\u2069]/u.test(name) ||
+      !Number.isSafeInteger(revision) || revision < 0) fail(400, "名前は50文字以内で入力してください。");
+  const group = await ownedPrivateGroup(rpc, viewer, body, fail);
+  const version = await privateProfileVersion(group);
+  const encrypted = await protect(hash, group.id, "name/"+version, name);
+  const write = revision === 0
+    ? db.prepare("INSERT INTO private_community_names VALUES(?,?,?,?,1) ON CONFLICT DO NOTHING")
+        .bind(realm,group.id,version,encrypted)
+    : db.prepare(`UPDATE private_community_names SET sealed_name=?, revision=revision+1
+        WHERE realm=? AND group_id=? AND version=? AND revision=?`).bind(encrypted,realm,group.id,version,revision);
+  if (!(await write.run()).meta.changes) fail(409,"別の画面で名前が更新されました。「更新」で確認してください。");
+  return {name, nameRevision:revision+1};
+}
+
+export async function saveCommunityProfile(db, rpc, realm, viewer, body, hash, fail) {
+  const group = await ownedPrivateGroup(rpc, viewer, body, fail);
+  const id = group.id;
   let profile;
   try {
     const key = Buffer.from(body.displayKey, "base64");
@@ -43,7 +78,7 @@ export async function saveCommunityProfile(db, rpc, realm, viewer, body, hash, f
   // Immutable snapshots: late writes cannot replace a newer on-chain version.
   await db.prepare(`INSERT INTO private_community_profiles(realm,group_id,version,sealed_profile)
     VALUES(?,?,?,?) ON CONFLICT DO NOTHING`).bind(realm,id,version,sealed).run();
-  return {group:{...group,...profile,unlocked:true,joined:true}};
+  return {group:await currentProfile(db,realm,group,hash)};
 }
 
 export async function readCommunityProfiles(db, rpc, realm, viewer, ids, hash, fail) {
@@ -64,11 +99,7 @@ export async function readCommunityProfiles(db, rpc, realm, viewer, ids, hash, f
     if (group?.tag !== 31 || (group.owner !== viewer && !(member?.tag === 33 &&
         member.group === id && member.to === viewer && member.status === 2))) continue;
     if (group.visibility !== "private") { groups.push(group); continue; }
-    const version = await privateProfileVersion(group);
-    const row = await db.prepare("SELECT sealed_profile FROM private_community_profiles WHERE realm=? AND group_id=? AND version=?")
-      .bind(realm,id,version).first();
-    const profile = row ? await protect(hash,id,version,row.sealed_profile,true) : null;
-    groups.push({...group,...profile,joined:true,unlocked:Boolean(profile)});
+    groups.push(await currentProfile(db,realm,group,hash));
   }
   return {groups};
 }

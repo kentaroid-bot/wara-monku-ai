@@ -201,6 +201,7 @@ test("signed-in zero-SOL buyer joins, spends and transfers through Worker/D1 and
     "0004_shop_profiles",
     "0005_shop_requests",
     "0006_private_community_profiles",
+    "0007_private_community_names",
   ]) {
     const sql = await readFile("migrations/" + file + ".sql", "utf8");
     for (const stmt of sql
@@ -403,10 +404,19 @@ test("signed-in zero-SOL buyer joins, spends and transfers through Worker/D1 and
       method:"POST",headers:{"Content-Type":"application/json",Origin:"https://outsider.example"},
       body:JSON.stringify({groups:[id],session:adminSession})});
     assert.equal(cross.status,403);
+    const rename = {group:id, invite:firstBody.invite, sealed:firstBody.sealed, name:"静かな集い", revision:0};
+    assert.equal((await call("community-rename",rename)).status,401);
+    assert.equal((await call("community-rename",{...rename,session})).status,403);
+    assert.equal((await call("community-rename",{...rename,session:adminSession,name:" "})).status,400);
+    const firstRename = await api(adminSession)("community-rename",rename);
+    assert.equal(firstRename.nameRevision,1);
+    assert.equal((await call("community-rename",{...rename,session:adminSession,name:"古い編集"})).status,409);
+    assert.equal((await api(adminSession)("community-profiles",{groups:[id]})).groups[0].name,rename.name);
+    assert.ok(!JSON.stringify(await db.prepare("SELECT * FROM private_community_names").all()).includes(rename.name));
     // Opening/backfill uses the administrator's existing local key and stores no invitation seed.
     rememberInvite(id,adminId,initial.code);
     const opened = await syncPrivateGroups([row()],adminId,[],api(adminSession));
-    assert.equal(opened.groups[0].name,"初めの名前");
+    assert.equal(opened.groups[0].name,rename.name);
     assert.equal(opened.communitySyncError,"");
     const stored = JSON.stringify((await db.prepare("SELECT * FROM private_community_profiles").all()).results);
     for (const secret of [initial.code,firstBody.displayKey,"初めの名前","内緒の集会"])
@@ -454,6 +464,22 @@ test("signed-in zero-SOL buyer joins, spends and transfers through Worker/D1 and
     assert.equal((await call("community-save",{...firstBody,session:adminSession})).status,409);
     assert.equal((await call("community-save",{...await saveBody(next),session:adminSession})).status,200); // retry
     assert.deepEqual((await api(outsiderSession)("community-profiles",{groups:[id]})).groups,[]);
+    assert.equal((await call("community-rename",{...rename,session:adminSession})).status,409);
+    const editable = {group:id, sealed:row().sealed, invite:row().invite, revision:0, name:"星の集会"};
+    const signedBefore = broadcast.length;
+    await api(adminSession)("community-rename",editable);
+    const updated = (await api(session)("community-profiles",{groups:[id]})).groups[0];
+    assert.equal(updated.name,editable.name);
+    assert.equal(updated.description,"内緒の集会");
+    assert.equal(updated.invite,row().invite);
+    assert.equal(broadcast.length,signedBefore);
+    assert.deepEqual((await api(outsiderSession)("community-profiles",{groups:[id]})).groups,[]);
+    assert.equal((await call("community-rename",{...editable,name:"他人の編集",revision:1,session})).status,403);
+    if (process.env.WARA_RENAME_BROWSER) {
+      const { checkRenameInBrowsers } = await import("./private-rename.browser.mjs");
+      await checkRenameInBrowsers({runtime,base, rows:[row(),memberRow], rpcRequest,
+        admin:{address:adminId,session:adminSession}, member:{address:String(user),session}});
+    }
     // Recheck the canonical PDA and status each time; cached D1 data confers no access.
     const memberAccount = svm.getAccount(String(memberKey));
     const bytes = Buffer.from(memberAccount.data); bytes[65] = 1;

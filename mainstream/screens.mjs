@@ -1,3 +1,4 @@
+import { memberApi } from "./member-ui.mjs";
 import { joinedGroupIds, listedGroups, registerChoices } from "./shop-directory.mjs";
 import { requestPanel, shopRequestAPI } from "./shop-requests.mjs";
 import { shopProfiles, shopTitle, shopDetails, shopEditor } from "./shop-profile.mjs";
@@ -86,9 +87,13 @@ export async function dashboard(ctx) {
       let profileError = "";
       try { await profiles.load(s); }
       catch { profileError = "店舗プロフィールを取得できません。「更新」で再試行できます。"; }
-      if (pendingSig(who)) await checkPending(who);
+      let pendingNotice = "";
+      if (pendingSig(who)) {
+        try { await checkPending(who); }
+        catch (error) { pendingNotice = error.message; }
+      }
       view();
-      info([s.communitySyncError, profileError].filter(Boolean).join(" "));
+      info([s.communitySyncError, profileError, pendingNotice].filter(Boolean).join(" "));
       return true;
     } catch (e) {
       ui("<p>最新の状態を表示できません。「更新」で再確認してください。</p>");
@@ -196,15 +201,20 @@ export async function dashboard(ctx) {
         btn(g.mode === 2 ? "参加を申請する" : "この地域に参加する") +
         "</form>";
     const secret = currentInvite(g, who);
+    const privateNameEditor = owner && profile.managed && g.visibility === "private";
     if (owner) {
       const locked = g.visibility === "private" && !g.unlocked;
-      const editFields = locked
-        ? '<p>この端末には現在の招待鍵がありません。控えたリンクを開くか、名称・説明を再入力して新しいリンクを発行してください。</p>' +
-          inp("name", "コミュニティ名") + '<label>説明<textarea name="description"></textarea></label>' +
-          sel("category", "カテゴリ", categories.map(c => opt(c, c)).join(""))
-        : inp("name", "コミュニティ名", 'value="' + h(g.name || "") + '" maxlength="50"') +
-          '<label>説明<textarea name="description" maxlength="140">' + h(g.description || "") + '</textarea></label>' +
-          sel("category", "カテゴリ", categories.map(c => opt(c, c)).join(""));
+      if (privateNameEditor) {
+        const currentName = g.unlocked || g.nameRevision ? g.name : "";
+        out += '<form id="private-name"><h2>コミュニティ名の変更</h2>' +
+          inp("name", "コミュニティ名", 'maxlength="50" value="' + h(currentName) + '"') +
+          btn("名前を保存") + '</form>';
+      }
+      const needsName = !privateNameEditor || (locked && !g.nameRevision);
+      const editFields = (locked ? '<p>招待リンクの再発行には、名称と説明を確認してください。</p>' : '') +
+        (needsName ? inp("name", "コミュニティ名", 'maxlength="50" value="' + h(locked ? "" : g.name) + '"') : '') +
+        '<label>説明<textarea name="description" maxlength="140">' + h(g.description || "") + '</textarea></label>' +
+        sel("category", "カテゴリ", categories.map(c => opt(c, c)).join(""));
       out += '<form id="policy"><h2>コミュニティの設定</h2>' + policyFields() + editFields +
         '<p>設定を変更すると、共有リンクは新しくなります。これまで公開した名称や取引の記録は台帳に残ります。トークンと既存の参加資格は変わりません。保存容量が増える場合、追加の口座保管料は管理者が支払います。</p>' +
         btn(locked ? "設定を更新してリンクを再発行" : "署名して設定を更新") + '</form>';
@@ -294,6 +304,14 @@ export async function dashboard(ctx) {
       certify: row => send([certify(program, who, id, pk(row.merchant), row.title)], [], "店舗を公認してレジを開設しました。"),
     });
     if (owner) {
+      if (privateNameEditor) form("private-name", async ({name}) => {
+        const saved = await memberApi("community-rename", {
+          group:id, invite:g.invite, sealed:g.sealed, name, revision:g.nameRevision || 0,
+        });
+        Object.assign(g, saved);
+        view();
+        info("名前を保存しました。参加者にも新しい名前が表示されます。");
+      });
       const f = content.querySelector("#policy");
       f.elements.visibility.value = g.visibility;
       f.elements.mode.value = String(g.mode);

@@ -65,7 +65,7 @@ export async function privateGroupView(group, wallet, rows) {
         rememberInvite(group.id, wallet, code);
         sessionStorage.removeItem(pendingInvite(group.id));
       }
-      return { ...group, name, description, category, unlocked:true, joined:member };
+      return { ...group, name:group.nameRevision ? group.name : name, description, category, unlocked:true, joined:member };
     } catch { /* A stale invitation cannot unlock this group. */ }
   }
   return member ? { ...group, joined:true } : null;
@@ -106,7 +106,7 @@ export async function syncPrivateGroups(groups, wallet, rows, api) {
       return group;
     }
     const view = await privateGroupView(group, wallet, rows) || (group.joined ? group : null);
-    if (api && view?.joined && !view.unlocked && !error)
+    if (api && view?.joined && !view.unlocked && !view.nameRevision && !error)
       error = "コミュニティ情報の同期を待っています。管理者が情報を同期した後、「更新」で確認できます。";
     return view;
   }));
