@@ -80,13 +80,18 @@ export async function relayPayment({
     signature = bs58.encode(tx.signature);
   // A Solana transaction ID is also the fee payer's usable signature.
   // Simulate the signed wire transaction before revealing or recording it.
-  const simulation = await rpc.simulateTransaction(
-    VersionedTransaction.deserialize(raw),
-    {
-      sigVerify: true,
-      commitment: "confirmed",
-    },
-  );
+  let simulation;
+  try {
+    simulation = await rpc.simulateTransaction(
+      VersionedTransaction.deserialize(raw),
+      {
+        sigVerify: true,
+        commitment: "confirmed",
+      },
+    );
+  } catch (err) {
+    fail(503, "Devnetの検証ノードと通信できませんでした。少し待ってから再試行してください。");
+  }
   if (simulation.value.err)
     fail(422, "Devnetの事前検証で取引が拒否されました。");
   // Commit the ID before broadcasting. Even a dropped HTTP response can then

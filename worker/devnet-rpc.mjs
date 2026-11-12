@@ -11,23 +11,31 @@ async function fetchRpc(url, init) {
   const signal = AbortSignal.timeout(8000);
   for (let attempt = 0; ; attempt++) {
     const response = await fetch(url, { ...init, redirect: "manual", signal });
-    if (response.status !== 429 || attempt >= 2) return response;
+    if (response.status !== 429 || attempt >= 3) return response;
     const retryAfter = response.headers.get("Retry-After");
     const seconds = retryAfter === null ? NaN : Number(retryAfter);
     const requestedMs = Number.isFinite(seconds) ? seconds * 1000 : Date.parse(retryAfter) - Date.now();
-    const delay = Math.max(1000 * (attempt + 1), requestedMs || 0);
-    if (delay > 3000) return response;
+    const baseDelay = 1100 * (attempt + 1);
+    const delay = Math.max(baseDelay, requestedMs || 0);
+    if (delay > 5000) return response;
     await response.body?.cancel();
     await new Promise(resolve => setTimeout(resolve, delay));
   }
 }
 
+let cachedConn = null;
+let cachedUrl = null;
+
 export function workerConnection(env) {
-  return new Connection(env.DEVNET_RPC_URL || workerDevnetUrl, {
+  const url = env.DEVNET_RPC_URL || workerDevnetUrl;
+  if (cachedConn && cachedUrl === url) return cachedConn;
+  cachedUrl = url;
+  cachedConn = new Connection(url, {
     commitment: "confirmed",
     disableRetryOnRateLimit: true,
     fetch: fetchRpc,
   });
+  return cachedConn;
 }
 
 export async function requireFreshBlockhash(rpc, blockhash, fail) {

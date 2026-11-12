@@ -21,10 +21,15 @@ export async function shopRequests(db, rpc, realm, viewer, method, body, fail) {
   const group = address(body.group, fail);
   const memberKey = addr(program, "m3", group, viewer);
   const ownShop = shopKey(group, viewer);
-  await assertDevnet(rpc);
-  // v3 groups are initialized program-owned accounts; members and shops are PDAs.
-  const [groupAccount, memberAccount, shopAccount] = await rpc.getMultipleAccountsInfo(
-    [pk(group), memberKey, ownShop], "confirmed");
+  let initialAccounts;
+  try {
+    await assertDevnet(rpc);
+    // v3 groups are initialized program-owned accounts; members and shops are PDAs.
+    initialAccounts = await rpc.getMultipleAccountsInfo([pk(group), memberKey, ownShop], "confirmed");
+  } catch {
+    fail(503, "Devnetから申請情報を取得できませんでした。少し待ってから再試行してください。");
+  }
+  const [groupAccount, memberAccount, shopAccount] = initialAccounts;
   const community = decode(groupAccount, group);
   const member = decode(memberAccount, String(memberKey));
   const admin = community?.owner === viewer;

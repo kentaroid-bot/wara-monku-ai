@@ -21,8 +21,14 @@ async function protect(hash, group, version, value, decrypt = false) {
 
 export async function saveCommunityProfile(db, rpc, realm, viewer, body, hash, fail) {
   const id = address(body.group, fail);
-  await assertDevnet(rpc);
-  const group = decode(await rpc.getAccountInfo(pk(id), "confirmed"), id);
+  let groupAccount;
+  try {
+    await assertDevnet(rpc);
+    groupAccount = await rpc.getAccountInfo(pk(id), "confirmed");
+  } catch {
+    fail(503, "Devnetからコミュニティ情報を取得できませんでした。少し待ってから再試行してください。");
+  }
+  const group = decode(groupAccount, id);
   if (group?.tag !== 31 || group.owner !== viewer) fail(403, "管理者だけがコミュニティ情報を同期できます。");
   if (group.visibility !== "private" || body.sealed !== group.sealed || body.invite !== group.invite)
     fail(409, "コミュニティの設定が更新されています。画面を更新してください。");
@@ -44,8 +50,13 @@ export async function readCommunityProfiles(db, rpc, realm, viewer, ids, hash, f
   if (!Array.isArray(ids) || !ids.length || ids.length > 32) fail(400, "コミュニティの指定を確認してください。");
   const keys = [...new Set(ids.map(id => address(id, fail)))];
   const memberships = keys.map(id => addr(program,"m3",id,viewer));
-  await assertDevnet(rpc);
-  const accounts = await rpc.getMultipleAccountsInfo([...keys.map(pk),...memberships], "confirmed");
+  let accounts;
+  try {
+    await assertDevnet(rpc);
+    accounts = await rpc.getMultipleAccountsInfo([...keys.map(pk),...memberships], "confirmed");
+  } catch {
+    fail(503, "Devnetからコミュニティ一覧を取得できませんでした。少し待ってから再試行してください。");
+  }
   const groups = [];
   for (const [i,id] of keys.entries()) {
     const group = decode(accounts[i], id);

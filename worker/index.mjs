@@ -511,12 +511,15 @@ export default {
         ? await issue(env, key, phoneKey, req, b.action, now, b.phone)
         : await redeem(env, key, url.origin, action, b, phoneKey, now);
     } catch (e) {
+      if (!(e instanceof Failure)) {
+        console.error("Worker unhandled error:", e?.stack || e);
+      }
       return json(
         {
           error:
             e instanceof Failure
               ? e.message
-              : "認証APIを利用できません。時間をおいて再試行してください。",
+              : `認証APIを利用できません。(${e?.message || e})`,
         },
         e instanceof Failure ? e.status : 503,
       );

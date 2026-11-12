@@ -15,10 +15,28 @@ import bs58 from "bs58";
 import { assertDevnet, budgetInstructions } from "../app/protocol.mjs";
 import { pk, addr, mintFor, tok, ata, parseRow, quota } from "./protocol.mjs";
 import manifest from "../deployments/devnet.json" with { type: "json" };
+import { publicDevnetFallback } from "../shared/devnet.mjs";
 export const program = pk(manifest.program);
+
+async function browserFetchRpc(url, init) {
+  try {
+    const res = await fetch(url, { ...init, signal: AbortSignal.timeout(6000) });
+    if (res.ok) return res;
+    if (res.status === 403 || res.status === 429 || res.status >= 500) {
+      const alt = url === manifest.rpc ? publicDevnetFallback : manifest.rpc;
+      return await fetch(alt, { ...init, signal: AbortSignal.timeout(8000) });
+    }
+    return res;
+  } catch {
+    const alt = url === manifest.rpc ? publicDevnetFallback : manifest.rpc;
+    return await fetch(alt, { ...init, signal: AbortSignal.timeout(8000) });
+  }
+}
+
 export const rpc = new Connection(manifest.rpc, {
   commitment: "confirmed",
   disableRetryOnRateLimit: false,
+  fetch: browserFetchRpc,
 });
 const registryKey = "wara.v03.policy-directory." + program;
 let verified;

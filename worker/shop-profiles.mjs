@@ -20,7 +20,13 @@ export async function saveShop(db, rpc, realm, viewer, payload, fail) {
   let fields;
   try { fields = shopFields(payload); } catch { fail(400, "店舗プロフィールの入力を確認してください。"); }
   const shop = addr(program, "s3", group, merchant);
-  const row = decode(await rpc.getAccountInfo(shop, "confirmed"), String(shop));
+  let shopAccount;
+  try {
+    shopAccount = await rpc.getAccountInfo(shop, "confirmed");
+  } catch {
+    fail(503, "Devnetから店舗情報を取得できませんでした。少し待ってから再試行してください。");
+  }
+  const row = decode(shopAccount, String(shop));
   if (row?.tag !== 32 || row.to !== merchant || row.group !== group) fail(403, "公認店舗を確認できません。");
   const values = [fields.title, fields.caption, fields.icon, Number(fields.is_test)];
   const stmt = revision === 0
@@ -42,7 +48,12 @@ export async function readShops(db, rpc, realm, viewer, ids, fail) {
   // to its merchant, community administrator or an admitted wallet.
   const groups = [...new Set(results.map(row=>row.group_id))];
   const memberships = viewer ? groups.map(group=>addr(program,"m3",group,viewer)) : [];
-  const accounts = await rpc.getMultipleAccountsInfo([...groups.map(pk),...memberships],"confirmed");
+  let accounts;
+  try {
+    accounts = await rpc.getMultipleAccountsInfo([...groups.map(pk),...memberships],"confirmed");
+  } catch {
+    fail(503, "Devnetからコミュニティ情報を取得できませんでした。少し待ってから再試行してください。");
+  }
   const allowed = new Set(groups.filter((group,i)=>{
     const g = decode(accounts[i],group);
     if (g?.tag !== 31) return false;

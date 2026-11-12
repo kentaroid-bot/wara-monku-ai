@@ -127,94 +127,98 @@ export function decodeTransaction(encoded, address, configuredSponsor = null) {
 // A confirmation sheet authorizes WARA payments and the site's community
 // administration. It cannot turn this endpoint into an arbitrary SOL signer.
 export function confirmedMessage(raw, address, sponsor = null) {
-  const tx = Transaction.from(raw),
-    ix = tx.instructions,
-    last = ix.at(-1);
-  if (
-    !last?.programId.equals(program) ||
-    !tx.feePayer?.equals(sponsor || pk(address))
-  )
-    return false;
-  const data = last.data,
-    accounts = last.keys.map((k) => k.pubkey);
-  let expected;
-  if (sponsor && data[0] !== 15 && data[0] !== 16 && data[0] !== 17) return false;
-  switch (data[0]) {
-    case 17:
-      if (data.length <= 67 || data.length > 467) return false;
-      expected = [limit(), price(), communityUpdate(program, address, accounts[1],
-        data[1], pk(data.subarray(2,34)), data[34], pk(data.subarray(35,67)), data.subarray(67))];
-      break;
-    case 16: {
-      const opening = ix.at(-2);
-      if (!opening?.programId.equals(program) || opening.data[0] !== 10 || opening.data.length > 434) return false;
-      const creation = SystemInstruction.decodeCreateAccount(ix.at(-3));
-      if (creation.lamports > 100_000_000) return false;
-      expected = [limit(), price(), ...communityOpening(program, pk(address), opening.keys[1].pubkey,
-        opening.data[1], pk(opening.data.subarray(2, 34)), opening.data.subarray(34), creation.lamports)];
-      break;
-    }
-    case 10: {
-      const creation = SystemInstruction.decodeCreateAccount(ix.at(-2));
-      if (creation.lamports > 100_000_000 || data.length > 434) return false;
-      expected = [
-        limit(),
-        price(),
-        ...createGroup(
-          program,
-          address,
-          accounts[1],
-          data[1],
-          pk(data.subarray(2, 34)),
-          data.subarray(34),
-          creation.lamports,
-        ),
-      ];
-      break;
-    }
-    case 11:
-      expected = [
-        limit(),
-        price(),
-        certify(
-          program,
-          address,
-          accounts[1],
-          accounts[2],
-          data.subarray(1).toString("utf8"),
-        ),
-      ];
-      break;
-    case 12:
-      expected = [
-        limit(),
-        price(),
-        join(program, address, accounts[1], accounts[2], true),
-      ];
-      break;
-    case 13:
-      expected = [
-        limit(),
-        price(),
-        offer(program, address, accounts[1], accounts[2], data[1] === 1),
-      ];
-      break;
-    case 15: {
-      const lots = ix
-        .filter((i) => i.programId.equals(program) && i.data[0] === 15)
-        .map((i) => ({
-          origin: i.keys[2].pubkey,
-          amount: i.data.readBigUInt64LE(1),
-        }));
-      if (lots.some((l) => l.amount < 1n)) return false;
-      expected = [
-        price(),
-        ...transfer(program, address, accounts[1], accounts[3], lots),
-      ];
-      break;
-    }
-    default:
+  try {
+    const tx = Transaction.from(raw),
+      ix = tx.instructions,
+      last = ix.at(-1);
+    if (
+      !last?.programId.equals(program) ||
+      !tx.feePayer?.equals(sponsor || pk(address))
+    )
       return false;
+    const data = last.data,
+      accounts = last.keys.map((k) => k.pubkey);
+    let expected;
+    if (sponsor && data[0] !== 15 && data[0] !== 16 && data[0] !== 17) return false;
+    switch (data[0]) {
+      case 17:
+        if (data.length <= 67 || data.length > 467) return false;
+        expected = [limit(), price(), communityUpdate(program, address, accounts[1],
+          data[1], pk(data.subarray(2,34)), data[34], pk(data.subarray(35,67)), data.subarray(67))];
+        break;
+      case 16: {
+        const opening = ix.at(-2);
+        if (!opening?.programId.equals(program) || opening.data[0] !== 10 || opening.data.length > 434) return false;
+        const creation = SystemInstruction.decodeCreateAccount(ix.at(-3));
+        if (creation.lamports > 100_000_000) return false;
+        expected = [limit(), price(), ...communityOpening(program, pk(address), opening.keys[1].pubkey,
+          opening.data[1], pk(opening.data.subarray(2, 34)), opening.data.subarray(34), creation.lamports)];
+        break;
+      }
+      case 10: {
+        const creation = SystemInstruction.decodeCreateAccount(ix.at(-2));
+        if (creation.lamports > 100_000_000 || data.length > 434) return false;
+        expected = [
+          limit(),
+          price(),
+          ...createGroup(
+            program,
+            address,
+            accounts[1],
+            data[1],
+            pk(data.subarray(2, 34)),
+            data.subarray(34),
+            creation.lamports,
+          ),
+        ];
+        break;
+      }
+      case 11:
+        expected = [
+          limit(),
+          price(),
+          certify(
+            program,
+            address,
+            accounts[1],
+            accounts[2],
+            data.subarray(1).toString("utf8"),
+          ),
+        ];
+        break;
+      case 12:
+        expected = [
+          limit(),
+          price(),
+          join(program, address, accounts[1], accounts[2], true),
+        ];
+        break;
+      case 13:
+        expected = [
+          limit(),
+          price(),
+          offer(program, address, accounts[1], accounts[2], data[1] === 1),
+        ];
+        break;
+      case 15: {
+        const lots = ix
+          .filter((i) => i.programId.equals(program) && i.data[0] === 15)
+          .map((i) => ({
+            origin: i.keys[2].pubkey,
+            amount: i.data.readBigUInt64LE(1),
+          }));
+        if (lots.some((l) => l.amount < 1n)) return false;
+        expected = [
+          price(),
+          ...transfer(program, address, accounts[1], accounts[3], lots),
+        ];
+        break;
+      }
+      default:
+        return false;
+    }
+    return matches(tx, address, expected, sponsor);
+  } catch {
+    return false;
   }
-  return matches(tx, address, expected, sponsor);
 }

@@ -43,8 +43,11 @@ export function paymentInstructions(program,config,consumer,producer,value,day,n
  return [...budgetInstructions(),createAssociatedTokenAccountIdempotentInstruction(pk(consumer),dest,pk(producer),mint),
  new TransactionInstruction({programId:pk(program),keys:[key(consumer,true,true),key(producer),key(config),key(person,false,true),key(mint,false,true),key(dest,false,true),key(authority),key(TOKEN_PROGRAM_ID)],data})];
 }
+const verifiedConnections = new WeakMap();
 export async function assertDevnet(connection){
+ if(connection && typeof connection === 'object' && verifiedConnections.get(connection)) return;
  if(await connection.getGenesisHash()!==DEVNET_GENESIS)throw Error('Devnet以外への接続を拒否しました。');
+ if(connection && typeof connection === 'object') verifiedConnections.set(connection, true);
 }
 export async function readClock(connection){
  const a=await connection.getAccountInfo(SYSVAR_CLOCK_PUBKEY,'confirmed');
