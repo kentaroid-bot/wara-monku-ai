@@ -1,3 +1,4 @@
+import { prepareNote, readNotes } from "./payment-notes.mjs";
 import { invalidateAccess } from "./community-access.mjs";
 import { shopRequests } from "./shop-requests.mjs";
 import { communityReaders } from "./community-read.mjs";
@@ -17,6 +18,8 @@ export async function memberRequest(op, b, ctx) {
   const core = await memberCore(b, ctx);
   const { env, req, db, realm, query, hash, limited, session, ticket, readTicket,
     profile, origin, now, checkSignature, bad, denied, fail } = core;
+  if (op === "payment-note") return prepareNote(core);
+  if (op === "payment-notes") return readNotes(core);
   if (["community-profiles","community-save","community-rename"].includes(op)) {
     const {m} = await session();
     const rpc = workerConnection(env);
@@ -33,7 +36,7 @@ export async function memberRequest(op, b, ctx) {
   if (op === "shop-challenge") {
     if (!validSecret(b.address) || bs58.decode(b.address).length !== 32) bad();
     const purpose = b.purpose ?? "shop-profile";
-    if (!["shop-profile","shop-requests","community-access"].includes(purpose)) bad();
+    if (!["shop-profile","shop-requests","community-access","payment-notes"].includes(purpose)) bad();
     return {ticket:await ticket("shop-proof", {address:b.address,purpose}), audience:origin};
   }
   if (op === "shop-access") {

@@ -56,6 +56,11 @@ try {
           }}} : [];
       return route.fulfill({json:{id,jsonrpc:"2.0",result},headers:cors});
     }
+    if (url.pathname === "/api/member/payment-notes") {
+      const {receipts,session} = req.postDataJSON();
+      assert.ok(session);
+      return route.fulfill({json:{notes:receipts.some(r=>r.sig === paidSignature) ? [{sig:paidSignature,note:"また来ます <3"}] : []}});
+    }
     if (url.pathname === "/api/member/shop-save") {
       const {title,caption,icon,is_test} = req.postDataJSON();
       assert.equal(is_test,true); // Editing a legacy shop must not reset its stored flag.
@@ -91,6 +96,14 @@ try {
   // Three confirmations use native dialog controls; no browser confirm prompt.
   page.on("dialog", () => assert.fail("unexpected browser confirm"));
   await page.goto(origin+"/shop/?"+new URLSearchParams({group:stores[1].group,store:stores[1].to}));
+  const feedback=page.locator("#ina .payment-memo");
+  await feedback.locator("summary").click();
+  const smile=feedback.getByRole("button",{name:"😊"});
+  await smile.click(); assert.equal(await smile.getAttribute("aria-pressed"),"true");
+  await smile.click(); assert.equal(await smile.getAttribute("aria-pressed"),"false");
+  await feedback.getByRole("button",{name:"また来ます"}).click();
+  assert.equal(await feedback.getByLabel("お店へのひとこと").inputValue(),"また来ます");
+  await feedback.getByLabel("お店へのひとこと").fill("また来ます、ありがとう");
   await page.locator("#ina").getByRole("button",{name:"金額を確認して支払う"}).click();
   await page.getByRole("dialog").waitFor();
   await page.screenshot({path:"/tmp/wara-phase2-confirm.png"});
@@ -117,7 +130,7 @@ try {
   await page.getByText(/登録した財布に接続しました/).waitFor();
   assert.equal(await page.getByRole("dialog").count(),0);
   await page.locator('#wara input[name="amount"]').fill("10");
-  await page.locator("#wara button").click();
+  await page.locator("#wara").getByRole("button",{name:"WARAで支払う"}).click();
   await page.getByRole("dialog").getByRole("button",{name:"キャンセル"}).click();
   await page.goto(origin+"/communities/?id="+groups[1].id);
   await page.locator('#policy select[name="mode"]').selectOption("1");
@@ -135,6 +148,7 @@ try {
   paid = true;
   await page.locator("#crystal-toast").filter({hasText:"+270"}).waitFor({timeout:15000});
   await page.locator(".story").filter({hasText:"3 INA"}).waitFor();
+  await page.locator(".story").getByText("お店へのひとこと「また来ます <3」").waitFor();
   assert.equal(await page.locator("#qr-out").count(),0);
   const afterPayment = signatureReads;
   await page.waitForTimeout(5500);

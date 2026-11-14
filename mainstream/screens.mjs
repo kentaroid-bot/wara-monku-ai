@@ -101,8 +101,9 @@ export async function dashboard(ctx) {
   settlementEvents.addEventListener("waiting", e=>{ if (e.detail.address === who) scheduleCheck(); });
   document.addEventListener("visibilitychange",()=>{ if (!document.hidden) void recover(); });
   window.addEventListener("pageshow",e=>{ if (e.persisted) void recover(); });
-  const send = async (ix, extra = [], msg = "取引が確定しました。") => {
-    const sig = await submit(profile, wallet, ix, extra);
+  const send = async (ix, extra = [], msg = "取引が確定しました。", note = "") => {
+    const access = note ? await profiles.noteAccess() : undefined;
+    const sig = await submit(profile, wallet, ix, extra, profile.address, note, access);
     recoveryNotice = "";
     const refreshed = await refresh(
       ix.some(
@@ -136,7 +137,7 @@ export async function dashboard(ctx) {
     if (path === "/shop") return store();
     ui(twinCards(s) +
       '<div class="quick-actions"><a class="action" href="/shop/">支払う</a><a class="action secondary" href="/shop/?mode=receive">レジを開く</a></div>');
-    showHistory(content, readHistory, null, h, by, shopName);
+    showHistory(content, readHistory, null, h, by, shopName, profiles);
     scannerBox(content, "store", (url) => location.assign(url));
     content.insertAdjacentHTML("beforeend", `<details><summary>WARAの発行元</summary>
       ${[...s.funds].map(([id, n]) => `<p>${h(by(id)?.name || id)}：${n} WARA</p>`).join("") || "<p>まだWARAはありません。</p>"}</details>`);

@@ -2,7 +2,13 @@ import { Buffer } from "buffer";
 import { PublicKey, TransactionInstruction } from "@solana/web3.js";
 
 export const memoProgram = new PublicKey("MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr");
-export const thankYouChips = ["ごちそうさま！ 😋", "いつもありがとう！ ✨", "最高でした！ 👏", "応援してます！ 🔥"];
+export const thankYouChips = ["おいしかったです", "いつもありがとう", "また来ます", "応援しています"];
+
+export const reactions = ["👌", "👍", "💕", "❤️", "✨", "😊"];
+export function paymentReaction(value) {
+  if (value !== "" && !reactions.includes(value)) throw Error("絵文字を一覧からひとつ選んでください。");
+  return value;
+}
 
 export function paymentMemo(value) {
   const text = value.trim();

@@ -1,7 +1,7 @@
 import { registerChoices } from "../shop-directory.mjs";
 import { shopTitle, shopDetails, shopEditor } from "../shop-profile.mjs";
 import { memoFields, bindMemoChips } from "../memo-ui.mjs";
-import { paymentMemo } from "../../shared/payment-memo.mjs";
+import { paymentMemo, paymentReaction } from "../../shared/payment-memo.mjs";
 import { twinCards, crystallize } from "../balances.mjs";
 import { showHistory } from "../history.mjs";
 import { invoiceAmount, scannerBox } from "../scan.mjs";
@@ -11,10 +11,15 @@ import { spend, transfer, split } from "../protocol.mjs";
 import { confirmDialog } from "../confirm-dialog.mjs";
 import { amount, receipt, short } from "./ui.mjs";
 
+function feedbackSummary(reaction, note) {
+  return (reaction ? "\n公開する絵文字：" + reaction : "") + (note ? "\nお店へのひとこと：「" + note + "」" : "") + "\n";
+}
+
 export function shopView(ctx) {
   const { state, content, params, who, profile, profiles, ui, form, btn, inp, link,
     gid, register, by, shopName, send, view, refresh, h, info, action,
     readHistory, recordPayment, registerWatch } = ctx;
+  const privateNotes = profile.managed || profiles.supportsNotes;
   function store() {
     const s = state();
     const groupForShop = id => by(id) || s.rows.find(row=>row.tag === 31 && row.id === id);
@@ -84,7 +89,7 @@ export function shopView(ctx) {
               "枚数",
               'type="number" min="1" max="10" value="' + n + '"',
             ) +
-            (member ? memoFields : "") +
+            (member ? memoFields(privateNotes) : "") +
             (member
               ? btn("金額を確認して支払う")
               : link(gid(g.id), "地域に参加して支払う")) +
@@ -100,7 +105,7 @@ export function shopView(ctx) {
               .join("") +
             "</details>" +
             inp("amount", "支払い額（WARA）", 'type="number" min="1"') +
-            btn("WARAで支払う") +
+            memoFields(privateNotes) + btn("WARAで支払う") +
             "</form>"),
     );
     if (isShop) form("edit-shop", async values => {
@@ -117,12 +122,12 @@ export function shopView(ctx) {
     }
     if (isShop && profile.managed) {
       const checkout=document.createElement("form");
-      checkout.innerHTML='<h2>お客さんの紙カードで支払う</h2><label>金額（INA）<input name="amount" type="number" min="1" max="10" required></label>'+memoFields+'<button>カードを読む</button>';
+      checkout.innerHTML='<h2>お客さんの紙カードで支払う</h2><label>金額（INA）<input name="amount" type="number" min="1" max="10" required></label>'+memoFields(true)+'<button>カードを読む</button>';
       content.append(checkout);
       bindMemoChips(checkout);
       action(checkout,async v=>{
         const {payWithCard}=await import("../member-ui.mjs");
-        const sig=await payWithCard(g.id,store.to,Number(v.amount),store.name,paymentMemo(v.memo));
+        const sig=await payWithCard(g.id,store.to,Number(v.amount),store.name,paymentReaction(v.reaction),paymentMemo(v.memo || ""));
         const refreshed = await refresh(true);
         info("紙カードの支払いが確定しました。" + (refreshed ? "" : " 残高は再度更新してください。"));
         const a = document.createElement("a");
@@ -130,7 +135,7 @@ export function shopView(ctx) {
         document.querySelector("#notice").append(a);
       });
     }
-    if (isShop) showHistory(content, readHistory, g.id, h, by, shopName);
+    if (isShop) showHistory(content, readHistory, g.id, h, by, shopName, profiles);
     form("invoice", async (v) => {
       registerWatch.stop();
       const qrBox = content.querySelector("#qr");
@@ -171,8 +176,11 @@ export function shopView(ctx) {
     });
     const inaForm = content.querySelector("#ina");
     if (inaForm) bindMemoChips(inaForm);
+    const waraForm = content.querySelector("#wara");
+    if (waraForm) bindMemoChips(waraForm);
     form("ina", async (v) => {
-      const memo = paymentMemo(v.memo || "");
+      const note = paymentMemo(v.memo || "");
+      const reaction = paymentReaction(v.reaction || "");
       const n = amount(v.ina);
       if (!member) throw Error("地域に参加してください。");
       if (n > s.remaining) throw Error("残りINAを超えています。");
@@ -185,32 +193,34 @@ export function shopView(ctx) {
             n * 90n +
             " WARA、あなたに " +
             n * 10n +
-            " WARA。" + (memo ? "\n💬「" + memo + "」\n" : "") + "支払いますか？", confirmLabel: "支払う" })
+            " WARA。" + feedbackSummary(reaction,note) + "支払いますか？", confirmLabel: "支払う" })
       ) {
         info("取り消しました。");
         return;
       }
       await send(
-        spend(program, who, g.id, store.to, n, s.day, s.nonce, memo),
+        spend(program, who, g.id, store.to, n, s.day, s.nonce, reaction),
         [],
         "支払い完了。店に " +
           n * 90n +
           " WARA、客に " +
           n * 10n +
-          " WARA還付。",
+          " WARA還付。", note,
       );
     });
     form("wara", async (v) => {
+      const note = paymentMemo(v.memo || "");
+      const reaction = paymentReaction(v.reaction || "");
       const n = amount(v.amount),
         selected = split(lots, n);
-      if (!await confirmDialog({ title: "WARAのお支払いを確認", message: store.name + "へ\n" + n + " WARAを支払いますか？", confirmLabel: "支払う" })) {
+      if (!await confirmDialog({ title: "WARAのお支払いを確認", message: store.name + "へ\n" + n + " WARA。" + feedbackSummary(reaction,note) + "支払いますか？", confirmLabel: "支払う" })) {
         info("取り消しました。");
         return;
       }
       await send(
-        transfer(program, who, g.id, store.to, selected),
+        transfer(program, who, g.id, store.to, selected, reaction),
         [],
-        n + " WARAの支払いが確定しました。",
+        n + " WARAの支払いが確定しました。", note,
       );
     });
   }

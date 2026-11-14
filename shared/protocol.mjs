@@ -1,4 +1,4 @@
-import { memoInstruction, paymentMemo } from "./payment-memo.mjs";
+import { memoInstruction, paymentReaction } from "./payment-memo.mjs";
 import { Buffer } from "buffer";
 import {
   PublicKey,
@@ -125,7 +125,7 @@ export const offer = (p, who, g, peer, yes) =>
     data(13, byte(yes ? 1 : 0)),
   );
 export function spend(p, who, g, merchant, n, day, nonce, message = "") {
-  const memo = paymentMemo(message);
+  const memo = paymentReaction(message);
   const m = mintFor(p, g);
   return [
     budget(),
@@ -151,13 +151,14 @@ export function spend(p, who, g, merchant, n, day, nonce, message = "") {
     ),
   ];
 }
-export function transfer(p, who, g, merchant, lots) {
+export function transfer(p, who, g, merchant, lots, reaction = "") {
   return [
     budget(),
-    ...lots.flatMap(({ origin, amount }) => {
+    ...lots.flatMap(({ origin, amount }, index) => {
       const m = mintFor(p, origin);
       return [
         makeAta(who, m, merchant),
+        ...(index === 0 && paymentReaction(reaction) ? [memoInstruction(reaction)] : []),
         ix(
           p,
           [

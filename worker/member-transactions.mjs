@@ -1,4 +1,4 @@
-import { memoProgram, readPaymentMemo } from "../shared/payment-memo.mjs";
+import { memoProgram, readPaymentMemo, reactions } from "../shared/payment-memo.mjs";
 import { communityOpening, communityUpdate } from "../shared/community-metadata.mjs";
 import { eligible, sponsoredInstructions } from "../shared/sponsorship.mjs";
 import { Buffer } from "buffer";
@@ -66,7 +66,7 @@ export function ordinaryMessage(raw, address, scope, checkout, sponsor = null) {
     let memo = "";
     if (preceding?.programId.equals(memoProgram)) {
       memo = readPaymentMemo(preceding.data);
-      if (!memo || preceding.keys.length || (checkout && memo !== checkout.memo)) return false;
+      if (!reactions.includes(memo) || preceding.keys.length || (checkout && memo !== checkout.memo)) return false;
     } else if (checkout?.memo) return false;
     const n = last.data.readBigUInt64LE(1);
     const group = last.keys[1].pubkey,
@@ -213,9 +213,12 @@ export function confirmedMessage(raw, address, sponsor = null) {
             amount: i.data.readBigUInt64LE(1),
           }));
         if (lots.some((l) => l.amount < 1n)) return false;
+        const memo = ix.find(i => i.programId.equals(memoProgram));
+        const reaction = memo ? readPaymentMemo(memo.data) : "";
+        if (memo && !reactions.includes(reaction)) return false;
         expected = [
           price(),
-          ...transfer(program, address, accounts[1], accounts[3], lots),
+          ...transfer(program, address, accounts[1], accounts[3], lots, reaction),
         ];
         break;
       }

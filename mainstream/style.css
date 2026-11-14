@@ -158,3 +158,5 @@ img { max-width: 100%; }
 
 .guide-steps { padding-left: 1.2rem; margin: 0; }
 .guide-steps > li + li { margin-top: .5rem; }
+
+.memo-chips button[aria-pressed="true"] { outline: 2px solid var(--leaf); background: var(--wash); }

@@ -1,3 +1,5 @@
+import bs58 from "bs58";
+import { stageNote, noteText } from "./payment-notes.mjs";
 import { ed25519 } from "@noble/curves/ed25519";
 import { toBase64 } from "../shared/auth-wire.mjs";
 import { requireFreshBlockhash } from "./devnet-rpc.mjs";
@@ -47,7 +49,9 @@ export async function memberSigning(op, core) {
     await requireFreshBlockhash(paymentConnection(env), tx.blockhash, fail);
     if (!card && !ordinary) await strong(m, "payment");
     const seed = await encryptSeed(m.id, m.sealed_seed, true);
-    return { signature: toBase64(ed25519.sign(tx.message, seed)) };
+    const signature = ed25519.sign(tx.message, seed);
+    if (card && b.note) await stageNote(core,bs58.encode(signature),b.checkout.store,noteText(b.note,bad));
+    return { signature: toBase64(signature) };
   }
   bad();
 }

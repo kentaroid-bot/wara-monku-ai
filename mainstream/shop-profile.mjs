@@ -1,3 +1,4 @@
+import { identityBackendKey } from "./storage-keys.mjs";
 import { shopFields, shopIcons } from "../shared/shop-profile.mjs";
 import { memberApi } from "./member-ui.mjs";
 import { walletMessage } from "../shared/member-wire.mjs";
@@ -19,8 +20,16 @@ export function shopWalletAccess(profile, wallet, purpose) {
 
 export function shopProfiles(profile, wallet) {
   const auth = shopWalletAccess(profile, wallet, "shop-profile");
+  const notes = shopWalletAccess(profile, wallet, "payment-notes");
   return {
     authenticate:auth.authenticate,
+    get supportsNotes() { return Boolean(profile.managed || localStorage.getItem(identityBackendKey) === "worker"); },
+    canReadNotes: () => Boolean(profile.managed || notes.token()),
+    async noteAccess() { await notes.authenticate(); return notes.token(); },
+    async readNotes(receipts) {
+      await notes.authenticate();
+      return memberApi("payment-notes",{receipts,access:notes.token()});
+    },
     async load(state, include = () => true) {
       const visible = new Set(state.groups.map(g=>g.id));
       const stores = state.rows.filter(row=>row.tag === 32 && include(row) && (visible.has(row.group) || row.to === profile.address));

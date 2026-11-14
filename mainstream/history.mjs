@@ -1,4 +1,4 @@
-import { memoProgram, readPaymentMemo } from "../shared/payment-memo.mjs";
+import { memoProgram, readPaymentMemo, reactions } from "../shared/payment-memo.mjs";
 import { Connection } from "@solana/web3.js";
 import { Buffer } from "buffer";
 import { rpc, program } from "./network.mjs";
@@ -27,11 +27,12 @@ export function entries(tx, sig, address, storeId = null) {
       continue;
     const n = d.readBigUInt64LE(1);
     const previous = index > 0 && instructions[index - 1];
-    const memo = k && previous && accounts.get(previous.programIdIndex)?.equals(memoProgram) &&
+    const memo = previous && accounts.get(previous.programIdIndex)?.equals(memoProgram) &&
       previous.accountKeyIndexes.length === 0 && readPaymentMemo(previous.data);
     out.push({
       ...(memo ? {memo} : {}),
       sig,
+      payerSignature: tx.transaction.signatures?.[ix.accountKeyIndexes[0]],
       group,
       origin: k ? group : keys[2],
       payer,
@@ -49,12 +50,13 @@ export function storyReceipt(r, h, by, shopName) {
   const title = r.kusa
     ? r.incoming ? `${store}で ${r.n} INA の感謝を受け取りました` : `${store} に ${r.n} INA の感謝を贈りました`
     : r.incoming ? `${store}で ${r.n} WARA を受け取りました` : `${store} に ${r.n} WARA を支払いました`;
+  const reaction = reactions.includes(r.memo);
   const detail = r.kusa
     ? `${r.incoming ? "あなたの店" : "店"}に +${r.n * 90n} WARA ／ ${r.incoming ? "お客さん" : "あなた"}に +${r.n * 10n} WARA`
     : `発行元：${by(r.origin)?.name || "地域"}`;
   const time = r.time ? new Date(r.time * 1000).toLocaleString("ja-JP", {month:"numeric", day:"numeric", hour:"2-digit", minute:"2-digit", timeZone:"Asia/Tokyo"}) + " JST · " : "";
   return `<li class="story"><span aria-hidden="true">${r.incoming ? "🌾" : "🌱"}</span>
-    <div><strong>${h(title)}</strong>${r.memo ? `<p class="receipt-memo">💬「${h(r.memo)}」</p>` : ""}<p>${h(detail)}</p><small>${h(time)}${h(by(r.group)?.name || "地域")} ·
+    <div><strong>${h(title)}</strong>${r.memo ? `<p class="receipt-memo">${reaction ? h(r.memo) : `💬「${h(r.memo)}」`}</p>` : ""}${r.note ? `<p class="receipt-memo">お店へのひとこと「${h(r.note)}」</p>` : ""}<p>${h(detail)}</p><small>${h(time)}${h(by(r.group)?.name || "地域")} ·
     <a target="_blank" rel="noopener" href="https://explorer.solana.com/tx/${encodeURIComponent(r.sig)}?cluster=devnet">取引を確認 ↗</a></small></div></li>`;
 }
 // The wallet and shop share the same confirmed receipts as the warmth indicator.
@@ -133,14 +135,14 @@ export function paymentHistory(address, onPayment, [primary, fallback] = history
   return () => pending ??= read().finally(() => { pending = null; });
 }
 
-export function showHistory(el, readHistory, storeId, h, by, shopName) {
+export function showHistory(el, readHistory, storeId, h, by, shopName, profiles) {
   const section = document.createElement("section");
   section.dataset.paymentHistory = "";
   section.innerHTML = '<div class="section-head"><h2>ありがとうの履歴</h2><small>直近の循環</small></div><ol class="stories"></ol><p role="status"></p><button type="button" class="secondary">履歴を更新</button>';
   el.append(section);
   const body = section.querySelector("ol"), status = section.querySelector('[role="status"]'),
     btn = section.querySelector("button");
-  async function refresh() {
+  async function refresh(manual = false) {
     btn.disabled = true;
     status.textContent = "直近20件の取引を確認しています…";
     try {
@@ -149,13 +151,34 @@ export function showHistory(el, readHistory, storeId, h, by, shopName) {
       body.innerHTML = rows.map(r => storyReceipt(r, h, by, shopName)).join("");
       status.textContent = result.indexing ? "最新の取引を一部照会中です。しばらくしてから続きを確認できます。" :
         rows.length ? "" : "直近20件に確定したお会計はありません。";
+      if (profiles?.supportsNotes) {
+        const incoming = rows.filter(r=>r.incoming && r.payerSignature);
+        const receipts = [...new Map(incoming.map(r=>[r.sig,{sig:r.sig,payerSignature:r.payerSignature}])).values()];
+        if (!receipts.length) return;
+        if (!profiles.canReadNotes() && !manual) {
+          status.textContent += " ひとことを見るには「履歴を更新」で財布を確認してください。";
+          return;
+        }
+        try {
+          const {notes} = await profiles.readNotes(receipts);
+          const texts = new Map(notes.map(n=>[n.sig,n.note]));
+          const rendered = new Set();
+          body.innerHTML = rows.map(row=>{
+            const note = row.incoming && !rendered.has(row.sig) && texts.get(row.sig);
+            if (note) rendered.add(row.sig);
+            return storyReceipt({...row,note},h,by,shopName);
+          }).join("");
+        } catch {
+          status.textContent += " お店へのひとことを取得できません。「履歴を更新」で再試行できます。";
+        }
+      }
     } catch {
       status.textContent = "履歴を読み込めませんでした。時間をおいて更新してください。";
     } finally {
       btn.disabled = false;
     }
   }
-  section.addEventListener("refresh-history", refresh);
-  btn.onclick = refresh;
+  section.addEventListener("refresh-history", () => refresh());
+  btn.onclick = () => refresh(true);
   refresh();
 }

@@ -10,8 +10,8 @@ import {ordinaryMessage} from "../worker/member-transactions.mjs";
 
 const [buyer,group,shop] = Array.from({length:3},()=>Keypair.generate().publicKey);
 const message = "ごちそうさま！ 😋 <3";
-const checkout = {group:String(group),store:String(shop),amount:1,memo:message};
-const instructions = () => [budgetInstructions()[1],...spend(program,buyer,group,shop,1n,2n,0n,message)];
+const checkout = {group:String(group),store:String(shop),amount:1,memo:"😊"};
+const instructions = () => [budgetInstructions()[1],...spend(program,buyer,group,shop,1n,2n,0n,"😊")];
 const makeTx = i => new Transaction({feePayer:buyer,recentBlockhash:String(group)}).add(...i);
 const raw = ix => makeTx(ix).serialize({requireAllSignatures:false});
 
@@ -21,7 +21,8 @@ test("memo is bound to a single INA instruction and the paper customer's confirm
   assert.equal(ordinaryMessage(raw(ix),String(buyer),"card",{...checkout,memo:"別の内容"}),false);
   const noMemo = ix.filter(i=>i!==ix.at(-2));
   assert.equal(ordinaryMessage(raw(noMemo),String(buyer),"card",checkout),false);
-  for(const invalid of [Buffer.alloc(241,65),Buffer.from([255]),Buffer.from("x\ny")]){
+  assert.throws(()=>spend(program,buyer,group,shop,1n,2n,0n,message));
+  for(const invalid of [Buffer.from(message),Buffer.from("👍👍"),Buffer.alloc(241,65),Buffer.from([255]),Buffer.from("x\ny")]){
     const bad=instructions(); bad.at(-2).data=invalid;
     assert.equal(ordinaryMessage(raw(bad),String(buyer),"session",null),false);
   }
@@ -34,7 +35,8 @@ test("memo is bound to a single INA instruction and the paper customer's confirm
 });
 
 test("buyer and store render the confirmed memo as escaped text in legacy and v0 receipts",()=>{
-  const tx=makeTx(instructions());
+  const historical=instructions(); historical.at(-2).data=Buffer.from(message);
+  const tx=makeTx(historical);
   const versioned=new TransactionMessage({payerKey:buyer,recentBlockhash:String(group),instructions:tx.instructions}).compileToV0Message();
   for(const compiled of [tx.compileMessage(),versioned]) for(const [reader,id] of [[buyer,null],[shop,String(group)]]){
     const [row]=entries({meta:{err:null},transaction:{message:compiled}},"sig",String(reader),id);

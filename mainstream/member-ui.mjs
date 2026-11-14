@@ -579,7 +579,7 @@ export function siteSigner(profile, checkout = null) {
     },
   };
 }
-export async function payWithCard(group, store, amount, title, memo = "") {
+export async function payWithCard(group, store, amount, title, memo = "", note = "") {
   const card = await secretScan("ina", "本人のINAカードを読む");
   const { address } = await memberApi("card-info", { card });
   const [{ loadState, submit, program }, { spend }] = await Promise.all([
@@ -592,12 +592,12 @@ export async function payWithCard(group, store, amount, title, memo = "") {
   const checkout = { group, store, amount, memo };
   const pin = await keypad(
     "支払いの暗証番号",
-    title + " に " + amount + " INAを支払います。" + (memo ? " 💬「" + memo + "」" : ""),
+    title + " に " + amount + " INAを支払います。" + memo + (note ? " お店へのひとこと「" + note + "」" : ""),
   );
   const p = { address, managed: true };
   return submit(
     p,
-    () => siteSigner(p, { card, pin, checkout }),
+    () => siteSigner(p, { card, pin, checkout, note }),
     spend(
       program,
       address,

@@ -202,7 +202,7 @@ export async function checkPending(a, pending = JSON.parse(pendingSig(a))) {
   }
   throw Error("取引の確定を確認中です。");
 }
-export async function submit(profile, wallet, ix, extra = [], viewer = profile.address) {
+export async function submit(profile, wallet, ix, extra = [], viewer = profile.address, note = "", access) {
   await assertDevnet(rpc);
   for (const address of new Set([viewer,profile.address])) {
     if (pendingSig(address)) {
@@ -249,6 +249,10 @@ export async function submit(profile, wallet, ix, extra = [], viewer = profile.a
     throw Error("署名時に取引内容が変わりました。送信を中止しました。");
   if (!signed.verifySignatures(!sponsor) || signed.signatures.some(s => !s.signature && !(sponsor && s.publicKey.equals(sponsor))))
     throw Error("必要な署名を確認できません。送信を中止しました。");
+  if (note) {
+    // Save the private text before broadcasting. A dropped response cannot lose a paid note.
+    await memberApi("payment-note",{note,access,tx:signed.serialize({requireAllSignatures:false}).toString("base64")});
+  }
   if (pendingSig(viewer) || pendingSig(profile.address)) throw Error("別の取引の送信結果を確認中です。");
   const entry = {height:latest.lastValidBlockHeight,payment:paymentEffect(ix,viewer)};
   if (sponsor) {
