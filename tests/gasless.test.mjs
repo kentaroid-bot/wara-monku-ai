@@ -93,7 +93,8 @@ test("signed-in zero-SOL buyer joins, spends and transfers through Worker/D1 and
       : null;
   };
   const broadcast = [];
-  let rateLimitedWire, accountReads = 0;
+  let rateLimitedWire, rejectBroadcast, lastAcceptedWire, accountReads = 0;
+  const replays = [];
   async function rpcRequest(req) {
     const { id, method, params } = await req.json();
     const ctx = (value) => ({ context: { slot: 1 }, value });
@@ -143,6 +144,14 @@ test("signed-in zero-SOL buyer joins, spends and transfers through Worker/D1 and
         break;
       }
       case "sendTransaction": {
+        if (rejectBroadcast === "quota") return new Response(null, {status:429, headers:{"Retry-After":"1"}});
+        if (rejectBroadcast === "preflight") return Response.json({id, jsonrpc:"2.0",
+          error:{code:-32002, message:"Transaction simulation failed", data:{logs:[]}}});
+        if (rejectBroadcast === "duplicate") {
+          replays.push(params[0]);
+          return Response.json({id, jsonrpc:"2.0", error:{code:-32002,
+            message:"Transaction simulation failed: This transaction has already been processed", data:{logs:[]}}});
+        }
         if (!rateLimitedWire) {
           rateLimitedWire = params[0];
           return new Response("rate limited", {status:429, headers:{"Retry-After":"1"}});
@@ -151,6 +160,7 @@ test("signed-in zero-SOL buyer joins, spends and transfers through Worker/D1 and
         const raw = Buffer.from(params[0], "base64");
         execute(raw);
         result = bs58.encode(Transaction.from(raw).signature);
+        lastAcceptedWire = params[0];
         broadcast.push(result);
         break;
       }
@@ -267,6 +277,18 @@ test("signed-in zero-SOL buyer joins, spends and transfers through Worker/D1 and
   let drop = false,
     lastBody;
   t.mock.method(globalThis, "fetch", async (path, opts) => {
+    if (path === "/api/relay" && !lastBody) {
+      const payload = JSON.parse(opts.body);
+      const tx = Transaction.from(Buffer.from(payload.tx, "base64"));
+      const receipt = bs58.encode(tx.signatures.find(s => s.publicKey.equals(user)).signature);
+      for (const [reason, status] of [["quota", 503], ["preflight", 422]]) {
+        rejectBroadcast = reason;
+        const rejected = await post(path, payload);
+        assert.equal(rejected.status, status, await rejected.clone().text());
+        assert.deepEqual(await (await post("/api/relay/status", {receipt, session})).json(), {signature:null});
+      }
+      rejectBroadcast = null; // Retry the same signed transaction through the normal client.
+    }
     const res = await runtime.dispatchFetch(base + path, opts);
     if (path === "/api/relay") {
       lastBody = JSON.parse(opts.body);
@@ -336,10 +358,27 @@ test("signed-in zero-SOL buyer joins, spends and transfers through Worker/D1 and
   assert.equal(balance(secondShop), 3n);
   assert.equal(balance(user), 17n);
   assert.equal(account(user)?.lamports ?? 0, 0);
-  assert.deepEqual(await (await post("/api/relay", lastBody)).json(), {
-    signature: broadcast[3],
+  await t.test("receipt retries reuse the exact bytes, including recovery after a sender disappears", async () => {
+    rejectBroadcast = "duplicate";
+    const sig = broadcast[3];
+    const tx = Transaction.from(Buffer.from(lastBody.tx, "base64"));
+    const receipt = bs58.encode(tx.signatures.find(s => s.publicKey.equals(user)).signature);
+    const setReservation = started => db.prepare("UPDATE relay_receipts SET signature=? WHERE receipt=?")
+      .bind(sig + ":" + started, receipt).run();
+    const retry = () => post("/api/relay", lastBody);
+
+    assert.deepEqual(await (await retry()).json(), {signature:sig}); // Existing plain receipt.
+    await setReservation(Date.now());
+    assert.equal((await retry()).status, 503);
+    assert.deepEqual(replays, [lastAcceptedWire]);
+    await setReservation(Date.now() - 60000);
+    assert.deepEqual(await (await retry()).json(), {signature:sig});
+    assert.deepEqual(replays, [lastAcceptedWire, lastAcceptedWire]);
+    assert.equal(await db.prepare("SELECT signature FROM relay_receipts WHERE receipt=?")
+      .bind(receipt).first("signature"), sig);
+    assert.equal(broadcast.length, 4);
+    rejectBroadcast = null;
   });
-  assert.equal(broadcast.length, 4);
   await t.test("store profile persists in D1 only for its certified merchant, with stale-edit and private-read checks",async()=>{
     const group = String(g), store = String(merchant), id = String(addr(program,"s3",g,merchant));
     const data = {group,store,title:"珈琲屋",caption:"手作りスコーン",icon:"☕",is_test:true,revision:0};
@@ -667,4 +706,37 @@ test("relay rejects extra SOL debits, rent or ATA substitutions, unsigned actors
   );
   ataIx[2].keys[2].pubkey = user;
   await denied(ataIx);
+});
+
+test("an ambiguous send and an AlreadyProcessed preflight reply both retain the receipt for replay", async () => {
+  const sponsor = key(), buyer = key(), group = key().publicKey;
+  const tx = new Transaction({feePayer:sponsor.publicKey, recentBlockhash:String(key().publicKey)});
+  tx.add(...sponsoredInstructions([...budgetInstructions(), join(program, buyer.publicKey, group, buyer.publicKey)],
+    sponsor.publicKey, 1000000));
+  tx.partialSign(buyer);
+  for (const failure of [new Error("socket timed out"), Object.assign(new Error("preflight"), {
+    transactionMessage:"Transaction simulation failed: This transaction has already been processed", logs:[],
+  })]) {
+    const rows = new Map(), sent = [];
+    const relay = () => relayPayment({
+      encoded:wire(tx), sponsor, member:String(buyer.publicKey), reserveBudget() {},
+      fail(status, message) { throw Error(status + " " + message); },
+      receipts:{
+        find:id => rows.get(id),
+        insert(id, sig) { rows.set(id, sig); return true; },
+        remove:id => rows.delete(id),
+      },
+      rpc:{
+        getGenesisHash:async () => DEVNET_GENESIS, isBlockhashValid:async () => ({value:true}),
+        getAccountInfo:async () => null, getMinimumBalanceForRentExemption:async () => 1000000,
+        simulateTransaction:async () => ({value:{err:null}}),
+        sendRawTransaction:async bytes => { sent.push(bytes); if (sent.length === 1) throw failure; },
+      },
+    });
+    const result = await relay();
+    assert.deepEqual([...rows.values()], [result.signature]);
+    assert.deepEqual(await relay(), result);
+    assert.equal(sent.length, 2);
+    assert.deepEqual(sent[0], sent[1]);
+  }
 });

@@ -1,83 +1,112 @@
-// Only the payment path fails over. Never change the signed message, blockhash
-// or transaction ID. Each RPC must prove its own cluster before it sees a tx.
+// Each endpoint must prove its cluster before receiving signed bytes.
 import { Connection } from "@solana/web3.js";
 import { assertDevnet, DEVNET_GENESIS } from "../shared/protocol.mjs";
-import { workerConnection, workerDevnetUrl } from "./devnet-rpc.mjs";
+import { publicDevnetFallback, tatumDevnetUrl } from "../shared/devnet.mjs";
 
-import { tatumDevnetUrl as publicAlternate } from "../shared/devnet.mjs";
-class Unavailable extends Error {}
-function retryable(error) {
-  return error instanceof Unavailable || transientCodes.includes(error?.code);
-}
-const transientCodes = [-32005,-32029,-32601,429];
-const wait = ms => new Promise(resolve=>setTimeout(resolve,ms));
-async function rpcFetch(url, init) {
-  const sharedBackup = new URL(url).origin === publicAlternate;
-  for (let attempt=0;;attempt++) {
-    let response;
-    try { response = await fetch(url,{...init, redirect:"manual",signal:AbortSignal.timeout(4500)}); }
-    catch { throw new Unavailable("Devnet RPC transport unavailable"); }
-    // Some gateways return a JSON-RPC error under HTTP 200. web3.js would
-    // otherwise turn this into zero rent or a transaction-rejection error.
-    const code = response.ok ? (await response.clone().json().catch(()=>null))?.error?.code : null;
-    const limited = response.status === 429 || code === -32029 || code === 429;
-    if (!limited && !transientCodes.includes(code) && ![401,403,404,408].includes(response.status) && response.status<500)
-      return response;
-    const retry = response.headers.get("Retry-After");
-    const delay = !retry ? 1250 : /^\d+$/.test(retry) ? Number(retry)*1000 : Date.parse(retry)-Date.now();
-    await response.body?.cancel();
-    if (sharedBackup && limited && !attempt && Number.isFinite(delay) && delay<=3000) {
-      await wait(Math.max(1250,delay));
-      continue;
-    }
-    throw new Unavailable("Devnet RPC unavailable");
+const backoffMs = [1100, 2200, 3300];
+const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
+
+class Unavailable extends Error {
+  constructor(message, {rateLimited = false, retryAfterMs = 0, definitelyRejected = false} = {}) {
+    super(message);
+    this.name = "Unavailable";
+    this.rateLimited = rateLimited;
+    this.retryAfterMs = retryAfterMs;
+    this.definitelyRejected = definitelyRejected;
   }
+}
+
+function retryDelay(value) {
+  if (!value) return backoffMs[0];
+  const ms = /^\d+$/.test(value) ? Number(value) * 1000 : Date.parse(value) - Date.now();
+  return Number.isFinite(ms) ? Math.min(60000, Math.max(ms, backoffMs[0])) : backoffMs[0];
+}
+
+async function rpcFetch(url, init) {
+  let response;
+  try {
+    response = await fetch(url, {...init, redirect:"manual", signal:AbortSignal.timeout(4500)});
+  } catch {
+    throw new Unavailable("Devnet RPC transport unavailable");
+  }
+  const error = (await response.clone().json().catch(() => null))?.error;
+  const rateLimited = response.status === 429 || [-32029, -32005, 429].includes(error?.code);
+  const refused = [401, 403, 404].includes(response.status) || [-32601, -16401].includes(error?.code);
+  if (!rateLimited && !refused && response.status !== 408 && response.status < 500) return response;
+
+  throw new Unavailable("Devnet RPC unavailable", {
+    rateLimited,
+    retryAfterMs: rateLimited ? retryDelay(response.headers.get("Retry-After")) : 0,
+    // A transport failure or a bare gateway 5xx can follow a successful forward.
+    definitelyRejected: rateLimited || refused,
+  });
 }
 
 let config, pool;
 export function paymentConnection(env) {
-  const primary = env.DEVNET_RPC_URL || workerDevnetUrl;
-  const alternate = env.DEVNET_PAYMENT_FALLBACK_URL || (!env.DEVNET_RPC_URL && publicAlternate);
-  const urls = [...new Set([primary,alternate].filter(Boolean))];
+  const configuredPrimary = env.DEVNET_PAYMENT_RPC_URL || env.DEVNET_RPC_URL;
+  const primary = configuredPrimary || publicDevnetFallback;
+  const alternate = env.DEVNET_PAYMENT_FALLBACK_URL || (!configuredPrimary && tatumDevnetUrl);
+  const urls = [...new Set([primary, alternate].filter(Boolean))];
   const key = JSON.stringify(urls);
   if (config !== key) {
-    pool = urls.map(url=>({rpc:urls.length === 1 ? workerConnection(env) : new Connection(url,{commitment:"confirmed",disableRetryOnRateLimit:true,fetch:rpcFetch}),until:0}));
+    pool = urls.map(url => ({
+      rpc: new Connection(url, {commitment:"confirmed", disableRetryOnRateLimit:true, fetch:rpcFetch}),
+      until: 0,
+      failure: null,
+    }));
     config = key;
   }
   return verifiedPaymentRpc(pool);
+}
+
+async function invoke(rpc, method, args) {
+  if (method === "getGenesisHash") return DEVNET_GENESIS;
+  if (method === "getAccountInfo") return (await rpc.getAccountInfoAndContext(...args)).value;
+  return rpc[method](...args);
 }
 
 function verifiedPaymentRpc(nodes) {
   let selected;
   async function call(method, args) {
     const now = Date.now();
-    // A failure on one shared endpoint should not slow down every subsequent
-    // call in this payment or every payment in a warm Worker.
-    const ordered = [...nodes].sort((a,b)=>Number(a.until>now)-Number(b.until>now) ||
-      Number(b===selected)-Number(a===selected));
-    let failure;
-    for (const node of ordered) {
-      try { await assertDevnet(node.rpc); }
-      catch {
-        node.until = now+30000;
-        failure = new Unavailable("Devnet RPC identity unavailable");
-        continue;
+    let candidates = [...nodes].sort((a, b) => Number(a.until > now) - Number(b.until > now) ||
+      Number(b === selected) - Number(a === selected));
+    let uncertainSend = false;
+    for (let pass = 0; ; pass++) {
+      for (const node of candidates) {
+        if (node.failure?.rateLimited && node.until > Date.now()) continue;
+        let verified = false;
+        try {
+          await assertDevnet(node.rpc);
+          verified = true;
+          const result = await invoke(node.rpc, method, args);
+          node.until = 0;
+          node.failure = null;
+          selected = node;
+          return result;
+        } catch (error) {
+          if (verified && !(error instanceof Unavailable)) {
+            if (uncertainSend) throw new Unavailable("Devnet broadcast result unknown");
+            throw error;
+          }
+          // Errors during identity checks cannot have broadcast this transaction.
+          if (verified && method === "sendRawTransaction" && !error.definitelyRejected) uncertainSend = true;
+          node.failure = error;
+          node.until = Date.now() + (error.rateLimited ? error.retryAfterMs : 30000);
+        }
       }
-      try {
-        const result = method === "getGenesisHash" ? DEVNET_GENESIS :
-          method === "getAccountInfo" ? (await node.rpc.getAccountInfoAndContext(...args)).value :
-          await node.rpc[method](...args);
-        node.until=0;
-        selected=node;
-        return result;
-      } catch (error) {
-        if (!retryable(error)) throw error; // A chain rejection is authoritative.
-        node.until=now+30000;
-        failure=error;
-      }
+
+      candidates = candidates.filter(node => node.failure?.rateLimited);
+      if (!candidates.length || pass === backoffMs.length) break;
+      const earliest = Math.min(...candidates.map(node => node.until)) - Date.now();
+      // A minute-long provider quota outlives our retry budget. Leave it cooling.
+      if (earliest > backoffMs.slice(pass).reduce((sum, delay) => sum + delay, 0)) break;
+      await wait(Math.max(backoffMs[pass], earliest));
     }
-    throw failure;
+    throw new Unavailable("Devnet RPC nodes unavailable", {definitelyRejected: !uncertainSend});
   }
-  return Object.fromEntries(["getGenesisHash","isBlockhashValid","getMinimumBalanceForRentExemption",
-    "getAccountInfo","simulateTransaction","sendRawTransaction"].map(method=>[method,(...args)=>call(method,args)]));
+  const methods = ["getGenesisHash", "isBlockhashValid", "getMinimumBalanceForRentExemption",
+    "getAccountInfo", "simulateTransaction", "sendRawTransaction"];
+  return Object.fromEntries(methods.map(method => [method, (...args) => call(method, args)]));
 }

@@ -57,3 +57,54 @@ test("a JSON rate limit on the rent account uses the verified fallback, not an i
   assert.equal(await rpc.getAccountInfo(PublicKey.default),null);
   assert.deepEqual(calls.map(([s,m])=>[s,m]),[[0,"getGenesisHash"],[0,"getAccountInfo"],[1,"getGenesisHash"],[1,"getAccountInfo"]]);
 });
+
+test("short primary burst recovers without spending the backup's minute-long quota again", async t => {
+  let primaryAttempts = 0;
+  const {rpc, calls} = setup(t, "burst", (side, method) => {
+    if (method === "getGenesisHash") return DEVNET_GENESIS;
+    if (side) return new Response(null, {status:429, headers:{"Retry-After":"60"}});
+    if (++primaryAttempts === 1) return Response.json({error:{code:-32005}});
+    return {context:{slot:1}, value:true};
+  });
+  assert.ok((await rpc.isBlockhashValid(DEVNET_GENESIS)).value);
+  assert.deepEqual(calls.map(([s,m]) => [s,m]), [
+    [0,"getGenesisHash"], [0,"isBlockhashValid"], [1,"getGenesisHash"],
+    [1,"isBlockhashValid"], [0,"isBlockhashValid"],
+  ]);
+});
+
+test("a timeout while broadcasting stays ambiguous after the other node refuses", async t => {
+  const {rpc} = setup(t, "ambiguous", (side, method) => {
+    if (method === "getGenesisHash") return DEVNET_GENESIS;
+    if (!side) throw new TypeError("lost response");
+    return new Response(null, {status:429, headers:{"Retry-After":"60"}});
+  });
+  await assert.rejects(rpc.sendRawTransaction(Uint8Array.of(1)), {name:"Unavailable", definitelyRejected:false});
+});
+
+test("single-node identity throttling retries and caches the verified connection across payments", async t => {
+  let checks = 0;
+  const env = {DEVNET_RPC_URL:"https://single.test"};
+  t.mock.method(globalThis, "fetch", async (_url, init) => {
+    const {id, method} = JSON.parse(init.body);
+    if (method === "getGenesisHash" && ++checks === 1) return new Response(null,{status:429});
+    return Response.json({id, jsonrpc:"2.0", result:method === "getGenesisHash" ? DEVNET_GENESIS : 1000});
+  });
+  assert.equal(await paymentConnection(env).getMinimumBalanceForRentExemption(10), 1000);
+  assert.equal(await paymentConnection(env).getGenesisHash(), DEVNET_GENESIS);
+  assert.equal(checks, 2);
+});
+
+test("payment and viewing RPC credentials stay on their respective Worker paths", async t => {
+  const {communityReaders} = await import("../worker/community-read.mjs");
+  const env = {DEVNET_RPC_URL:"https://view.test", DEVNET_PAYMENT_RPC_URL:"https://pay.test"};
+  const hosts = [];
+  t.mock.method(globalThis, "fetch", async (url, init) => {
+    hosts.push(new URL(url).hostname);
+    const {id} = JSON.parse(init.body);
+    return Response.json({id, jsonrpc:"2.0", result:DEVNET_GENESIS});
+  });
+  await paymentConnection(env).getGenesisHash();
+  await communityReaders(env)[0].getGenesisHash();
+  assert.deepEqual(hosts, ["pay.test", "view.test"]);
+});

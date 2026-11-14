@@ -53,6 +53,8 @@ function inspect(encoded, sponsor, member) {
   return { tx, last, receipt };
 }
 
+const sendOptions = {skipPreflight:false, preflightCommitment:"confirmed", maxRetries:3};
+
 export async function relayPayment({
   encoded,
   sponsor,
@@ -71,7 +73,19 @@ export async function relayPayment({
   }
   const { tx, last, receipt } = payment;
   const previous = await receipts.find(receipt);
-  if (previous) return { signature: previous };
+  if (previous) {
+    tx.partialSign(sponsor);
+    if (bs58.encode(tx.signature) !== previous)
+      fail(409, "保存済みの取引署名と一致しません。");
+    if (receipts.canReplay && !await receipts.canReplay(receipt, previous))
+      fail(503, "前の送信結果を確認しています。");
+    try {
+      await rpc.sendRawTransaction(tx.serialize(), sendOptions);
+    } catch {
+      // A rejection on this replay says nothing about the earlier broadcast.
+    }
+    return {signature: previous};
+  }
   await requireFreshBlockhash(rpc, tx.recentBlockhash, fail);
   if (declaredRent(tx) !== (await rentShortfall(rpc, last)))
     fail(409, "口座のRentが変わりました。画面を更新してください。");
@@ -99,18 +113,23 @@ export async function relayPayment({
   if (last.data[0] === 18) await beforeMembershipEnd(String(last.keys[1].pubkey),String(last.keys[2].pubkey));
   // Commit the ID before broadcasting. Even a dropped HTTP response can then
   // be reconciled by the user's signature without creating a second payment.
-  if (await receipts.insert(receipt, signature)) {
-    try {
-      await rpc.sendRawTransaction(raw, {
-        skipPreflight: false,
-        preflightCommitment: "confirmed",
-        maxRetries: 3,
-      });
-    } catch (error) {
-      if (error.logs || error.transactionMessage?.includes("simulation failed"))
-        fail(422, "Devnetの事前検証で取引が拒否されました。");
-      // Delivery is ambiguous. Return the deterministic ID for on-chain lookup.
+  if (!await receipts.insert(receipt, signature))
+    fail(503, "前の送信結果を確認しています。");
+  try {
+    await rpc.sendRawTransaction(raw, sendOptions);
+  } catch (error) {
+    const message = error.transactionMessage ?? error.message ?? "";
+    const processed = /already[ _-]*(?:been )?processed/i.test(message);
+    const rejected = !processed && (error.logs || /simulation failed/i.test(message));
+    if (!processed && (rejected || error.definitelyRejected === true)) {
+      // An expired lease taken over by a replay may already have delivered.
+      if (await receipts.remove?.(receipt) !== false) {
+        if (rejected) fail(422, "Devnetの事前検証で取引が拒否されました。");
+        fail(503, "Devnetの送信ノードが混雑しています。少し待ってからもう一度お試しください。");
+      }
     }
+    // A timeout or AlreadyProcessed must remain reconcilable by the same ID.
   }
+  await receipts.complete?.(receipt, signature);
   return { signature };
 }

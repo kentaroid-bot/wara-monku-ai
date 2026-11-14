@@ -58,9 +58,31 @@ export async function memberRequest(op, b, ctx) {
   }
   if (op === "relay" || op === "relay-status") {
     const { m } = await session();
+    // While the first POST is sending, keep a short lease so a concurrent replay
+    // cannot land just as that POST removes its explicitly rejected reservation.
+    // Completed and legacy rows contain only the original base58 transaction ID.
+    const stored = receipt => query("SELECT signature FROM relay_receipts WHERE receipt=?", receipt).first("signature");
+    let reservation;
     const receipts = {
-      find: receipt => query("SELECT signature FROM relay_receipts WHERE receipt=?", receipt).first("signature"),
-      insert: async (receipt, sig) => (await query("INSERT OR IGNORE INTO relay_receipts VALUES (?,?)", receipt, sig).run()).meta.changes === 1,
+      find: async receipt => (await stored(receipt))?.split(":")[0] ?? null,
+      insert: async (receipt, sig) => {
+        reservation = sig + ":" + Date.now();
+        return (await query("INSERT OR IGNORE INTO relay_receipts VALUES (?,?)", receipt, reservation).run()).meta.changes === 1;
+      },
+      complete: (receipt, sig) => query("UPDATE relay_receipts SET signature=? WHERE receipt=? AND signature=?",
+        sig, receipt, reservation).run(),
+      remove: async receipt => (await query("DELETE FROM relay_receipts WHERE receipt=? AND signature=?",
+        receipt, reservation).run()).meta.changes === 1,
+      canReplay: async (receipt, sig) => {
+        const value = await stored(receipt);
+        if (value === sig) return true;
+        if (!value) return false;
+        const [id, started] = value.split(":");
+        if (id !== sig || Date.now() - Number(started) < 45000) return false;
+        // A crashed sender may already have delivered. Preserve its ID before replay.
+        return (await query("UPDATE relay_receipts SET signature=? WHERE receipt=? AND signature=?",
+          sig, receipt, value).run()).meta.changes === 1;
+      },
     };
     if (op === "relay-status") {
       if (typeof b.receipt !== "string" || !/^[1-9A-HJ-NP-Za-km-z]{64,88}$/.test(b.receipt)) bad();
