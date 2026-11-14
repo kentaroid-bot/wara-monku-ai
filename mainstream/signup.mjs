@@ -34,7 +34,7 @@ export async function signup(el, info) {
       try {
         await handler(form);
       } catch (error) {
-        info(error.message);
+        info(error);
       } finally {
         fieldset.disabled = false;
       }
@@ -78,14 +78,13 @@ export async function signup(el, info) {
   function codeStep(intent, phone, proof) {
     screen("電話番号を確認", `<p>${sms ? "SMSに届いた6桁のコードを入力してください。" : "試験用コード：" + (proof.trialCode ?? proof.local.code)}</p>
       <label>6桁の確認コード<input name="otp" autocomplete="one-time-code" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" required></label>
-      <button>次へ</button><button type="button" class="secondary" data-resend>コードを再発行</button>`);
+      <button type="submit">次へ</button><div><button type="button" class="text-link" data-resend>コードを再発行</button></div>`);
     el.querySelector("[data-resend]").onclick = () => phoneStep(intent);
     el.querySelector("[name=otp]").focus();
     submit(async (form) => {
       const step = await resolveWallet(phone, proof, form.elements.otp.value);
       if (step.action === "signin") {
         walletStep(phone, step, step.type, intent === "signin" ? "" : "この番号には登録済みの財布があります。");
-        if (intent === "signin" && step.type === "phantom") el.querySelector("form").requestSubmit();
       } else if (step.deviceWallet) {
         transferStep(phone, step);
       } else if (intent === "create") {

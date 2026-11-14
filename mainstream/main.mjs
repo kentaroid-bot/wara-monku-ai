@@ -5,7 +5,7 @@ import { Buffer } from "buffer";
 import { twinCards } from "./balances.mjs";
 import { paymentHistory } from "./history.mjs";
 import QRCode from "qrcode";
-import { active, signout, unlock, memberSessionKey, managedSession, restorePhantom, authMode } from "./identity.mjs";
+import { active, signout, unlock, memberSessionKey, managedSession, restorePhantom, authMode, PhantomAccountMismatch, recheckPhantom } from "./identity.mjs";
 import { signup } from "./signup.mjs";
 globalThis.Buffer ??= Buffer;
 export const esc = (v) =>
@@ -18,8 +18,28 @@ export const esc = (v) =>
   );
 const el = document.querySelector("#screen"),
   notice = document.querySelector("#notice");
-const info = (s) => {
-  notice.textContent = s;
+const info = (message) => {
+  notice.textContent = message instanceof Error ? message.message : message;
+  if (!(message instanceof PhantomAccountMismatch)) return;
+  const retry = document.createElement("button");
+  retry.type = "button";
+  retry.textContent = "Phantomの接続を確認する";
+  retry.onclick = async () => {
+    retry.disabled = true;
+    try {
+      await recheckPhantom(message.expected);
+      if (retry.isConnected) info(path === "/signup"
+        ? "登録した財布に接続しました。「登録済みのPhantomで署名する」を押してください。"
+        : "登録した財布に接続しました。金額と相手を確認して、もう一度操作してください。");
+    } catch (error) {
+      if (retry.isConnected) {
+        notice.textContent = error.message;
+        notice.append(retry);
+        retry.disabled = false;
+      }
+    }
+  };
+  notice.append(retry);
 };
 const pathname = location.pathname.replace(/\/+$/, "") || "/";
 const path = pathname === "/register" ? "/shop" : pathname;
@@ -105,7 +125,7 @@ export function action(form, handler) {
       info("処理中…");
       await handler(Object.fromEntries(new FormData(form)), form);
     } catch (x) {
-      info(x.message);
+      info(x);
     } finally {
       delete form.dataset.busy;
       if (btn) btn.disabled = false;

@@ -65,6 +65,7 @@ button:active, .action:active, .file-picker:active { transform: scale(0.97); }
 .button.file-picker:focus-within { outline: 3px solid #aa863a; outline-offset: 2px; }
 button:disabled { opacity: .6; cursor: default; }
 button.secondary, .action.secondary { background: var(--tile); color: var(--leaf); border-color: color-mix(in srgb, var(--line), #fda4af var(--blush)); box-shadow: none; }
+button.text-link { background: transparent; color: var(--leaf); box-shadow: none; padding-inline: .2rem; text-decoration: underline; font-weight: 500; }
 button.theme { width: 44px; border-radius: 50%; background: var(--wash); color: var(--ink); font-size: 1.15rem; }
 :focus-visible { outline: 3px solid #aa863a; outline-offset: 2px; }
 nav { position: fixed; bottom: 0; left: 50%; transform: translateX(-50%); width: min(100%,28rem); z-index: 5;

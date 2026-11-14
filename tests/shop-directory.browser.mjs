@@ -79,10 +79,12 @@ try {
   assert.deepEqual(await page.locator(".market-row strong").allTextContents(),groups.slice(0,4).map(g=>g.name));
   await page.goto(origin+"/shop/");
   await page.getByRole("link",{name:"🦊 パン屋"}).waitFor();
-  assert.deepEqual(await page.locator('a[href^="/shop/?group="]').allTextContents(),["🦊 パン屋","開設済みの店"]);
+  const listedStores = () => page.locator('a[href^="/shop/?group="]').evaluateAll(links=>links.map(link=>new URL(link.href).searchParams.get("store")));
+  // The dynamically loaded caption is also inside the link; compare register destinations.
+  assert.deepEqual(await listedStores(),[stores[0].to,stores[1].to]);
   await page.goto(origin+"/shop/?mode=receive");
   await page.getByRole("link",{name:"🦊 パン屋"}).waitFor();
-  assert.deepEqual(await page.locator('a[href^="/shop/?group="]').allTextContents(),["🦊 パン屋"]);
+  assert.deepEqual(await listedStores(),[stores[0].to]);
   // A non-member can still follow a public register link and see the existing invitation to join.
   await page.goto(origin+"/shop/?"+new URLSearchParams({group:stores[2].group,store:stores[2].to}));
   await page.getByRole("link",{name:"地域に参加して支払う"}).waitFor();
@@ -94,6 +96,26 @@ try {
   await page.screenshot({path:"/tmp/wara-phase2-confirm.png"});
   await page.keyboard.press("Escape");
   await page.getByText("取り消しました。",{exact:true}).waitFor();
+  // A phone wallet can retain the previous site connection after the user switches accounts.
+  await page.evaluate(({wrong,who})=>{
+    let selected=wrong;
+    const key=value=>({toBase58:()=>value,toString:()=>value});
+    window.selectRegistered=()=>{ selected=who; };
+    window.phantom={solana:{
+      isPhantom:true,isConnected:true,publicKey:key(wrong),
+      async connect(){ if(!this.isConnected) this.publicKey=key(selected); this.isConnected=true; return {publicKey:this.publicKey}; },
+      async disconnect(){ this.isConnected=false; this.publicKey=null; },
+    }};
+  },{who,wrong:admin});
+  await page.locator("#ina").getByRole("button",{name:"金額を確認して支払う"}).click();
+  await page.getByRole("dialog").getByRole("button",{name:"支払う",exact:true}).click();
+  const recheck=page.getByRole("button",{name:"Phantomの接続を確認する"});
+  await recheck.waitFor();
+  assert.ok((await page.locator("#notice").innerText()).includes(who.slice(-6)));
+  await page.evaluate(()=>window.selectRegistered());
+  await recheck.click();
+  await page.getByText(/登録した財布に接続しました/).waitFor();
+  assert.equal(await page.getByRole("dialog").count(),0);
   await page.locator('#wara input[name="amount"]').fill("10");
   await page.locator("#wara button").click();
   await page.getByRole("dialog").getByRole("button",{name:"キャンセル"}).click();

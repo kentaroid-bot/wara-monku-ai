@@ -162,7 +162,7 @@ function panel(el, title, body, onSubmit, info) {
     try {
       await onSubmit(values);
     } catch (err) {
-      info(err.message);
+      info(err);
     } finally {
       field.disabled = false;
     }
@@ -194,7 +194,7 @@ async function smsFlow(el, info, mode, intent, done) {
       panel(
         el,
         "電話番号を確認",
-        '<p data-code></p><label>SMSの確認コード<input name="code" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" maxlength="6" required></label><button>次へ</button><button type="button" data-retry>再送する</button>',
+        '<p data-code></p><label>SMSの確認コード<input name="code" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" maxlength="6" required></label><button type="submit">次へ</button><div><button type="button" class="text-link" data-retry>確認コードを再送する</button></div>',
         async ({ code }) => done(phone, await resolveWallet(phone, auth, code)),
         info,
       );
@@ -287,6 +287,17 @@ async function prepareCards(el, info, values, save, done, address = "") {
     }
   };
 }
+async function finishSignin(el, info, result) {
+  const finish = async () => {
+    await logged(result);
+    location.replace(managedSession()?.profile.type === "phantom" ? "/account/" : "/");
+  };
+  if (!result.signatureTicket) return finish();
+  panel(el, "財布を開く",
+    '<p>Phantomで次のSolanaアドレスのアカウントを選んでください。</p><p class="wrap" data-address></p><button>登録済みのPhantomで署名する</button>',
+    finish, info);
+  el.querySelector("[data-address]").textContent = result.address;
+}
 function phoneEntry(el, info, mode, intent) {
   return smsFlow(el, info, mode, intent, async (phone, step) => {
     const challenge = {
@@ -294,22 +305,16 @@ function phoneEntry(el, info, mode, intent) {
       challengeId: step.challengeId,
     };
     if (step.managed) {
-      let pending;
       panel(
         el,
         "財布を開く",
         "<button>いつもの暗証番号を入力</button>",
         async () => {
-          if (!pending)
-            pending = await memberApi("phone-login", {
-              ...challenge,
-              pin: await keypad("財布の暗証番号"),
-            });
-          if (pending.signatureTicket)
-            el.querySelector("button").textContent =
-              "登録済みのPhantomで署名する";
-          await logged(pending);
-          location.replace(managedSession()?.profile.type==="phantom" ? "/account/" : "/");
+          const result = await memberApi("phone-login", {
+            ...challenge,
+            pin: await keypad("財布の暗証番号"),
+          });
+          await finishSignin(el, info, result);
         },
         info,
       );
@@ -425,14 +430,13 @@ export function memberSignup(el, info, mode) {
             .join("") + "<button>暗証番号へ</button>",
           async (answers) => {
             const pin = await keypad("財布の暗証番号");
-            await logged(
+            await finishSignin(el, info,
               await memberApi("name-login", {
                 ticket: step.ticket,
                 answers: [answers.a0, answers.a1],
                 pin,
               }),
             );
-            location.replace(managedSession()?.profile.type==="phantom" ? "/account/" : "/");
           },
           info,
         );
