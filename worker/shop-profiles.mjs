@@ -15,20 +15,20 @@ export function decode(account, id) {
 
 export async function saveShop(db, rpc, realm, viewer, payload, fail) {
   const group = address(payload.group, fail), merchant = address(payload.store, fail);
-  if (viewer !== merchant) fail(403, "店舗を編集できるのは店主本人です。");
+  if (viewer !== merchant) fail(403, "受け取り窓口を編集できるのは受け取る本人です。");
   const {revision} = payload;
-  if (!Number.isSafeInteger(revision) || revision < 0) fail(400, "店舗情報を更新してから編集してください。");
+  if (!Number.isSafeInteger(revision) || revision < 0) fail(400, "受け取り窓口情報を更新してから編集してください。");
   let fields;
-  try { fields = shopFields(payload); } catch { fail(400, "店舗プロフィールの入力を確認してください。"); }
+  try { fields = shopFields(payload); } catch { fail(400, "受け取り窓口プロフィールの入力を確認してください。"); }
   const shop = addr(program, "s3", group, merchant);
   let shopAccount;
   try {
     shopAccount = await rpc.getAccountInfo(shop, "confirmed");
   } catch {
-    fail(503, "Devnetから店舗情報を取得できませんでした。少し待ってから再試行してください。");
+    fail(503, "Devnetから受け取り窓口情報を取得できませんでした。少し待ってから再試行してください。");
   }
   const row = decode(shopAccount, String(shop));
-  if (row?.tag !== 32 || row.to !== merchant || row.group !== group) fail(403, "公認店舗を確認できません。");
+  if (row?.tag !== 32 || row.to !== merchant || row.group !== group) fail(403, "受け取り窓口を確認できません。");
   const values = [fields.title, fields.caption, fields.icon, Number(fields.is_test)];
   const stmt = revision === 0
     ? db.prepare("INSERT INTO shop_profiles(realm,shop,group_id,merchant,title,caption,icon,is_test,revision) VALUES(?,?,?,?,?,?,?,?,1) ON CONFLICT DO NOTHING")
@@ -40,7 +40,7 @@ export async function saveShop(db, rpc, realm, viewer, payload, fail) {
 }
 
 export async function readShops(db, rpc, realm, viewer, ids, fail) {
-  if (!Array.isArray(ids) || !ids.length || ids.length > 32) fail(400, "店舗の指定を確認してください。");
+  if (!Array.isArray(ids) || !ids.length || ids.length > 32) fail(400, "受け取り窓口の指定を確認してください。");
   const keys = [...new Set(ids.map(id => address(id,fail)))];
   const {results} = await db.prepare("SELECT * FROM shop_profiles WHERE realm=? AND shop IN (" + keys.map(()=>"?").join(",") + ")")
     .bind(realm,...keys).all();

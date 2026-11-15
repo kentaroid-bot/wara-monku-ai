@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { Keypair } from "@solana/web3.js";
 import { loadState, rpc, program } from "../mainstream/network.mjs";
-import { DEVNET_GENESIS } from "../shared/protocol.mjs";
+import { DEVNET_GENESIS, addr } from "../shared/protocol.mjs";
 import { enhanceShopProfiles } from "../mainstream/shop-profile.mjs";
 import { memberSessionKey, policyDirectoryKey } from "../mainstream/storage-keys.mjs";
 
@@ -16,6 +16,28 @@ function storage(t) {
   }
 }
 const deferred = () => { let resolve; const promise = new Promise(r=>{resolve=r;}); return {promise,resolve}; };
+
+test("card state deducts same-day carried spending from its sender quota, independently of the cashier", async t => {
+  storage(t);
+  const address = String(Keypair.generate().publicKey), cashier = String(Keypair.generate().publicKey);
+  localStorage.setItem(memberSessionKey, JSON.stringify({session:"cashier",expires:Date.now()+60000,
+    profile:{address:cashier,managed:true,carriedDay:10,carriedSpent:9}}));
+  t.mock.method(rpc,"getGenesisHash",async()=>DEVNET_GENESIS);
+  t.mock.method(rpc,"getProgramAccounts",async()=>[]);
+  const clock = Buffer.alloc(40), person = Buffer.alloc(25);
+  clock.writeBigInt64LE(10n*86400n-32400n,32);
+  person[0]=35;person.writeBigInt64LE(10n,1);person.writeBigUInt64LE(3n,9);person.writeBigUInt64LE(2n,17);
+  t.mock.method(rpc,"getMultipleAccountsInfo",async keys=>{
+    assert.equal(String(keys[1]),String(addr(program,"p3",address)));
+    return [{data:clock},{owner:program,data:person}];
+  });
+  const state = await loadState(address,true,null,false,{address,carriedDay:10,carriedSpent:6});
+  assert.equal(state.remaining,1n);
+  assert.equal(state.nonce,2n);
+  assert.ok(2n > state.remaining, "a payment taking the daily total above ten must be stopped");
+  assert.equal((await loadState(address,true,null,false,{address,carriedDay:9,carriedSpent:6})).remaining,7n);
+  assert.equal((await loadState(address,true,null,false,{address,carriedDay:10,carriedSpent:8})).remaining,0n);
+});
 
 test("wallet profile synchronization overlaps account reads; directory does not fetch balances", async t => {
   storage(t);
@@ -82,7 +104,16 @@ for (const scenario of ["edited", "focused", "busy", "stale", "detached"])
 test("profile errors leave content intact and return a retry notice", async () => {
   const f = profileDOM();
   f.profiles.load=async()=>{throw Error("offline");};
-  assert.match(await enhanceShopProfiles(f.profiles,f.state,f.content,escape,()=>true),/店舗プロフィールを取得できません/);
+  assert.match(await enhanceShopProfiles(f.profiles,f.state,f.content,escape,()=>true),/受け取り窓口プロフィールを取得できません/);
   assert.equal(f.label.innerHTML,"元の店");
   assert.equal(f.input.value,"元の店");
+});
+
+test("directory labels keep the recipient name compact during late profile enhancement", async () => {
+  const f=profileDOM();
+  f.label.dataset.compactLabel="1";
+  f.state.rows[0].caption="紹介文";
+  const pending=enhanceShopProfiles(f.profiles,f.state,f.content,escape,()=>true);
+  f.pending.resolve(); await pending;
+  assert.equal(f.label.innerHTML,"新しい店");
 });

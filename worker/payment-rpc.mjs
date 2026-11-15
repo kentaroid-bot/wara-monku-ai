@@ -107,6 +107,6 @@ function verifiedPaymentRpc(nodes) {
     throw new Unavailable("Devnet RPC nodes unavailable", {definitelyRejected: !uncertainSend});
   }
   const methods = ["getGenesisHash", "isBlockhashValid", "getMinimumBalanceForRentExemption",
-    "getAccountInfo", "simulateTransaction", "sendRawTransaction"];
+    "getAccountInfo", "getMultipleAccountsInfo", "getProgramAccounts", "getLatestBlockhash", "getSignatureStatuses", "simulateTransaction", "sendRawTransaction"];
   return Object.fromEntries(methods.map(method => [method, (...args) => call(method, args)]));
 }

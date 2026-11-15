@@ -20,10 +20,10 @@ const imageGuidance = /「カメラ・写真でQRを読む」でも読み取れ�
 const initialGuidance = 'ボタンを押して、カメラ撮影または写真からQRコードを読み取ってください。';
 const browser = await browsers[browserType].launch({ executablePath: process.env.CHROME_BIN });
 try {
-  for (const width of [320, 390]) for (const profile of ['browser', 'phantom-ua', 'phantom-provider']) {
+  for (const width of [320, 390, 1024]) for (const colorScheme of ["light","dark"]) for (const profile of ['browser', 'phantom-ua', 'phantom-provider']) {
     const inAppBrowser = profile !== 'browser';
     const userAgent = inAppBrowser ? 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148' + (profile === 'phantom-ua' ? ' Phantom/26.0' : '') : undefined;
-    const page = await browser.newPage({ viewport: { width, height: 844 }, isMobile: true, hasTouch: true, userAgent });
+    const page = await browser.newPage({ viewport: { width, height: 844 }, isMobile: true, hasTouch: true, colorScheme, userAgent });
     const errors = []; page.on('pageerror', e => errors.push(e.message));
     const waitForQr = async () => {
       try { await page.waitForFunction(() => !!window.accepted, null, { timeout: 10000 }); }
@@ -122,8 +122,13 @@ try {
         await page.getByRole('button', { name: 'カメラを開く', exact: true }).click();
         await page.waitForFunction(() => !!document.querySelector('video').srcObject);
         if (mode !== 'fallback') {
-          await page.waitForFunction(() => document.querySelector('video').controls);
-          assert.match(await status.innerText(), /再生ボタン/);
+          // Native autoplay may recover immediately after the injected play() rejection.
+          // Inspect controls and guidance together so a playing event cannot race two reads.
+          await page.waitForFunction(() => {
+            const v = document.querySelector('video'), text = document.querySelector('[role=status]').textContent;
+            return (v.controls && text.includes('再生ボタン')) ||
+              (!v.controls && !v.paused && v.readyState >= 2 && text.includes('QR全体'));
+          });
         } else assert.deepEqual(await page.evaluate(() => calls[1]), { video: true, audio: false });
         assert.equal(await video.isVisible(), true);
         assert.equal(await video.evaluate(v => v.muted && v.autoplay && v.playsInline && v.srcObject.getTracks()[0].readyState === 'live'), true);

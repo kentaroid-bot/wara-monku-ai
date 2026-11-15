@@ -103,6 +103,9 @@ test("signed-in zero-SOL buyer joins, spends and transfers through Worker/D1 and
       case "getGenesisHash":
         result = DEVNET_GENESIS;
         break;
+      case "getSignatureStatuses":
+        result = ctx(params[0].map(sig=>broadcast.includes(sig) ? {slot:1,confirmations:1,err:null,confirmationStatus:"confirmed"} : null));
+        break;
       case "isBlockhashValid":
         result = ctx(params[0] === svm.latestBlockhash());
         break;
@@ -215,11 +218,13 @@ test("signed-in zero-SOL buyer joins, spends and transfers through Worker/D1 and
     "0006_private_community_profiles",
     "0007_private_community_names",
     "0008_community_access",
+    "0009_payment_notes",
+    "0010_sender_wallets",
   ]) {
     const sql = await readFile("migrations/" + file + ".sql", "utf8");
     for (const stmt of sql
       .trim()
-      .split(/;\s*(?=CREATE |$)/)
+      .split(/;\s*(?=CREATE |ALTER |$)/)
       .filter(Boolean))
       await db.prepare(stmt).run();
   }
@@ -229,6 +234,7 @@ test("signed-in zero-SOL buyer joins, spends and transfers through Worker/D1 and
     )
     .bind(String(user))
     .run();
+  await db.prepare("UPDATE members SET sender_address=address WHERE id='buyer'").run();
   await db
     .prepare("INSERT INTO wallet_tickets VALUES(?,'trial','session',?,?)")
     .bind(
@@ -323,7 +329,7 @@ test("signed-in zero-SOL buyer joins, spends and transfers through Worker/D1 and
     },
   });
   const mint = mintFor(program, g);
-  const balance = (k) => account(ata(mint, k)).data.readBigUInt64LE(64);
+  const balance = (k) => account(ata(mint, k))?.data.readBigUInt64LE(64) || 0n;
   assert.equal(account(user), null);
   await submit(
     profile,
@@ -333,21 +339,42 @@ test("signed-in zero-SOL buyer joins, spends and transfers through Worker/D1 and
   );
   const day = (svm.getClock().unixTimestamp + 32400n) / 86400n;
   await submit(profile, wallet, spend(program, user, g, merchant, 1n, day, 0n));
-  assert.equal(balance(merchant), 90n);
-  assert.equal(balance(user), 10n);
+  assert.equal(balance(merchant), 100n);
+  assert.equal(balance(user), 0n);
   assert.equal(account(ata(mint, secondShop)), null);
-  await t.test("signed memo crosses Worker relay and settles on LiteSVM", async () => {
-    const signature = await submit(profile, wallet, spend(program,user,g,merchant,1n,day,1n,"いつもありがとう！ ✨"));
+  await t.test("only the reaction is broadcast; the confirmed merchant can read the private note", async () => {
+    const note = "おいしかったです <3";
+    const signature = await submit(profile, wallet, spend(program,user,g,merchant,1n,day,1n,"😊"),[],String(user),note);
+    const bytes = Buffer.from(lastAcceptedWire,"base64"), tx = Transaction.from(bytes);
+    assert.ok(bytes.includes(Buffer.from("😊")));
+    assert.ok(!bytes.includes(Buffer.from(note)));
+    const receipts = [{sig:signature,payerSignature:bs58.encode(tx.signatures.find(s=>s.publicKey.equals(user)).signature)}];
+    const read = auth=>post("/api/member/payment-notes",{receipts,...auth});
+    assert.equal((await read({})).status,401);
+    assert.deepEqual(await (await read({session})).json(),{notes:[]});
+    const {ticket,audience} = await (await post("/api/member/shop-challenge",{address:String(merchant),purpose:"payment-notes"})).json();
+    const proof=Buffer.from(ed25519.sign(walletMessage(audience,"payment-notes",ticket,String(merchant)),shop.secretKey.slice(0,32))).toString("base64");
+    const {access}=await (await post("/api/member/shop-access",{ticket,proof})).json();
+    const unconfirmed=broadcast.pop();
+    assert.deepEqual(await (await read({access})).json(),{notes:[]});
+    broadcast.push(unconfirmed);
+    assert.deepEqual(await (await read({access})).json(),{notes:[{sig:signature,note}]});
     assert.equal(signature,broadcast.at(-1));
-    assert.equal(balance(merchant),180n);
-    assert.equal(balance(user),20n);
+    assert.equal(balance(merchant),200n);
+    assert.equal(balance(user),0n);
   });
+  // Transfer existing WARA to fund the primary wallet; iine no longer refunds it.
+  admin([certify(program, owner.publicKey, g, user, "受取")]);
+  const funding = new Transaction({feePayer:owner.publicKey,recentBlockhash:svm.latestBlockhash()}).add(...transfer(program,merchant,g,user,[{origin:g,amount:20n}]));
+  svm.airdrop(String(merchant),5_000_000n);
+  funding.sign(owner,shop); execute(funding.serialize());
+  svm.setAccount({address:String(addr(program,"s3",g,user)),lamports:0n,data:Buffer.alloc(0),programAddress:String(SystemProgram.programId),executable:false});
   drop = true;
   const recovered = [];
   const onConfirmed = event => recovered.push(event.detail);
   settlementEvents.addEventListener("confirmed",onConfirmed);
   try {
-    const sig = await submit(profile, wallet, transfer(program, user, g, secondShop, [{ origin: g, amount: 3n }]));
+    const sig = await submit(profile, wallet, transfer(program, user, g, secondShop, [{ origin: g, amount: 3n }], "❤️"));
     assert.equal(sig,broadcast[3]);
     assert.deepEqual(recovered,[{address:String(user),sig,payment:{amount:"3",currency:"wara",incoming:false}}]);
     assert.equal(pendingSig(String(user)),null);

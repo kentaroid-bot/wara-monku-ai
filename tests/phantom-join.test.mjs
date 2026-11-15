@@ -4,6 +4,7 @@ import { ComputeBudgetProgram, ComputeBudgetInstruction, Keypair, Transaction } 
 import { DEVNET_GENESIS } from "../app/protocol.mjs";
 import { join, spend } from "../mainstream/protocol.mjs";
 import { program, rpc, submit } from "../mainstream/network.mjs";
+import { unlock, recheckPhantom, PhantomAccountMismatch } from "../mainstream/identity.mjs";
 
 function setup(t) {
   const payer = Keypair.generate();
@@ -29,7 +30,7 @@ function setup(t) {
   const send = (instructions, sign) => submit(profile, async () => ({
     publicKey: payer.publicKey, signTransaction: async tx => { sign(tx); tx.partialSign(payer); return tx; },
   }), instructions);
-  return { payer: payer.publicKey, group, broadcast, send };
+  return { payer: payer.publicKey, keypair: payer, group, broadcast, send };
 }
 
 test("Phantom can sign an open-market join without altering the prepared message", async t => {
@@ -41,6 +42,38 @@ test("Phantom can sign an open-market join without altering the prepared message
     }
   });
   assert.equal(broadcast.mock.callCount(), 1);
+});
+
+test("Phantom payment stops on the wrong account; reconnect checks only, then a new payment signs once", async t => {
+  const { payer, keypair, group, broadcast } = setup(t);
+  const wrong = Keypair.generate().publicKey;
+  let selected = wrong;
+  const provider = {
+    isPhantom: true, isConnected: true, publicKey: wrong,
+    async connect() {
+      if (!this.isConnected) this.publicKey = selected;
+      this.isConnected = true;
+      return { publicKey: this.publicKey };
+    },
+    async disconnect() { this.isConnected = false; this.publicKey = null; },
+    signTransaction: t.mock.fn(async tx => {tx.partialSign(keypair); return tx;}),
+  };
+  const saved = Object.getOwnPropertyDescriptor(globalThis,"phantom");
+  Object.defineProperty(globalThis,"phantom",{configurable:true,value:{solana:provider}});
+  t.after(() => saved ? Object.defineProperty(globalThis,"phantom",saved) : delete globalThis.phantom);
+  const profile = {type:"phantom",address:String(payer)};
+  const pay = () => submit(profile,() => unlock(profile,""),
+    spend(program,payer,group,Keypair.generate().publicKey,1n,1n,0n));
+  await assert.rejects(pay(), error => error instanceof PhantomAccountMismatch &&
+    error.message.includes(String(payer).slice(-6)) && error.message.includes(String(wrong).slice(-6)));
+  await assert.rejects(recheckPhantom(profile.address), PhantomAccountMismatch);
+  selected = payer;
+  await recheckPhantom(profile.address);
+  assert.equal(provider.signTransaction.mock.callCount(),0);
+  assert.equal(broadcast.mock.callCount(),0);
+  await pay();
+  assert.equal(provider.signTransaction.mock.callCount(),1);
+  assert.equal(broadcast.mock.callCount(),1);
 });
 
 test("payments preserve their larger compute budget and a changed destination never broadcasts", async t => {

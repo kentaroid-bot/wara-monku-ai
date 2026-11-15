@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { active, managedSession, rememberSession, signout } from "../mainstream/identity.mjs";
+import { memberApi } from "../mainstream/member-ui.mjs";
 
 function makeStorage() {
   const items = new Map();
@@ -22,6 +23,18 @@ function setup(t) {
 
 const week = 604800000;
 const member = { session: "ticket", profile: { managed: true, address: "test-address", type: "embedded" } };
+
+test("member API errors retain HTTP status and message without discarding the session", async t => {
+  setup(t);
+  rememberSession({...member,remainingMs:week});
+  for (const status of [401,503]) {
+    const message = status === 401 ? "セッションが失効しました。" : "一時的に利用できません。";
+    const fetch = t.mock.method(globalThis,"fetch",async()=>Response.json({error:message},{status}));
+    await assert.rejects(memberApi("session"),error=>error.status===status && error.message===message);
+    assert.equal(managedSession().session,member.session);
+    fetch.mock.restore();
+  }
+});
 
 test("reopening the wallet preserves the seven-day deadline and expires at its boundary", t => {
   setup(t);

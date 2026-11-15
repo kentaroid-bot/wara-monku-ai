@@ -1,4 +1,4 @@
-import { memoInstruction, paymentMemo } from "./payment-memo.mjs";
+import { memoInstruction, paymentReaction } from "./payment-memo.mjs";
 import { Buffer } from "buffer";
 import {
   PublicKey,
@@ -87,7 +87,7 @@ export function createGroup(p, who, g, mode, inv, meta, rent) {
 export function certify(p, who, g, merchant, label) {
   const bytes = Buffer.from(label.trim());
   if (!bytes.length || bytes.length > 120)
-    throw Error("店名は1〜120バイトで入力してください。");
+    throw Error("受け取り名は1〜120バイトで入力してください。");
   return ix(
     p,
     [
@@ -125,12 +125,11 @@ export const offer = (p, who, g, peer, yes) =>
     data(13, byte(yes ? 1 : 0)),
   );
 export function spend(p, who, g, merchant, n, day, nonce, message = "") {
-  const memo = paymentMemo(message);
+  const memo = paymentReaction(message);
   const m = mintFor(p, g);
   return [
     budget(),
     makeAta(who, m, merchant),
-    makeAta(who, m, who),
     ...(memo ? [memoInstruction(memo)] : []),
     ix(
       p,
@@ -143,7 +142,6 @@ export function spend(p, who, g, merchant, n, day, nonce, message = "") {
         rw(addr(p, "p3", who)),
         rw(m),
         rw(ata(m, merchant)),
-        rw(ata(m, who)),
         key(sys),
         key(tok),
       ],
@@ -151,13 +149,14 @@ export function spend(p, who, g, merchant, n, day, nonce, message = "") {
     ),
   ];
 }
-export function transfer(p, who, g, merchant, lots) {
+export function transfer(p, who, g, merchant, lots, reaction = "") {
   return [
     budget(),
-    ...lots.flatMap(({ origin, amount }) => {
+    ...lots.flatMap(({ origin, amount }, index) => {
       const m = mintFor(p, origin);
       return [
         makeAta(who, m, merchant),
+        ...(index === 0 && paymentReaction(reaction) ? [memoInstruction(reaction)] : []),
         ix(
           p,
           [
@@ -190,7 +189,7 @@ export function split(lots, n) {
     n -= used;
     if (!n) return out;
   }
-  throw Error("この店で使えるWARAが不足しています。");
+  throw Error("この相手に贈れるWARAが不足しています。");
 }
 export function parseRow(raw, id) {
   const d = Buffer.from(raw),
@@ -252,3 +251,20 @@ export function quota(d, day) {
 
 // The separate 300-limit Devnet protocol remains available to legacy clients.
 export { DEVNET_GENESIS, CONFIG_LEN, PERSON_LEN, LIMIT, addresses, decodeConfig, decodePerson, currentDay, remaining, amount, initInstructions, enrollInstruction, budgetInstructions, paymentInstructions, assertDevnet, readClock, readInstance, readPerson } from "./legacy-protocol.mjs";
+
+export const SHOP_WARA_PER_INA = 100;
+export const BUYER_WARA_PER_INA = 0;
+export const authorityPda = p => addr(p, "auth3");
+export function setAuthority(p, upgradeAuthority, nextAuthority, programData) {
+  return ix(p, [actor(upgradeAuthority), rw(authorityPda(p)), key(p), key(programData), key(sys)],
+    data(19, pk(nextAuthority).toBuffer()));
+}
+export function sponsorJoin(p, authority, g, sender) {
+  return ix(p, [actor(authority), key(g), key(sender), rw(addr(p,"m3",g,sender)), key(authorityPda(p)), key(sys)], data(20));
+}
+export function closeSenderPda(p, authority, sender, recipient) {
+  return ix(p, [actor(authority), key(sender), rw(addr(p,"p3",sender)), rw(recipient), key(authorityPda(p))], data(21,byte(0)));
+}
+export function closeSenderMember(p, authority, g, sender, recipient) {
+  return ix(p, [actor(authority), key(g), key(sender), rw(addr(p,"m3",g,sender)), rw(recipient), key(authorityPda(p))], data(21,byte(1)));
+}

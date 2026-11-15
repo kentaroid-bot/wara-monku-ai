@@ -1,3 +1,4 @@
+import { identityBackendKey } from "./storage-keys.mjs";
 import { shopFields, shopIcons } from "../shared/shop-profile.mjs";
 import { memberApi } from "./member-ui.mjs";
 import { walletMessage } from "../shared/member-wire.mjs";
@@ -19,8 +20,16 @@ export function shopWalletAccess(profile, wallet, purpose) {
 
 export function shopProfiles(profile, wallet) {
   const auth = shopWalletAccess(profile, wallet, "shop-profile");
+  const notes = shopWalletAccess(profile, wallet, "payment-notes");
   return {
     authenticate:auth.authenticate,
+    get supportsNotes() { return Boolean(profile.managed || localStorage.getItem(identityBackendKey) === "worker"); },
+    canReadNotes: () => Boolean(profile.managed || notes.token()),
+    async noteAccess() { await notes.authenticate(); return notes.token(); },
+    async readNotes(receipts) {
+      await notes.authenticate();
+      return memberApi("payment-notes",{receipts,access:notes.token()});
+    },
     async load(state, include = () => true) {
       const visible = new Set(state.groups.map(g=>g.id));
       const stores = state.rows.filter(row=>row.tag === 32 && include(row) && (visible.has(row.group) || row.to === profile.address));
@@ -49,11 +58,11 @@ export function shopTitle(store) {
   return [store.icon,store.name].filter(Boolean).join(" ");
 }
 export function shopEditor(store, h) {
-  return `<details class="shop-editor"><summary>⚙️ 店舗情報を編集</summary><form id="edit-shop" data-shop="${h(store.id)}">
-    <label>店舗名<input name="title" required value="${h(store.name)}"></label>
+  return `<details class="shop-editor"><summary>⚙️ 受け取り窓口情報を編集</summary><form id="edit-shop" data-shop="${h(store.id)}">
+    <label>受け取り名<input name="title" required value="${h(store.name)}"></label>
     <label>一言紹介（140文字まで）<input name="caption" value="${h(store.caption || "")}"></label>
     <label>アイコン<select name="icon">${shopIcons.map(icon=>`<option${icon === store.icon ? " selected" : ""}>${icon}</option>`).join("")}</select></label>
-    <button>店舗情報を保存</button></form></details>`;
+    <button>受け取り窓口情報を保存</button></form></details>`;
 }
 
 // Enhance the current DOM after first paint; never replace payment forms or QR.
@@ -70,7 +79,7 @@ export async function enhanceShopProfiles(profiles, state, content, h, isCurrent
     for (const el of labels) {
       const store = stores.get(el.dataset.shopLabel);
       if (el.isConnected && store)
-        el.innerHTML = h(shopTitle(store)) + (el.dataset.registerLabel ? "のレジ" : "") + shopDetails(store, h);
+        el.innerHTML = h(shopTitle(store)) + (el.dataset.registerLabel ? "の受け取り窓口" : "") + (el.dataset.compactLabel ? "" : shopDetails(store, h));
     }
     const store = stores.get(editor?.dataset.shop);
     if (store && editor.isConnected && !editor.matches(":focus-within") && !editor.dataset.busy) {
@@ -80,6 +89,6 @@ export async function enhanceShopProfiles(profiles, state, content, h, isCurrent
     }
     return "";
   } catch {
-    return "店舗プロフィールを取得できません。「更新」で再試行できます。";
+    return "受け取り窓口プロフィールを取得できません。「更新」で再試行できます。";
   }
 }

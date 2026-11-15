@@ -13,7 +13,7 @@ function titleForChain(value, fail) {
   const title = typeof value === "string" && value.trim();
   if (!title || [...title].length > 40 || new TextEncoder().encode(title).length > 120 ||
       /[\p{Cc}\u202a-\u202e\u2066-\u2069\uD800-\uDFFF]/u.test(title))
-    fail(400, "店舗名は40文字・120バイト以内で入力してください。");
+    fail(400, "受け取り名は40文字・120バイト以内で入力してください。");
   return title;
 }
 
@@ -43,7 +43,7 @@ export async function shopRequests(db, rpc, realm, viewer, method, body, fail) {
 
   if (method === "POST") {
     if (body.merchant !== undefined && body.merchant !== viewer) fail(403, "ご本人の財布から申請してください。");
-    if (certified) fail(409, "この財布には既に公認店舗があります。");
+    if (certified) fail(409, "この財布には既に受け取り窓口があります。");
     const title = titleForChain(body.title, fail);
     await db.prepare(`INSERT INTO shop_requests(realm,group_id,merchant,title,created_at,request_id)
       VALUES(?,?,?,?,?,?) ON CONFLICT(realm,group_id,merchant) DO NOTHING`)

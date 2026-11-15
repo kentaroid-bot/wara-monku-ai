@@ -5,12 +5,12 @@ const { chromium } = await import(process.env.PLAYWRIGHT_MODULE || "playwright")
 const browser = await chromium.launch({ executablePath: process.env.CHROME_BIN });
 const origin = "https://wara.test";
 const tabs = [
-  ["/", "お財布"], ["/communities/", "コミュニティ・市場"],
+  ["/", "お財布"], ["/communities/", "コミュニティ"],
   ["/support/", "使い方"], ["/account/", "アカウント"],
 ];
 
 try {
-  for (const [width, colorScheme] of [[320, "light"], [390, "dark"], [1024, "light"], [1024, "dark"]]) {
+  for (const [width, colorScheme] of [320,390,1024].flatMap(width => ["light","dark"].map(theme => [width,theme]))) {
     const page = await browser.newPage({ viewport: { width, height: 850 }, colorScheme });
     const errors = [];
     page.on("pageerror", e => errors.push(e.message));
@@ -29,6 +29,8 @@ try {
     for (const [path, name] of tabs) {
       const link = nav.getByRole("link", { name, exact: true });
       assert.equal(await link.getAttribute("title"), name);
+      assert.equal(await link.locator('svg[stroke="currentColor"]').count(), 1);
+      assert.equal(await link.locator(".nav-label").innerText(), name);
       await link.click();
       assert.equal(new URL(page.url()).pathname, path);
       await page.waitForSelector('nav a[aria-current="page"]');
@@ -50,6 +52,11 @@ try {
       assert.ok(Math.abs(b.x - (boxes[0].x + i * boxes[0].width)) < 1);
       assert.equal(b.y, boxes[0].y);
     }
+    for (const path of ["/shop/","/shop/?mode=receive","/register/"]) {
+      await page.goto(origin+path);
+      await page.waitForSelector('nav [data-tab="wallet"][aria-current="page"]');
+    }
+    assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
     assert.deepEqual(errors, []);
     await page.close();
   }

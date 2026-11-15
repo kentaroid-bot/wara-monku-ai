@@ -1,3 +1,4 @@
+import { ensureSender } from "./sender-wallets.mjs";
 import bs58 from "bs58";
 import { toBase64, fromBase64 } from "../shared/auth-wire.mjs";
 import { questions, normal, sessionLifetimeSeconds, walletMessage } from "../shared/member-wire.mjs";
@@ -112,14 +113,18 @@ export async function memberCore(b, ctx) {
   }
   const byId = (id) =>
     query("SELECT * FROM members WHERE id=? AND realm=?", id, realm).first();
-  const profile = (m) => ({ managed: true, type: m.type, address: m.address });
+  const profile = (m) => ({ managed: true, type: m.type, address: m.address,
+    senderAddress:m.sender_address, senderRotatedAt:m.sender_rotated_at,
+    carriedDay:m.carried_day, carriedSpent:m.carried_spent || 0 });
+  const backfill = m => ensureSender({env,now,realm,query,byId,encryptSeed,fail},m);
   async function session(token = b.session) {
     const grant = await readTicket(token, "session", false);
     const m = await byId(grant.id);
     if (!m || grant.revision !== m.revision) denied();
-    return { m, grant };
+    return { m:await backfill(m), grant };
   }
   async function logged(m, phoneLogin) {
+    m = await backfill(m);
     return {
       profile: profile(m),
       phoneLogin,
@@ -236,5 +241,5 @@ export async function memberCore(b, ctx) {
   }
   return { ...ctx, b, db, realm, query, hash, limited, phoneKey, consumePhone,
     ticket, readTicket, byId, profile, session, logged, validPin, checkPin,
-    encryptSeed, alias, phantom, cardValues, codeStatements, strong };
+    encryptSeed, backfill, alias, phantom, cardValues, codeStatements, strong };
 }

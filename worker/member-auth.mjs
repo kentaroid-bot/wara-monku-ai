@@ -1,3 +1,4 @@
+import { newSender } from "./sender-wallets.mjs";
 import bs58 from "bs58";
 import { ed25519 } from "@noble/curves/ed25519";
 import { fromBase64 } from "../shared/auth-wire.mjs";
@@ -31,10 +32,11 @@ export async function memberAuth(op, core) {
       cardKey = await hash("card", b.card);
     }
     if (oldProfile && oldProfile.address !== address) denied();
+    const sender = await newSender(core,id);
     const a = sponsor ? await alias(id) : {};
     const stmts = [
       query(
-        "INSERT INTO members(id,realm,address,type,phone_key,name_key,answers,pin_mac,sealed_seed,card_key,sponsor_id,created) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
+        "INSERT INTO members(id,realm,address,type,phone_key,name_key,answers,pin_mac,sealed_seed,card_key,sponsor_id,created,sender_address,sender_sealed_seed,sender_rotated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
         id,
         realm,
         address,
@@ -47,6 +49,7 @@ export async function memberAuth(op, core) {
         cardKey,
         sponsor?.id ?? null,
         now,
+        sender.address, sender.sealed, now,
       ),
     ];
     if (type !== "phantom") stmts.push(...(await codeStatements(id)));

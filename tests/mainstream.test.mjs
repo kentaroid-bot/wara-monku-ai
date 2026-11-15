@@ -101,7 +101,7 @@ function world() {
     data,
   };
 }
-test("v3 wallet has one JST limit across mints, signed purchases atomically issue 90:10 and preserve origin", () => {
+test("v3 wallet has one JST limit across mints, signed purchases atomically issue 100:0 and preserve origin", () => {
   const {
     svm,
     p,
@@ -132,8 +132,8 @@ test("v3 wallet has one JST limit across mints, signed purchases atomically issu
   assert.equal(parseRow(data(A), String(A)).owner, String(a.publicKey));
   assert.equal(wallet().remaining, 10n);
   ok(send(pay(A, 1), buyer));
-  assert.equal(balance(A, shop), 90n);
-  assert.equal(balance(A, buyer), 10n);
+  assert.equal(balance(A, shop), 100n);
+  assert.equal(balance(A, buyer), 0n);
   no(send(pay(A, 1, 0n), buyer));
   no(send(pay(B, 1, 1n, third.publicKey), buyer));
   const bad = pay(A, 1);
@@ -141,8 +141,8 @@ test("v3 wallet has one JST limit across mints, signed purchases atomically issu
   no(send(bad, buyer));
   assert.equal(wallet().remaining, 9n);
   ok(send(pay(B, 5), buyer));
-  assert.equal(balance(B, shop), 450n);
-  assert.equal(balance(B, buyer), 50n);
+  assert.equal(balance(B, shop), 500n);
+  assert.equal(balance(B, buyer), 0n);
   no(send(pay(B, 5), buyer));
   ok(send(pay(A, 4), buyer));
   no(send(pay(B, 1), buyer));
@@ -154,7 +154,7 @@ test("v3 wallet has one JST limit across mints, signed purchases atomically issu
   no(send(prev, buyer));
   assert.equal(wallet().remaining, 10n);
   ok(send(pay(A, 1), buyer));
-  assert.equal(balance(A, buyer), 60n);
+  assert.equal(balance(A, buyer), 0n);
 });
 test("only founders certify / offer; invitations and approval are enforced; WARA transfer requires active mutual acceptance", () => {
   const {
@@ -202,6 +202,11 @@ test("only founders certify / offer; invitations and approval are enforced; WARA
   no(send([join(p, a.publicKey, B, buyer.publicKey, true)], a));
   ok(send([join(p, b.publicKey, B, buyer.publicKey, true)], b));
   ok(send(pay(B, 1), buyer));
+  ok(send([certify(p, b.publicKey, B, buyer.publicKey, "受取")], b));
+  ok(send(transfer(p, shop.publicKey, B, buyer.publicKey, [{origin:B,amount:50n}]), shop));
+  // Move an existing issuer balance to the buyer before testing cross-community transfers.
+  ok(send([certify(p, a.publicKey, A, buyer.publicKey, "受取")], a));
+  ok(send(transfer(p, shop.publicKey, A, buyer.publicKey, [{origin:A,amount:50n}]), shop));
   const x = () =>
     transfer(p, buyer.publicKey, B, shop.publicKey, [
       { origin: A, amount: 20n },

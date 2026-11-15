@@ -16,11 +16,11 @@ export function communityViews(ctx) {
   const { state, content, params, who, profile, requests, ui, form, btn, inp, sel,
     opt, link, gid, register, by, outgoing, send, view, h, info, action } = ctx;
   const access = shopWalletAccess(profile, ctx.wallet, "community-access");
-  const policyFields = () => sel("visibility", "公開範囲", opt("public", "公開（市場に掲載）") + opt("private", "限定公開（リンク限定）")) +
+  const policyFields = () => sel("visibility", "公開範囲", opt("public", "公開（一覧に掲載）") + opt("private", "限定公開（リンク限定）")) +
     sel("mode", "参加方式", modes.map((v, i) => opt(i, v)).join(""));
   function newGroup() {
     ui(
-      '<p>開設したウォレットが最初の管理者になります。公開を選ぶと名称と説明がDevnetに掲載されます。開設者はコミュニティ口座の作成費とMetaplexの登録料をDevnet SOLで支払います。手数料支援が有効なときはトークン情報の口座保管料と取引手数料を運営が負担します。</p><form id="create">' +
+      '<p>開設したウォレットが最初の管理者になります。公開を選ぶと名称と説明がDevnetに掲載されます。開設者はコミュニティ口座の作成費とMetaplexの登録料をDevnet SOLで負担します。手数料支援が有効なときはトークン情報の口座保管料と取引手数料を運営が負担します。</p><form id="create">' +
         policyFields() +
         inp("name", "名称", 'maxlength="50"') +
         '<label>説明<textarea name="description" maxlength="140"></textarea></label>' +
@@ -50,8 +50,8 @@ export function communityViews(ctx) {
           ${groups.filter(g => g.visibility !== "private").map(g => {
             const stores = s.rows.filter(r => r.tag === 32 && r.group === g.id);
             return `<article class="market-row"><a href="${h(gid(g.id))}"><strong>${h(g.name)}</strong></a>
-              <small>${h(g.category)} · ${modes[g.mode]} · 公認店舗 ${stores.length}店${joined.has(g.id) ? " · 参加中" : ""}</small>
-              ${stores.map(st => `<a class="shop-row" href="${h(register(g.id, st.to))}"><span data-shop-label="${h(st.id)}">${h(shopTitle(st))}${shopDetails(st,h)}</span><small>レジを開く ›</small></a>`).join("")}</article>`;
+              <small>${h(g.category)} · ${modes[g.mode]} · 受け取り窓口 ${stores.length}件${joined.has(g.id) ? " · 参加中" : ""}</small>
+              ${stores.map(st => `<a class="shop-row" href="${h(register(g.id, st.to))}"><span data-shop-label="${h(st.id)}">${h(shopTitle(st))}${shopDetails(st,h)}</span><small>${st.to === who ? "QRを出す" : "贈る"} ›</small></a>`).join("")}</article>`;
           }).join("") || "<p>まだ登録がありません。</p>"}</section>
         ${privateGroups.length ? '<section><h2>自分の限定公開コミュニティ</h2>' +
           privateGroups.map(g => link(gid(g.id), g.name)).join("") + '</section>' : ''}`,
@@ -117,7 +117,7 @@ export function communityViews(ctx) {
         '<label>説明<textarea name="description" maxlength="140">' + h(g.description || "") + '</textarea></label>' +
         sel("category", "カテゴリ", categories.map(c => opt(c, c)).join(""));
       out += '<form id="policy"><h2>コミュニティの設定</h2>' + policyFields() + editFields +
-        '<p>設定を変更すると、共有リンクは新しくなります。これまで公開した名称や取引の記録は台帳に残ります。トークンと既存の参加資格は変わりません。保存容量が増える場合、追加の口座保管料は管理者が支払います。</p>' +
+        '<p>設定を変更すると、共有リンクは新しくなります。これまで公開した名称や取引の記録は台帳に残ります。トークンと既存の参加資格は変わりません。保存容量が増える場合、追加の口座保管料は管理者が負担します。</p>' +
         btn(locked ? "設定を更新してリンクを再発行" : "署名して設定を更新") + '</form>';
       if (g.mode === 1 && !locked)
         out += '<form id="rotate">' + btn("招待コードを再発行") + '</form>';
@@ -146,27 +146,27 @@ export function communityViews(ctx) {
         )
         .join("");
     out +=
-      "<section><h2>公認店舗</h2>" +
+      "<section><h2>受け取り窓口</h2>" +
       (shops
         .map(
-          (r) => `<p><a class="action" href="${h(register(g.id,r.to))}"><span data-shop-label="${h(r.id)}" data-register-label="1">${h(shopTitle(r))}のレジ${shopDetails(r,h)}</span></a></p>`,
+          (r) => `<p><a class="action" href="${h(register(g.id,r.to))}"><span data-shop-label="${h(r.id)}" data-register-label="1">${h(shopTitle(r))}の受け取り窓口${shopDetails(r,h)}</span></a></p>`,
         )
-        .join("") || "<p>まだ公認店舗はありません。</p>") +
+        .join("") || "<p>まだ受け取り窓口はありません。</p>") +
       "</section>";
     if (owner || admitted) out += '<section data-shop-requests></section>';
     if (owner)
       out +=
         '<details><summary>直接アドレスを指定して公認</summary><form id="certify">' +
-        inp("name", "店舗名", 'maxlength="40"') +
+        inp("name", "受け取り名", 'maxlength="40"') +
         inp(
           "merchant",
-          "店舗の受取ウォレット",
-          'placeholder="店舗のアカウント画面にある公開アドレス"',
+          "受け取り窓口の受取ウォレット",
+          'placeholder="受け取り窓口のアカウント画面にある公開アドレス"',
         ) +
-        btn("公認してレジを作る") +
+        btn("公認して受け取り窓口を作る") +
         "</form></details>";
     if (!owner && !admitted)
-      out += '<section><h2>お店（レジ）を開きたい方へ</h2><p>コミュニティに参加すると、この画面から店舗の開設を申請できます。</p></section>';
+      out += '<section><h2>受け取り窓口を開きたい方へ</h2><p>コミュニティに参加すると、この画面から受け取り窓口の開設を申請できます。</p></section>';
     const peers = s.groups
       .filter((p) => p.id !== id && p.visibility !== "private")
       .map((p) => ({ ...p, sent: outgoing(id, p.id), received: outgoing(p.id, id) }));
@@ -202,7 +202,7 @@ export function communityViews(ctx) {
     ui(out);
     const requestBox = content.querySelector("[data-shop-requests]");
     if (requestBox) requestPanel(requestBox, {api:requests, group:id, who, owner, esc:h, info, register,
-      certify: row => send([certify(program, who, id, pk(row.merchant), row.title)], [], "店舗を公認してレジを開設しました。"),
+      certify: row => send([certify(program, who, id, pk(row.merchant), row.title)], [], "受け取り窓口を公認しました。"),
     });
     if (owner) {
       if (privateNameEditor) form("private-name", async ({name}) => {

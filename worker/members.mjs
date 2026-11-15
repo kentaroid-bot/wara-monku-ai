@@ -1,3 +1,5 @@
+import { prepareSender, rotateSender, cleanupSenders, withSenderLock } from "./sender-wallets.mjs";
+import { prepareNote, readNotes } from "./payment-notes.mjs";
 import { invalidateAccess } from "./community-access.mjs";
 import { shopRequests } from "./shop-requests.mjs";
 import { communityReaders } from "./community-read.mjs";
@@ -17,6 +19,40 @@ export async function memberRequest(op, b, ctx) {
   const core = await memberCore(b, ctx);
   const { env, req, db, realm, query, hash, limited, session, ticket, readTicket,
     profile, origin, now, checkSignature, bad, denied, fail } = core;
+  if (op === "session") {
+    const {m} = await session();
+    return {profile:profile(m)};
+  }
+  if (["sender-join","sender-rotate","sender-cleanup","card-prepare"].includes(op)) {
+    const {m} = await session();
+    if (op === "sender-rotate") return withSenderLock(core,m,member=>rotateSender(core,member));
+    await limited("sender-prepare:"+m.id,30);
+    if (op === "sender-cleanup") {
+      await cleanupSenders(core);
+      const remaining = await query("SELECT count(*) AS n FROM retired_sender_accounts WHERE realm=?",realm).first();
+      return {cleaned:remaining.n === 0};
+    }
+    if (typeof b.group !== "string" || b.group.length < 32 || b.group.length > 44) bad();
+    let groupBytes;
+    try { groupBytes = bs58.decode(b.group); } catch { bad(); }
+    if (groupBytes.length !== 32) bad();
+    let target = m;
+    if (op === "card-prepare") {
+      if (!validSecret(b.card)) denied();
+      const card = await query("SELECT * FROM members WHERE realm=? AND card_key=?",realm,await hash("card",b.card)).first();
+      if (!card || card.type === "phantom") denied();
+      if (card.address === m.address || card.sender_address === m.address) fail(403,"自分のカードでは受け取れません。");
+      target = await core.backfill(card);
+    }
+    return withSenderLock(core,target,async member=>{
+      const result = await prepareSender(core,member,b.group);
+      return op === "card-prepare"
+        ? {...result,carriedDay:member.carried_day ?? null,carriedSpent:Number(member.carried_spent || 0)}
+        : result;
+    });
+  }
+  if (op === "payment-note") return prepareNote(core);
+  if (op === "payment-notes") return readNotes(core);
   if (["community-profiles","community-save","community-rename"].includes(op)) {
     const {m} = await session();
     const rpc = workerConnection(env);
@@ -33,7 +69,7 @@ export async function memberRequest(op, b, ctx) {
   if (op === "shop-challenge") {
     if (!validSecret(b.address) || bs58.decode(b.address).length !== 32) bad();
     const purpose = b.purpose ?? "shop-profile";
-    if (!["shop-profile","shop-requests","community-access"].includes(purpose)) bad();
+    if (!["shop-profile","shop-requests","community-access","payment-notes"].includes(purpose)) bad();
     return {ticket:await ticket("shop-proof", {address:b.address,purpose}), audience:origin};
   }
   if (op === "shop-access") {
@@ -90,7 +126,7 @@ export async function memberRequest(op, b, ctx) {
     }
     const sponsor = feeKey(env);
     if (!sponsor) fail(503, "手数料支援は設定されていません。");
-    return relayPayment({encoded:b.tx, sponsor, member:m.address, receipts, fail, rpc:paymentConnection(env),
+    return relayPayment({encoded:b.tx, sponsor, member:{address:m.address,senderAddress:m.sender_address}, receipts, fail, rpc:paymentConnection(env),
       beforeMembershipEnd: (group,viewer) => invalidateAccess(db,realm,viewer,group),
       reserveBudget: async () => {
         await limited("relay-member:" + m.id, 20);

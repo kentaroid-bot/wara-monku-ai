@@ -3,24 +3,24 @@ export function twinCards(state) {
   const remaining = state?.remaining;
   const total = state && [...state.funds.values()].reduce((sum, n) => sum + n, 0n);
   return `<div class="twins">
-    <section class="orb kusa ina"><div class="orb-label">今日の時間 <span>24:00消滅</span></div>
-      <div class="orb-value"><strong>${remaining ?? "—"}</strong> / 10 INA</div>
+    <a class="orb kusa ina" href="/shop/"><div class="orb-label">今日の iine</div>
+      <div class="orb-value"><strong>${remaining ?? "—"}</strong> / 10 iine</div>
       <div class="dots" aria-hidden="true">${Array.from({length: 10}, (_, i) => `<i class="${i < remaining ? "available" : ""}"></i>`).join("")}</div>
-    </section>
-    <section class="orb wara"><div class="orb-label">感謝の蓄積 <span>永続</span></div>
+    <div class="orb-cta">👍 相手を選ぶ ›</div></a>
+    <a class="orb wara" href="/shop/?mode=receive"><div class="orb-label">WARA</div>
       <div class="orb-value"><strong>${total?.toLocaleString("ja-JP") ?? "—"}</strong> WARA</div>
-      <p>あなたの仕事が誰かの生活を支えた結晶</p>
-    </section></div>`;
+      <p>ありがとうの結晶</p>
+    <div class="orb-cta">🌾 受け取る ›</div></a></div>`;
 }
 
 let toastTimeout;
 export function crystallize(amount, incoming, currency = "ina") {
   const toast = document.querySelector("#crystal-toast");
   toast.textContent = currency === "wara"
-    ? (incoming ? `💖 ありがとう！ あなたの店に +${amount} WARA が届きました！` : `💖 ありがとう！ お店に ${amount} WARA を支払いました！`)
+    ? (incoming ? `💖 ありがとう！ あなたに +${amount} WARA が届きました！` : `💖 ありがとう！ 相手に ${amount} WARA を贈りました！`)
     : incoming
-    ? `💖 ありがとう！ あなたの店に +${amount * 90n} / お客さんに +${amount * 10n} WARA 結晶化！`
-    : `💖 ありがとう！ 店に +${amount * 90n} / あなたに +${amount * 10n} WARA 結晶化！`;
+    ? `💖 ありがとう！ あなたに +${amount * 100n} WARA 結晶化！`
+    : `💖 ありがとう！ 相手に +${amount * 100n} WARA 結晶化！`;
   document.querySelector(".orb.wara")?.animate(
     [{transform: "scale(1)"}, {transform: "scale(1.035)", boxShadow: "0 0 20px #d5bc78"}, {transform: "scale(1)"}],
     {duration: matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : 550},

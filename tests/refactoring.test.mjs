@@ -39,8 +39,8 @@ test("persisted storage names and legacy exports remain compatible", () => {
 test("guide retains its content and links without inline styles", async () => {
   const el = {};
   showGuide(el);
-  assert.match(el.innerHTML,/90 WARA/);
-  assert.match(el.innerHTML,/10 WARA/);
+  assert.match(el.innerHTML,/100 WARA/);
+  assert.match(el.innerHTML,/還元はありません/);
   assert.match(el.innerHTML,/href="\/communities\/"/);
   assert.match(el.innerHTML,/class="guide-steps"/);
   assert.doesNotMatch(el.innerHTML,/\sstyle=/);
@@ -57,6 +57,10 @@ test("publication manifest exactly covers the generated files and preserves lega
   for (const route of ["", "shop", "communities/new", "devnet", "mock"]) assert.ok(publicRoutes.routes.includes(route));
   assert.equal(new Set(publicRoutes.routes).size,publicRoutes.routes.length);
   assert.equal(new Set(publicRoutes.assets).size,publicRoutes.assets.length);
+  // Imported UI modules belong to the existing bundle, not new public source routes.
+  const client = await readFile(new URL("../dist/v3/main.js",import.meta.url),"utf8");
+  assert.match(client,/iine-stage/);
+  assert.equal(publicRoutes.assets.includes("v3/iine-game.mjs"),false);
   const headers = await readFile(new URL("../dist/_headers",import.meta.url),"utf8");
   for (const [name,value] of Object.entries(securityHeaders)) assert.ok(headers.includes(`${name}: ${value}`));
 });

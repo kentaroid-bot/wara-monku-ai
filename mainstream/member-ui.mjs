@@ -1,3 +1,4 @@
+import { confirmDialog } from "./confirm-dialog.mjs";
 import { introducedKey } from "./storage-keys.mjs";
 import QRCode from "qrcode";
 import bs58 from "bs58";
@@ -36,8 +37,11 @@ export async function memberApi(op, body = {}) {
     body: JSON.stringify({ ...body, ...(op==="signature" || (op==="enroll" && body.type==="phantom") ? {mobileReturn:mobileBrowser()} : {}), session: managedSession()?.session }),
   });
   const result = await response.json();
-  if (!response.ok)
-    throw Error(result.error || "手続きを完了できませんでした。");
+  if (!response.ok) {
+    const error = Error(result.error || "手続きを完了できませんでした。");
+    error.status = response.status;
+    throw error;
+  }
   return result;
 }
 const cancel = () =>
@@ -162,7 +166,7 @@ function panel(el, title, body, onSubmit, info) {
     try {
       await onSubmit(values);
     } catch (err) {
-      info(err.message);
+      info(err);
     } finally {
       field.disabled = false;
     }
@@ -194,7 +198,7 @@ async function smsFlow(el, info, mode, intent, done) {
       panel(
         el,
         "電話番号を確認",
-        '<p data-code></p><label>SMSの確認コード<input name="code" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" maxlength="6" required></label><button>次へ</button><button type="button" data-retry>再送する</button>',
+        '<p data-code></p><label>SMSの確認コード<input name="code" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" maxlength="6" required></label><button type="submit">次へ</button><div><button type="button" class="text-link" data-retry>確認コードを再送する</button></div>',
         async ({ code }) => done(phone, await resolveWallet(phone, auth, code)),
         info,
       );
@@ -241,7 +245,7 @@ function secretScan(kind, title) {
 // Print the recovery material before the operation that creates or rotates it.
 async function prepareCards(el, info, values, save, done, address = "") {
   el.innerHTML =
-    '<section class="issued"><h1>本人に渡すカード</h1><p>毎日のINAカードと、別に保管する大事な手続き用の紙を印刷してください。</p><div data-cards></div><button data-print>印刷する</button> <button data-save disabled>控えました。登録を確定</button></section>';
+    '<section class="issued"><h1>本人に渡すカード</h1><p>毎日のiineカードと、別に保管する大事な手続き用の紙を印刷してください。</p><div data-cards></div><button data-print>印刷する</button> <button data-save disabled>控えました。登録を確定</button></section>';
   const box = el.querySelector("[data-cards]");
   async function card(label, value) {
     const item = document.createElement("article"),
@@ -254,7 +258,7 @@ async function prepareCards(el, info, values, save, done, address = "") {
     item.append(h, img);
     box.append(item);
   }
-  await card("毎日のINAカード", "wara:ina:" + values.card);
+  await card("毎日のiineカード", "wara:ina:" + values.card);
   if (address) {
     const p = document.createElement("p");
     p.className = "wrap";
@@ -287,6 +291,17 @@ async function prepareCards(el, info, values, save, done, address = "") {
     }
   };
 }
+async function finishSignin(el, info, result) {
+  const finish = async () => {
+    await logged(result);
+    location.replace(managedSession()?.profile.type === "phantom" ? "/account/" : "/");
+  };
+  if (!result.signatureTicket) return finish();
+  panel(el, "財布を開く",
+    '<p>Phantomで次のSolanaアドレスのアカウントを選んでください。</p><p class="wrap" data-address></p><button>登録済みのPhantomで署名する</button>',
+    finish, info);
+  el.querySelector("[data-address]").textContent = result.address;
+}
 function phoneEntry(el, info, mode, intent) {
   return smsFlow(el, info, mode, intent, async (phone, step) => {
     const challenge = {
@@ -294,22 +309,16 @@ function phoneEntry(el, info, mode, intent) {
       challengeId: step.challengeId,
     };
     if (step.managed) {
-      let pending;
       panel(
         el,
         "財布を開く",
         "<button>いつもの暗証番号を入力</button>",
         async () => {
-          if (!pending)
-            pending = await memberApi("phone-login", {
-              ...challenge,
-              pin: await keypad("財布の暗証番号"),
-            });
-          if (pending.signatureTicket)
-            el.querySelector("button").textContent =
-              "登録済みのPhantomで署名する";
-          await logged(pending);
-          location.replace(managedSession()?.profile.type==="phantom" ? "/account/" : "/");
+          const result = await memberApi("phone-login", {
+            ...challenge,
+            pin: await keypad("財布の暗証番号"),
+          });
+          await finishSignin(el, info, result);
         },
         info,
       );
@@ -425,14 +434,13 @@ export function memberSignup(el, info, mode) {
             .join("") + "<button>暗証番号へ</button>",
           async (answers) => {
             const pin = await keypad("財布の暗証番号");
-            await logged(
+            await finishSignin(el, info,
               await memberApi("name-login", {
                 ticket: step.ticket,
                 answers: [answers.a0, answers.a1],
                 pin,
               }),
             );
-            location.replace(managedSession()?.profile.type==="phantom" ? "/account/" : "/");
           },
           info,
         );
@@ -575,25 +583,28 @@ export function siteSigner(profile, checkout = null) {
     },
   };
 }
-export async function payWithCard(group, store, amount, title, memo = "") {
-  const card = await secretScan("ina", "本人のINAカードを読む");
+export async function payWithCard(group, store, amount, title, memo = "", note = "") {
+  const card = await secretScan("ina", "本人のiineカードを読む");
   const { address } = await memberApi("card-info", { card });
   const [{ loadState, submit, program }, { spend }] = await Promise.all([
     import("./network.mjs"),
     import("./protocol.mjs"),
   ]);
-  const state = await loadState(address, true);
+  if (address === store) throw Error("自分には贈れません。");
+  const prep = await memberApi("card-prepare",{card,group});
+  const state = await loadState(address, true, null, false,
+    {address,carriedDay:prep.carriedDay,carriedSpent:prep.carriedSpent});
   if (state.remaining < BigInt(amount))
-    throw Error("今日のINAの残りを超えています。");
+    throw Error("今日のiineの残りを超えています。");
   const checkout = { group, store, amount, memo };
   const pin = await keypad(
-    "支払いの暗証番号",
-    title + " に " + amount + " INAを支払います。" + (memo ? " 💬「" + memo + "」" : ""),
+    "iineを贈る暗証番号",
+    title + " に " + amount + " iineを贈ります。" + memo + (note ? " ひとこと「" + note + "」" : ""),
   );
   const p = { address, managed: true };
   return submit(
     p,
-    () => siteSigner(p, { card, pin, checkout }),
+    () => siteSigner(p, { card, pin, checkout, note }),
     spend(
       program,
       address,
@@ -606,4 +617,64 @@ export async function payWithCard(group, store, amount, title, memo = "") {
     ),
     [], store,
   );
+}
+
+export function updateSessionProfile(profile) {
+  const current = managedSession();
+  if (!current) throw Error("サインインしてください。");
+  // Preserve the original expiry when refreshing only the profile.
+  const {remainingMs, ...session} = current;
+  rememberSession({...session,profile});
+}
+export function senderAccountTools(el,info,initial,onUpdate = ()=>{}) {
+  const section = document.createElement("section");
+  section.className = "sender-account";
+  el.append(section);
+  function render(profile) {
+    section.replaceChildren();
+    const text = (tag,value,cls) => {
+      const element = document.createElement(tag);
+      element.textContent = value;
+      if (cls) element.className = cls;
+      section.append(element);
+      return element;
+    };
+    text("h2","贈る用アドレス（匿名用）");
+    text("p","iineを贈るための専用アドレスです。WARAは主ウォレットで受け取ります。");
+    text("p",profile.senderAddress,"wrap sender-address");
+    const nextAt = (profile.senderRotatedAt + 30 * 86400) * 1000;
+    const date = value => new Date(value).toLocaleString("ja-JP",{timeZone:"Asia/Tokyo"}) + " JST";
+    text("p","前回更新：" + date(profile.senderRotatedAt * 1000));
+    text("p","次回更新可能日：" + date(nextAt));
+    const remaining = Math.max(0,Math.ceil((nextAt - Date.now()) / 86400000));
+    const button = text("button","贈る用アドレスを更新（月1回）");
+    button.type = "button";
+    button.disabled = remaining > 0;
+    if (remaining) text("p",`更新まであと${remaining}日です。`,"muted");
+    const cleanup = text("button","以前の贈る用アドレスを整理");
+    cleanup.type = "button";
+    cleanup.className = "secondary";
+    cleanup.onclick = async () => {
+      cleanup.disabled = true;
+      try {
+        const result = await memberApi("sender-cleanup");
+        info(result.cleaned ? "以前のアドレスの整理が完了しました。" : "一部の整理を待っています。時間をおいて再試行できます。");
+      } catch (error) { info(error.message); }
+      finally { cleanup.disabled = false; }
+    };
+    button.onclick = async () => {
+      button.disabled = true;
+      try {
+        if (!await confirmDialog({title:"贈る用アドレスを更新",message:"新しい匿名用アドレスに切り替えます。今日使ったiineの数と主ウォレットは引き継ぎます。次の更新は30日後です。",confirmLabel:"更新する"})) return;
+        const pin = await keypad("アドレス更新の暗証番号","いつもの6桁のPINを入力してください。");
+        const result = await memberApi("sender-rotate",{pin});
+        updateSessionProfile(result.profile);
+        onUpdate(result.profile);
+        render(result.profile);
+        info("贈る用アドレスを更新しました。");
+      } catch (error) { info(error.message); }
+      finally { if (button.isConnected) button.disabled = remaining > 0; }
+    };
+  }
+  render(initial);
 }

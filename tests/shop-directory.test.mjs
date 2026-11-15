@@ -12,21 +12,22 @@ const seeds = [
 ];
 test("archived group IDs disappear from both directories, not other groups with the same name", () => {
   const groups = [...seeds,"new"].map(id => ({id, name:"川辺の市場", owner:"me"}));
-  const stores = groups.map(g => ({group:g.id,to:"me"}));
-  assert.deepEqual(listedGroups(groups), groups.slice(-1));
-  for (const receiving of [false,true])
+  for (const receiving of [false,true]) {
+    const stores = groups.map(g => ({group:g.id,to:receiving ? "me" : "them"}));
     assert.deepEqual(registerChoices(stores,{groups,rows:[]},"me",receiving), stores.slice(-1));
+  }
 });
 
-test("payment lists owned and admitted communities; receiving lists this wallet’s stores", () => {
+test("payment lists other stores in owned and admitted communities; receiving lists this wallet’s stores", () => {
   const groups = ["owned","joined","private","pending","open","other"].map(id => ({
     id, owner:id === "owned" ? "me" : "admin", visibility:id === "private" ? "private" : "public",
   }));
   const member = (group,to,status) => ({tag:33,group,to,status});
   const rows = [member("joined","me",2),member("private","me",2),member("pending","me",1),member("other","them",2)];
-  const stores = groups.map(g => ({group:g.id,to:g.id === "open" ? "me" : "shop"}));
+  const ownStore = {group:"owned",to:"me"};
+  const stores = [...groups.map(g => ({group:g.id,to:g.id === "open" ? "me" : "shop"})), ownStore];
   assert.deepEqual(registerChoices(stores,{groups,rows},"me",false),stores.slice(0,3));
-  assert.deepEqual(registerChoices(stores,{groups,rows},"me",true),[stores[4]]);
+  assert.deepEqual(registerChoices(stores,{groups,rows},"me",true),[stores[4], ownStore]);
   assert.deepEqual(registerChoices(stores,{groups,rows},"newcomer",false),[]);
 });
 
@@ -36,4 +37,11 @@ test("every selectable icon round-trips through profile validation", () => {
   const fields = {title:"雑貨屋",caption:"",is_test:false};
   for (const icon of shopIcons) assert.equal(shopFields({...fields,icon}).icon,icon);
   assert.throws(()=>shopFields({...fields,icon:"not an icon"}));
+});
+
+test("recipient choices exclude both primary and sender addresses using primary membership",()=>{
+  const state={groups:[{id:"g",owner:"main"}],rows:[]};
+  const stores=["main","sender","friend"].map(to=>({group:"g",to}));
+  assert.deepEqual(registerChoices(stores,state,"main",false,"sender"),[stores[2]]);
+  assert.deepEqual(registerChoices(stores,state,"main",true,"sender"),[stores[0]]);
 });

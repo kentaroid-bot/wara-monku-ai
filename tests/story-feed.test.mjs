@@ -27,13 +27,13 @@ function transaction(ina, signature = "signature") {
   return {meta:{err:null, loadedAddresses:{writable:[store], readonly:[origin]}}, transaction:{signatures:[signature], message}};
 }
 
-test("confirmed INA stories name the certified store and attribute both shares to the correct reader", () => {
+test("confirmed iine stories name the certified store and attribute the recipient credit to the correct reader", () => {
   const tx = transaction(true);
-  for (const [reader, expected] of [[buyer, /店に \+180 WARA ／ あなたに \+20 WARA/], [store, /あなたの店に \+180 WARA ／ お客さんに \+20 WARA/]]) {
+  for (const [reader, expected] of [[buyer, /相手に \+200 WARA/], [store, /あなたに \+200 WARA/]]) {
     const [row] = entries(tx, "signature", String(reader));
     const story = storyReceipt(row,h,by,shopName);
     assert.match(story, expected);
-    assert.match(story, /2 INA の感謝/);
+    assert.match(story, /2 iine の感謝/);
     assert.match(story, /お店&lt;test&gt;/);
     assert.match(story, /signature\?cluster=devnet/);
   }
@@ -43,7 +43,7 @@ test("confirmed INA stories name the certified store and attribute both shares t
 test("paying with existing WARA reports its origin without claiming a new reward", () => {
   const [row] = entries(transaction(false), "signature",String(buyer));
   const story = storyReceipt(row,h,by,shopName);
-  assert.match(story, /15 WARA を支払いました/);
+  assert.match(story, /15 WARA を贈りました/);
   assert.match(story, /発行元：発行した地域/);
   assert.doesNotMatch(story, /\+|結晶化/);
 });
@@ -138,4 +138,47 @@ test("a rate limit on the first detail read falls back and shares the same recei
   assert.equal(primary.getSignaturesForAddress.mock.callCount(), 1);
   assert.equal(fallback.getSignaturesForAddress.mock.callCount(), 1);
   assert.equal(fallback.getTransaction.mock.callCount(), 1);
+});
+
+test("single-address wallet history fetches and caches twenty receipts",async()=>{
+  const list=Array.from({length:20},(_,i)=>({signature:String(i),blockTime:200-i})),calls=[],details=[];
+  const node={
+    async getSignaturesForAddress(address,options) {calls.push([String(address),options.limit]);return list;},
+    async getTransaction(sig) {details.push(sig);const tx=transaction(true,sig);tx.blockTime=200-Number(sig);return tx;},
+  };
+  const read=paymentHistory(String(buyer),()=>{},[node],String(buyer));
+  let result;
+  for(let i=0;i<4;i++)result=await read();
+  assert.equal(result.rows.length,20);assert.equal(result.indexing,false);
+  assert.ok(calls.length>0 && calls.every(([address,limit])=>address===String(buyer) && limit===20));
+  assert.deepEqual((await read()).rows.map(r=>r.sig),list.map(r=>r.signature));
+  assert.equal(details.length,20);
+});
+
+test("separate wallet history merges ten per identity, deduplicates, orders twenty and caches details independently from store history",async()=>{
+  const sender=String(buyer),main=String(store),calls=[],details=[];
+  const list=Array.from({length:20},(_,i)=>({signature:String(i),blockTime:200-i}));
+  const node={
+    async getSignaturesForAddress(address,options) {
+      calls.push([String(address),options.limit]);
+      if(options.limit===20)return list;
+      return String(address)===main?list.slice(0,10):list.slice(10);
+    },
+    async getTransaction(sig) {
+      details.push(sig);const tx=transaction(true,sig);tx.blockTime=200-Number(sig);return tx;
+    },
+  };
+  const read=paymentHistory(main,()=>{},[node],sender);
+  let result;
+  for(let i=0;i<4;i++)result=await read();
+  assert.equal(result.indexing,false);assert.equal(result.rows.length,20);
+  assert.deepEqual(result.rows.map(r=>r.sig),list.map(r=>r.signature));
+  assert.ok(calls.every(c=>c[1]===10));assert.equal(details.length,20);
+  await read();assert.equal(details.length,20);
+  await read(String(market),main);
+  assert.deepEqual(calls.at(-1),[main,20]);
+  const duplicate=paymentHistory(main,()=>{},[{...node,getSignaturesForAddress:async()=>list.slice(0,3)}],sender);
+  assert.equal((await duplicate()).rows.length,3);
+  const [outgoing]=entries(transaction(true),"one",String(origin),null,sender);
+  assert.equal(outgoing.incoming,false);
 });

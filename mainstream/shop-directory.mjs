@@ -15,8 +15,8 @@ export function joinedGroupIds({groups, rows}, who) {
   return ids;
 }
 
-export function registerChoices(stores, state, who, receiving) {
+export function registerChoices(stores, state, who, receiving, senderWho = who) {
   const joined = receiving ? null : joinedGroupIds(state, who);
   return stores.filter(st => !HIDDEN_SEED_GROUPS.has(st.group) &&
-    (receiving ? st.to === who : joined.has(st.group)));
+    (receiving ? st.to === who : st.to !== who && st.to !== senderWho && joined.has(st.group)));
 }

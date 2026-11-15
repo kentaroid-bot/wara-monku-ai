@@ -19,8 +19,8 @@
     }
   },
   "status": "deployed",
-  "deploymentSignature": "4Yc1qBvTxaEMFgffH3WmFswjsuQYBpkhsjyMujtbH8owT8TJotsrtnkSmDMdnGjd78nTJqFY8zv4vVY2f9TKX2fs",
-  "binarySha256": "523a1f7140131deff9009b1e44f5277eac5ca692f8cd3d5d059162dc0afb5a6d",
+  "deploymentSignature": "5eQ4ej7XcgACqsUVXigbYgBpvPzePWCLJGvuNXXHKZULPeTsGzMqjtjpahUbvCfqv6gBz9knPZ3MEZQ7QVTHr9x9",
+  "binarySha256": "d175230f3a7d0a95914a78a034a424b7cbbd437d63cb04eb46035441c5699168",
   "upgradeAuthority": "HfmUvjg2iq4QeUErKD2yN74SvNzomeCveoQV97gkNiEq",
-  "updatedAt": "2026-11-12T07:39:09.062Z"
+  "updatedAt": "2026-11-15T06:52:11.024Z"
 }

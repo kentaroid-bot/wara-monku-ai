@@ -11,8 +11,9 @@ import { shopView } from "./views/shop.mjs";
 import { viewHelpers, receipt } from "./views/ui.mjs";
 
 export async function dashboard(ctx) {
-  const { el, info, path, profile, wallet, action, recordPayment, readHistory, esc: h } = ctx,
+  const { el, info, path, profile, wallet, senderWallet = wallet, action, recordPayment, readHistory, esc: h } = ctx,
     who = profile.address,
+    senderWho = profile.senderAddress || who,
     params = new URLSearchParams(location.search);
   const content = document.createElement("div");
   el.append(content);
@@ -33,7 +34,7 @@ export async function dashboard(ctx) {
     try {
       const requestedShop = path === "/shop" && params.has("group") && params.has("store")
         ? {group:params.get("group"), store:params.get("store")} : null;
-      const state = await loadState(who, force, requestedShop, directory);
+      const state = await loadState(who, force, requestedShop, directory, profile);
       if (turn !== sequence) return false;
       s = state;
       view();
@@ -63,7 +64,7 @@ export async function dashboard(ctx) {
     if (address !== who || !content.isConnected) return;
     if (payment === undefined) {
       const tx = await rpc.getTransaction(sig,{commitment:"confirmed",maxSupportedTransactionVersion:0});
-      const rows = entries(tx,sig,who);
+      const rows = entries(tx,sig,who,null,senderWho);
       if (!rows.length) return;
       payment = {amount:rows.reduce((sum,row)=>sum+row.n,0n),currency:rows[0].kusa ? "ina" : "wara",incoming:rows[0].incoming};
     }
@@ -91,7 +92,7 @@ export async function dashboard(ctx) {
         await refresh();
       }
     } catch (error) {
-      recoveryNotice = pendingSig(who) ? "送信した取引を確認中です。支払いは再送せずにお待ちください。" : error.message;
+      recoveryNotice = pendingSig(who) ? "送信した取引を確認中です。贈る操作は繰り返さずにお待ちください。" : error.message;
       info(recoveryNotice);
     } finally {
       checking = false;
@@ -101,8 +102,10 @@ export async function dashboard(ctx) {
   settlementEvents.addEventListener("waiting", e=>{ if (e.detail.address === who) scheduleCheck(); });
   document.addEventListener("visibilitychange",()=>{ if (!document.hidden) void recover(); });
   window.addEventListener("pageshow",e=>{ if (e.persisted) void recover(); });
-  const send = async (ix, extra = [], msg = "取引が確定しました。") => {
-    const sig = await submit(profile, wallet, ix, extra);
+  const send = async (ix, extra = [], msg = "取引が確定しました。", note = "") => {
+    const access = note ? await profiles.noteAccess() : undefined;
+    const sending = ix.at(-1)?.data[0] === 14;
+    const sig = await submit(sending ? {...profile,address:senderWho} : profile, sending ? senderWallet : wallet, ix, extra, who, note, access);
     recoveryNotice = "";
     const refreshed = await refresh(
       ix.some(
@@ -126,7 +129,7 @@ export async function dashboard(ctx) {
     s.rows.some(
       (r) => r.tag === 34 && r.group === a && r.to === b && r.status === 1,
     );
-  const viewContext = { ...ctx, ...helpers, state: () => s, content, params, who, profiles,
+  const viewContext = { ...ctx, ...helpers, state: () => s, content, params, who, senderWho, profiles,
     requests, ui, by, shopName, outgoing, send, view, refresh, h, registerWatch };
   const { newGroup, community } = communityViews(viewContext);
   const store = shopView(viewContext);
@@ -134,9 +137,8 @@ export async function dashboard(ctx) {
     if (path === "/communities/new") return newGroup();
     if (path === "/communities") return community();
     if (path === "/shop") return store();
-    ui(twinCards(s) +
-      '<div class="quick-actions"><a class="action" href="/shop/">支払う</a><a class="action secondary" href="/shop/?mode=receive">レジを開く</a></div>');
-    showHistory(content, readHistory, null, h, by, shopName);
+    ui(twinCards(s));
+    showHistory(content, readHistory, null, h, by, shopName, profiles);
     scannerBox(content, "store", (url) => location.assign(url));
     content.insertAdjacentHTML("beforeend", `<details><summary>WARAの発行元</summary>
       ${[...s.funds].map(([id, n]) => `<p>${h(by(id)?.name || id)}：${n} WARA</p>`).join("") || "<p>まだWARAはありません。</p>"}</details>`);

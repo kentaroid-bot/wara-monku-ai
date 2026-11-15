@@ -47,9 +47,11 @@ async function ready() {
     throw e;
   }));
 }
-export async function loadState(address, force = false, requestedShop = null, directoryOnly = false) {
+export async function loadState(address, force = false, requestedShop = null, directoryOnly = false, profile = null) {
   await ready();
   const who = pk(address);
+  profile ??= managedSession()?.profile.address === address ? managedSession().profile : null;
+  const senderWho = profile?.senderAddress || address;
   let cached;
   try {
     cached = JSON.parse(sessionStorage.getItem(registryKey));
@@ -79,7 +81,7 @@ export async function loadState(address, force = false, requestedShop = null, di
   const syncPromise = sync();
   const keys = [
       SYSVAR_CLOCK_PUBKEY,
-      addr(program, "p3", who),
+      addr(program, "p3", senderWho),
       ...groups.map((g) => ata(mintFor(program, g.id), who)),
     ];
   const [views, accounts] = await Promise.all([syncPromise, (async () => {
@@ -101,12 +103,15 @@ export async function loadState(address, force = false, requestedShop = null, di
     if (a?.owner.equals(tok) && a.data.length === 165 && a.data[108] === 1)
       funds.set(g.id, Buffer.from(a.data).readBigUInt64LE(64));
   });
+  const daily = quota(dust ? null : person?.data, day);
+  const carried = BigInt(profile?.carriedDay === Number(day) ? profile.carriedSpent || 0 : 0);
+  daily.remaining = daily.remaining > carried ? daily.remaining - carried : 0n;
   return {
     ...views,
     rows,
     funds,
     day,
-    ...quota(dust ? null : person?.data, day),
+    ...daily,
   };
 }
 export const linked = (rows, a, b) =>
@@ -147,13 +152,13 @@ async function relayRequest(path, payload) {
 
 export const pendingSig = (a) => localStorage.getItem(pendingKey(a));
 export const settlementEvents = new EventTarget();
-function paymentEffect(instructions, viewer) {
+function paymentEffect(instructions, viewer, sender = viewer) {
   let amount = 0n, currency, incoming;
   for (const ix of instructions) {
     if (!ix.programId.equals(program) || ![14,15].includes(ix.data[0])) continue;
     const ina = ix.data[0] === 14;
     incoming = String(ix.keys[ina ? 2 : 3].pubkey) === viewer;
-    if (!incoming && String(ix.keys[0].pubkey) !== viewer) return null;
+    if (!incoming && ![viewer,sender].includes(String(ix.keys[0].pubkey))) return null;
     currency = ina ? "ina" : "wara";
     amount += Buffer.from(ix.data).readBigUInt64LE(1);
   }
@@ -202,7 +207,7 @@ export async function checkPending(a, pending = JSON.parse(pendingSig(a))) {
   }
   throw Error("取引の確定を確認中です。");
 }
-export async function submit(profile, wallet, ix, extra = [], viewer = profile.address) {
+export async function submit(profile, wallet, ix, extra = [], viewer = profile.address, note = "", access) {
   await assertDevnet(rpc);
   for (const address of new Set([viewer,profile.address])) {
     if (pendingSig(address)) {
@@ -249,8 +254,12 @@ export async function submit(profile, wallet, ix, extra = [], viewer = profile.a
     throw Error("署名時に取引内容が変わりました。送信を中止しました。");
   if (!signed.verifySignatures(!sponsor) || signed.signatures.some(s => !s.signature && !(sponsor && s.publicKey.equals(sponsor))))
     throw Error("必要な署名を確認できません。送信を中止しました。");
+  if (note) {
+    // Save the private text before broadcasting. A dropped response cannot lose a paid note.
+    await memberApi("payment-note",{note,access,tx:signed.serialize({requireAllSignatures:false}).toString("base64")});
+  }
   if (pendingSig(viewer) || pendingSig(profile.address)) throw Error("別の取引の送信結果を確認中です。");
-  const entry = {height:latest.lastValidBlockHeight,payment:paymentEffect(ix,viewer)};
+  const entry = {height:latest.lastValidBlockHeight,payment:paymentEffect(ix,viewer,profile.address)};
   if (sponsor) {
     const userSignature = signed.signatures.find(s => String(s.publicKey) === profile.address).signature;
     entry.receipt = bs58.encode(userSignature);
@@ -288,5 +297,5 @@ export async function submit(profile, wallet, ix, extra = [], viewer = profile.a
     catch (e) { if (!isCurrent(viewer,entry)) throw e; }
   } while (Date.now() < deadline);
   settlementEvents.dispatchEvent(new CustomEvent("waiting",{detail:{address:viewer}}));
-  throw Error("支払いを再送せず、取引の確定を確認しています。");
+  throw Error("贈る操作を再送せず、取引の確定を確認しています。");
 }

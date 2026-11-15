@@ -87,12 +87,28 @@ function phantom() {
   if (!p?.isPhantom) throw Error("Phantomをこのブラウザで開いてください。");
   return p;
 }
+export class PhantomAccountMismatch extends Error {
+  constructor(expected, connected) {
+    const short = a => a.slice(0, 6) + "…" + a.slice(-6);
+    super(`Phantomの接続先が違います。WARAの登録先：${short(expected)} ／ 現在の接続先：${short(connected)}。Phantomで登録先と同じSolanaアドレスのアカウントに切り替えてください。`);
+    this.expected = expected;
+  }
+}
 export async function connectPhantom(address) {
   const p = phantom();
   const { publicKey } = await p.connect();
-  if (address && publicKey.toBase58() !== address)
-    throw Error("登録したPhantomアカウントを選んでください。");
+  const connected = publicKey?.toBase58();
+  if (!connected || connected !== p.publicKey?.toBase58())
+    throw Error("Phantomの接続先を確認できません。アカウントを確認してもう一度お試しください。");
+  if (address && connected !== address)
+    throw new PhantomAccountMismatch(address, connected);
   return p;
+}
+// Only invoked by the user after a mismatch. Never signs or resubmits the form.
+export async function recheckPhantom(address) {
+  const p = phantom();
+  if (p.isConnected && p.publicKey?.toBase58() !== address) await p.disconnect();
+  await connectPhantom(address);
 }
 export async function openPair(profile, pass) {
   try {
