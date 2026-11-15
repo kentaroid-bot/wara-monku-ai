@@ -82,7 +82,16 @@ for (const scenario of ["edited", "focused", "busy", "stale", "detached"])
 test("profile errors leave content intact and return a retry notice", async () => {
   const f = profileDOM();
   f.profiles.load=async()=>{throw Error("offline");};
-  assert.match(await enhanceShopProfiles(f.profiles,f.state,f.content,escape,()=>true),/店舗プロフィールを取得できません/);
+  assert.match(await enhanceShopProfiles(f.profiles,f.state,f.content,escape,()=>true),/受け取り窓口プロフィールを取得できません/);
   assert.equal(f.label.innerHTML,"元の店");
   assert.equal(f.input.value,"元の店");
+});
+
+test("directory labels keep the recipient name compact during late profile enhancement", async () => {
+  const f=profileDOM();
+  f.label.dataset.compactLabel="1";
+  f.state.rows[0].caption="紹介文";
+  const pending=enhanceShopProfiles(f.profiles,f.state,f.content,escape,()=>true);
+  f.pending.resolve(); await pending;
+  assert.equal(f.label.innerHTML,"新しい店");
 });

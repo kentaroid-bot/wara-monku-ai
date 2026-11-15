@@ -292,5 +292,5 @@ export async function submit(profile, wallet, ix, extra = [], viewer = profile.a
     catch (e) { if (!isCurrent(viewer,entry)) throw e; }
   } while (Date.now() < deadline);
   settlementEvents.dispatchEvent(new CustomEvent("waiting",{detail:{address:viewer}}));
-  throw Error("支払いを再送せず、取引の確定を確認しています。");
+  throw Error("贈る操作を再送せず、取引の確定を確認しています。");
 }

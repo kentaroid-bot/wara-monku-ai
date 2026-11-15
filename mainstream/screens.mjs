@@ -91,7 +91,7 @@ export async function dashboard(ctx) {
         await refresh();
       }
     } catch (error) {
-      recoveryNotice = pendingSig(who) ? "送信した取引を確認中です。支払いは再送せずにお待ちください。" : error.message;
+      recoveryNotice = pendingSig(who) ? "送信した取引を確認中です。贈る操作は繰り返さずにお待ちください。" : error.message;
       info(recoveryNotice);
     } finally {
       checking = false;
@@ -135,8 +135,7 @@ export async function dashboard(ctx) {
     if (path === "/communities/new") return newGroup();
     if (path === "/communities") return community();
     if (path === "/shop") return store();
-    ui(twinCards(s) +
-      '<div class="quick-actions"><a class="action" href="/shop/">支払う</a><a class="action secondary" href="/shop/?mode=receive">レジを開く</a></div>');
+    ui(twinCards(s));
     showHistory(content, readHistory, null, h, by, shopName, profiles);
     scannerBox(content, "store", (url) => location.assign(url));
     content.insertAdjacentHTML("beforeend", `<details><summary>WARAの発行元</summary>

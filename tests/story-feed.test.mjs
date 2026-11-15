@@ -27,13 +27,13 @@ function transaction(ina, signature = "signature") {
   return {meta:{err:null, loadedAddresses:{writable:[store], readonly:[origin]}}, transaction:{signatures:[signature], message}};
 }
 
-test("confirmed INA stories name the certified store and attribute both shares to the correct reader", () => {
+test("confirmed iine stories name the certified store and attribute both shares to the correct reader", () => {
   const tx = transaction(true);
-  for (const [reader, expected] of [[buyer, /店に \+180 WARA ／ あなたに \+20 WARA/], [store, /あなたの店に \+180 WARA ／ お客さんに \+20 WARA/]]) {
+  for (const [reader, expected] of [[buyer, /相手に \+180 WARA ／ あなたに \+20 WARA/], [store, /あなたに \+180 WARA ／ 贈る人に \+20 WARA/]]) {
     const [row] = entries(tx, "signature", String(reader));
     const story = storyReceipt(row,h,by,shopName);
     assert.match(story, expected);
-    assert.match(story, /2 INA の感謝/);
+    assert.match(story, /2 iine の感謝/);
     assert.match(story, /お店&lt;test&gt;/);
     assert.match(story, /signature\?cluster=devnet/);
   }
@@ -43,7 +43,7 @@ test("confirmed INA stories name the certified store and attribute both shares t
 test("paying with existing WARA reports its origin without claiming a new reward", () => {
   const [row] = entries(transaction(false), "signature",String(buyer));
   const story = storyReceipt(row,h,by,shopName);
-  assert.match(story, /15 WARA を支払いました/);
+  assert.match(story, /15 WARA を贈りました/);
   assert.match(story, /発行元：発行した地域/);
   assert.doesNotMatch(story, /\+|結晶化/);
 });

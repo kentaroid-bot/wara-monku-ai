@@ -40,26 +40,26 @@ export function requestPanel(panel, {api, group, who, owner, esc, certify, info,
 
   function render(certified) {
     const mine = rows.find(r=>r.merchant === who);
-    const own = certified ? `<a class="action" href="${esc(register(group,who))}">自分のレジを開く</a>`
-      : mine ? `<p>申請中：${esc(mine.title)}のレジ（管理者の公認待ち）</p>`
-      : `<form data-apply><label>希望の店舗名（最大40文字）<input name="title" required></label>
-         <small>公認されると店舗名が公開台帳に記録されます。</small><button>お店の開設を申請する</button></form>`;
-    const list = owner && rows.length ? `<h3>店舗の開設申請（${rows.length}件）</h3>` +
-      rows.map((r,i)=>`<article><strong>🏪 ${esc(r.title)}</strong>
+    const own = certified ? `<a class="action" href="${esc(register(group,who))}">受け取る</a>`
+      : mine ? `<p>申請中：${esc(mine.title)}の受け取り窓口（管理者の公認待ち）</p>`
+      : `<form data-apply><label>希望の受け取り名（最大40文字）<input name="title" required></label>
+         <small>公認されると受け取り名が公開台帳に記録されます。</small><button>受け取り窓口の開設を申請する</button></form>`;
+    const list = owner && rows.length ? `<h3>受け取り窓口の開設申請（${rows.length}件）</h3>` +
+      rows.map((r,i)=>`<article><strong>🌾 ${esc(r.title)}</strong>
         <p title="${esc(r.merchant)}">申請者：${esc(r.merchant.slice(0,5))}…${esc(r.merchant.slice(-5))}</p>
-        <button type="button" data-certify="${i}">公認してレジを作る</button>
+        <button type="button" data-certify="${i}">公認して受け取り窓口を作る</button>
         <button type="button" class="secondary" data-decline="${i}">見送る</button></article>`).join("") : "";
     const input = body.querySelector("[name=title]");
     const draft = input?.value;
     const focused = input && input === document.activeElement;
-    body.innerHTML = '<h2>このコミュニティでお店（レジ）を開く</h2>' + own + list;
+    body.innerHTML = '<h2>このコミュニティで受け取り窓口を開く</h2>' + own + list;
     const field = body.querySelector("[name=title]");
     if (field && draft) field.value = draft;
     if (field && focused) field.focus();
   }
   async function load() {
     if (!api.authorization()) {
-      body.innerHTML = '<button type="button" data-identify>財布で本人確認して店舗申請を開く</button>';
+      body.innerHTML = '<button type="button" data-identify>財布で本人確認して受け取り窓口申請を開く</button>';
       snapshot = "";
       return;
     }

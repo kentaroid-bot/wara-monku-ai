@@ -1,13 +1,13 @@
 import { reactions, thankYouChips } from "../shared/payment-memo.mjs";
 
 export function memoFields(privateNotes) {
-  return `<details class="payment-memo"><summary>ありがとうを添える（任意）</summary>
+  return `<details class="payment-memo"><summary>ひとことを添える（任意）</summary>
     <fieldset><legend>気持ちをひとつ</legend><div class="memo-chips">
     ${reactions.map(emoji => `<button type="button" class="secondary" aria-pressed="false" data-reaction="${emoji}">${emoji}</button>`).join("")}</div>
     <input type="hidden" name="reaction" value=""><small>選んだ絵文字は公開台帳に残ります。</small></fieldset>
-    ${privateNotes ? `<label>お店へのひとこと<input name="memo" autocomplete="off" placeholder="自分の言葉でひとこと"></label>
+    ${privateNotes ? `<label>ひとこと<input name="memo" autocomplete="off" placeholder="自分の言葉でひとこと"></label>
     <div class="memo-chips">${thankYouChips.map(text => `<button type="button" class="secondary" data-memo-chip>${text}</button>`).join("")}</div>
-    <small>60文字まで。文章はお店にだけ届きます。</small>` : ""}</details>`;
+    <small>60文字まで。文章は相手にだけ届きます。</small>` : ""}</details>`;
 }
 
 export function bindMemoChips(form) {

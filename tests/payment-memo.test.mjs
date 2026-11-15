@@ -45,3 +45,14 @@ test("buyer and store render the confirmed memo as escaped text in legacy and v0
     assert.match(html,/receipt-memo/);assert.match(html,/😋 &lt;3/);
   }
 });
+
+test("evolved iine reactions survive the transaction and paper authorization boundary",async()=>{
+  const {reactions}=await import("../shared/payment-memo.mjs");
+  for(const reaction of reactions){
+    const ix=[budgetInstructions()[1],...spend(program,buyer,group,shop,10n,2n,0n,reaction)];
+    assert.equal(ordinaryMessage(raw(ix),String(buyer),"card",{...checkout,amount:10,memo:reaction}),true);
+    const tx=makeTx(ix);
+    const row=entries({meta:{err:null},transaction:{signatures:["test"],message:tx.compileMessage()}},"test",String(buyer))[0];
+    assert.equal(row.memo,reaction);
+  }
+});

@@ -9,7 +9,7 @@ export function invoiceAmount(params) {
 export function storeInvoiceUrl(value, origin) {
   const u = new URL(value);
   if (u.origin !== origin || !["/shop", "/shop/", "/register", "/register/"].includes(u.pathname))
-    throw Error("このサイトのお会計QRを選んでください。");
+    throw Error("このサイトの受け取りQRを選んでください。");
   const clean = new URL("/shop/", origin);
   for (const key of ["group", "store"])
     clean.searchParams.set(key, String(pk(u.searchParams.get(key))));
@@ -42,7 +42,7 @@ export function scannerBox(el, kind, accept) {
   const box = document.createElement("details");
   box.innerHTML =
     "<summary>" +
-    (kind === "confirm" ? "大事な手続き用QRを読む" : dailyCard ? "INAカードを読む" : kind === "store" ? "会計QRを読み取る" : "店舗の公開アドレスをQRから読む") +
+    (kind === "confirm" ? "大事な手続き用QRを読む" : dailyCard ? "iineカードを読む" : kind === "store" ? "受け取りQRを読み取る" : "受け取り窓口の公開アドレスをQRから読む") +
     '</summary><label class="button file-picker">カメラ・写真でQRを読む<input type="file" accept="image/*"></label>' +
     (inAppBrowser ? '' : '<button type="button" class="button secondary">カメラを開く</button><button type="button" class="button secondary">停止</button>') +
     '<video hidden muted autoplay playsinline webkit-playsinline aria-label="QR読み取り用カメラ" style="max-width:100%"></video><canvas hidden></canvas><p role="status">' +

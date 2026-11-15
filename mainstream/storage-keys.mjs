@@ -20,3 +20,4 @@ export const inviteKey = (group, wallet) => "wara.private." + wallet + "." + gro
 export const privateInviteKey = (group, wallet, invite) => inviteKey(group, wallet) + "." + invite;
 export const pendingInvite = group => "wara.pending-invite." + group;
 export const sessionInviteKey = group => "wara.invite." + group;
+export const soundKey = "wara.iine.sound";

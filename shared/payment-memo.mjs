@@ -2,9 +2,9 @@ import { Buffer } from "buffer";
 import { PublicKey, TransactionInstruction } from "@solana/web3.js";
 
 export const memoProgram = new PublicKey("MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr");
-export const thankYouChips = ["おいしかったです", "いつもありがとう", "また来ます", "応援しています"];
+export const thankYouChips = ["ありがとう", "いつもありがとう", "助かりました", "応援しています"];
 
-export const reactions = ["👌", "👍", "💕", "❤️", "✨", "😊"];
+export const reactions = ["👍", "✨", "💖", "🎉", "🔥", "🌟", "👑", "🌾", "👌", "💕", "❤️", "😊"];
 export function paymentReaction(value) {
   if (value !== "" && !reactions.includes(value)) throw Error("絵文字を一覧からひとつ選んでください。");
   return value;

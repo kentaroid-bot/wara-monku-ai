@@ -46,17 +46,17 @@ export function entries(tx, sig, address, storeId = null) {
   return out;
 }
 export function storyReceipt(r, h, by, shopName) {
-  const store = shopName(r.group, r.shop) || ("店舗 " + r.shop.slice(0, 5) + "…" + r.shop.slice(-5));
+  const store = shopName(r.group, r.shop) || ("受け取り窓口 " + r.shop.slice(0, 5) + "…" + r.shop.slice(-5));
   const title = r.kusa
-    ? r.incoming ? `${store}で ${r.n} INA の感謝を受け取りました` : `${store} に ${r.n} INA の感謝を贈りました`
-    : r.incoming ? `${store}で ${r.n} WARA を受け取りました` : `${store} に ${r.n} WARA を支払いました`;
+    ? r.incoming ? `${store}で ${r.n} iine の感謝を受け取りました` : `${store} に ${r.n} iine の感謝を贈りました`
+    : r.incoming ? `${store}で ${r.n} WARA を受け取りました` : `${store} に ${r.n} WARA を贈りました`;
   const reaction = reactions.includes(r.memo);
   const detail = r.kusa
-    ? `${r.incoming ? "あなたの店" : "店"}に +${r.n * 90n} WARA ／ ${r.incoming ? "お客さん" : "あなた"}に +${r.n * 10n} WARA`
+    ? `${r.incoming ? "あなた" : "相手"}に +${r.n * 90n} WARA ／ ${r.incoming ? "贈る人" : "あなた"}に +${r.n * 10n} WARA`
     : `発行元：${by(r.origin)?.name || "地域"}`;
   const time = r.time ? new Date(r.time * 1000).toLocaleString("ja-JP", {month:"numeric", day:"numeric", hour:"2-digit", minute:"2-digit", timeZone:"Asia/Tokyo"}) + " JST · " : "";
   return `<li class="story"><span aria-hidden="true">${r.incoming ? "🌾" : "🌱"}</span>
-    <div><strong>${h(title)}</strong>${r.memo ? `<p class="receipt-memo">${reaction ? h(r.memo) : `💬「${h(r.memo)}」`}</p>` : ""}${r.note ? `<p class="receipt-memo">お店へのひとこと「${h(r.note)}」</p>` : ""}<p>${h(detail)}</p><small>${h(time)}${h(by(r.group)?.name || "地域")} ·
+    <div><strong>${h(title)}</strong>${r.memo ? `<p class="receipt-memo">${reaction ? h(r.memo) : `💬「${h(r.memo)}」`}</p>` : ""}${r.note ? `<p class="receipt-memo">ひとこと「${h(r.note)}」</p>` : ""}<p>${h(detail)}</p><small>${h(time)}${h(by(r.group)?.name || "地域")} ·
     <a target="_blank" rel="noopener" href="https://explorer.solana.com/tx/${encodeURIComponent(r.sig)}?cluster=devnet">取引を確認 ↗</a></small></div></li>`;
 }
 // The wallet and shop share the same confirmed receipts as the warmth indicator.
@@ -150,7 +150,7 @@ export function showHistory(el, readHistory, storeId, h, by, shopName, profiles)
       const rows = storeId ? result.rows.filter(row => row.incoming && row.group === storeId) : result.rows;
       body.innerHTML = rows.map(r => storyReceipt(r, h, by, shopName)).join("");
       status.textContent = result.indexing ? "最新の取引を一部照会中です。しばらくしてから続きを確認できます。" :
-        rows.length ? "" : "直近20件に確定したお会計はありません。";
+        rows.length ? "" : "直近20件に確定した贈りものはありません。";
       if (profiles?.supportsNotes) {
         const incoming = rows.filter(r=>r.incoming && r.payerSignature);
         const receipts = [...new Map(incoming.map(r=>[r.sig,{sig:r.sig,payerSignature:r.payerSignature}])).values()];
@@ -169,7 +169,7 @@ export function showHistory(el, readHistory, storeId, h, by, shopName, profiles)
             return storyReceipt({...row,note},h,by,shopName);
           }).join("");
         } catch {
-          status.textContent += " お店へのひとことを取得できません。「履歴を更新」で再試行できます。";
+          status.textContent += " ひとことを取得できません。「履歴を更新」で再試行できます。";
         }
       }
     } catch {

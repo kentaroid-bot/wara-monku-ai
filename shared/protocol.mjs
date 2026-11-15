@@ -87,7 +87,7 @@ export function createGroup(p, who, g, mode, inv, meta, rent) {
 export function certify(p, who, g, merchant, label) {
   const bytes = Buffer.from(label.trim());
   if (!bytes.length || bytes.length > 120)
-    throw Error("店名は1〜120バイトで入力してください。");
+    throw Error("受け取り名は1〜120バイトで入力してください。");
   return ix(
     p,
     [
@@ -191,7 +191,7 @@ export function split(lots, n) {
     n -= used;
     if (!n) return out;
   }
-  throw Error("この店で使えるWARAが不足しています。");
+  throw Error("この相手に贈れるWARAが不足しています。");
 }
 export function parseRow(raw, id) {
   const d = Buffer.from(raw),

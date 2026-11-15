@@ -44,8 +44,8 @@ const info = (message) => {
 const pathname = location.pathname.replace(/\/+$/, "") || "/";
 const path = pathname === "/register" ? "/shop" : pathname;
 const tab = path === "/support" ? "guide" :
-  ["/", "/user"].includes(path) ? "wallet" :
-  (path === "/shop" || path.startsWith("/communities")) ? "market" : "me";
+  ["/", "/user", "/shop"].includes(path) ? "wallet" :
+  path.startsWith("/communities") ? "market" : "me";
 document.querySelector(`[data-tab="${tab}"]`).setAttribute("aria-current", "page");
 const theme = localStorage.getItem(themeKey);
 if (theme === "dark" || theme === "light") document.documentElement.style.colorScheme = theme;
@@ -133,7 +133,7 @@ export function action(form, handler) {
   };
 }
 const welcome =
-  '<section class="welcome"><small>はじめての方へ</small><h2>今日の時間を、地域の力に。</h2><p>毎日届く10 INAで食事や仕事に感謝を贈れます。受け取ったWARAは、明日も財布に残ります。</p><a class="action" href="/signup/">登録・サインイン</a></section>';
+  '<section class="welcome"><small>はじめての方へ</small><h2>今日のいいねを、ありがとうに。</h2><p>毎日届く10 iineで食事や仕事に感謝を贈れます。受け取ったWARAは、明日も財布に残ります。</p><a class="action" href="/signup/">登録・サインイン</a></section>';
 async function card() {
   const box = el.querySelector(".card");
   if (!box) return;
@@ -188,9 +188,9 @@ async function render() {
   const titles = {
     "/": "お財布",
     "/user": "お財布",
-    "/shop": "レジ",
+    "/shop": "iineを贈る・受け取る",
     "/account": "アカウント",
-    "/communities": "市場",
+    "/communities": "コミュニティ",
     "/communities/new": "コミュニティを開設",
   };
   el.innerHTML = "<h1>" + esc(titles[path] || "WARA") + "</h1>";
@@ -224,7 +224,7 @@ async function render() {
         }[profile.type] +
         '</h2><small>公開アドレス</small><p class="wrap">' +
         esc(profile.address) +
-        '</p><p>手数料支援が有効な場合、参加・INA払い・WARA払いにSOLは不要です。自費の取引にはテストSOLを使います。<a href="https://faucet.solana.com/" target="_blank" rel="noopener">Devnetの無料配布</a></p><button id="exit">サインアウト</button></section><article class="card"><h2>INAカード</h2><img alt="このウォレットの公開QR"><p class="wrap">' +
+        '</p><p>手数料支援が有効な場合、参加・iineを贈る操作・WARAを贈る操作にSOLは不要です。自費の取引にはテストSOLを使います。<a href="https://faucet.solana.com/" target="_blank" rel="noopener">Devnetの無料配布</a></p><button id="exit">サインアウト</button></section><article class="card"><h2>iineカード</h2><img alt="このウォレットの公開QR"><p class="wrap">' +
         esc(profile.address) +
         "</p><small>QRだけでお財布から引き落とすことはできません。</small><br><button>印刷する</button></article>",
     );
@@ -238,7 +238,7 @@ async function render() {
       el.querySelector(".card h2").textContent="公開アドレス";
       (await import("./member-ui.mjs")).accountTools(el,info,await authMode());
     }
-    el.insertAdjacentHTML("beforeend", '<details><summary>毎日のINAのリセット</summary><p>日本時間の24:00に、その日の残りが消え、新しい10 INAが使えるようになります。WARAは残ります。</p><a class="action secondary" href="/">今日の枠を読み直す</a></details>');
+    el.insertAdjacentHTML("beforeend", '<details><summary>毎日の iine のリセット</summary><p>毎日 0:00（JST）に、その日の残りが消え、新しい10 iineが使えるようになります。WARAは残ります。</p><a class="action secondary" href="/">今日の枠を読み直す</a></details>');
     await card();
     return;
   }
@@ -251,7 +251,7 @@ async function render() {
           "beforeend",
           '<p><a class="action" href="' +
             esc(after) +
-            '">読み取ったお会計に戻る</a></p>',
+            '">読み取った贈りものに戻る</a></p>',
         );
     }
   }
