@@ -3,7 +3,7 @@ export function showGuide(el) {
     <section class="guide-intro"><h2>iineのお財布</h2>
       <p>日常の「いいね」を、誰かへの「ありがとう」に。毎日届く <strong>10 iine</strong> で、家族や仲間へ気軽に感謝を贈れます。</p>
       <dl><dt>👍 今日の iine</dt><dd>今日、誰かに贈るための10個のいいね。複数のコミュニティに参加しても、ひとつの財布で毎日合計10 iineです。</dd>
-      <dt>🌾 WARA — ありがとうの結晶</dt><dd>1 iineを贈ると、<strong>相手に90 WARA</strong>、いいねを見つけた<strong>あなたにも10 WARA</strong>が届きます。WARAは日付が変わっても残ります。</dd></dl>
+      <dt>🌾 WARA — ありがとうの結晶</dt><dd>1 iineを贈ると、<strong>相手に100 WARA</strong>が届きます。贈る人への還元はありません。WARAは日付が変わっても残ります。</dd></dl>
     </section>
     <section><h2>毎日 0:00（JST）にリセット</h2>
       <p>使い切れなかった iine は<strong>日本時間 0:00</strong>にリセットされ、新しい <strong>10 iine</strong> が届きます。前日の残りは繰り越しません。積み上がった <strong>WARAは消えずに残ります。</strong></p>

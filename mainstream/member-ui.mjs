@@ -1,3 +1,4 @@
+import { confirmDialog } from "./confirm-dialog.mjs";
 import { introducedKey } from "./storage-keys.mjs";
 import QRCode from "qrcode";
 import bs58 from "bs58";
@@ -36,8 +37,11 @@ export async function memberApi(op, body = {}) {
     body: JSON.stringify({ ...body, ...(op==="signature" || (op==="enroll" && body.type==="phantom") ? {mobileReturn:mobileBrowser()} : {}), session: managedSession()?.session }),
   });
   const result = await response.json();
-  if (!response.ok)
-    throw Error(result.error || "手続きを完了できませんでした。");
+  if (!response.ok) {
+    const error = Error(result.error || "手続きを完了できませんでした。");
+    error.status = response.status;
+    throw error;
+  }
   return result;
 }
 const cancel = () =>
@@ -586,7 +590,10 @@ export async function payWithCard(group, store, amount, title, memo = "", note =
     import("./network.mjs"),
     import("./protocol.mjs"),
   ]);
-  const state = await loadState(address, true);
+  if (address === store) throw Error("自分には贈れません。");
+  const prep = await memberApi("card-prepare",{card,group});
+  const state = await loadState(address, true, null, false,
+    {address,carriedDay:prep.carriedDay,carriedSpent:prep.carriedSpent});
   if (state.remaining < BigInt(amount))
     throw Error("今日のiineの残りを超えています。");
   const checkout = { group, store, amount, memo };
@@ -610,4 +617,64 @@ export async function payWithCard(group, store, amount, title, memo = "", note =
     ),
     [], store,
   );
+}
+
+export function updateSessionProfile(profile) {
+  const current = managedSession();
+  if (!current) throw Error("サインインしてください。");
+  // Preserve the original expiry when refreshing only the profile.
+  const {remainingMs, ...session} = current;
+  rememberSession({...session,profile});
+}
+export function senderAccountTools(el,info,initial,onUpdate = ()=>{}) {
+  const section = document.createElement("section");
+  section.className = "sender-account";
+  el.append(section);
+  function render(profile) {
+    section.replaceChildren();
+    const text = (tag,value,cls) => {
+      const element = document.createElement(tag);
+      element.textContent = value;
+      if (cls) element.className = cls;
+      section.append(element);
+      return element;
+    };
+    text("h2","贈る用アドレス（匿名用）");
+    text("p","iineを贈るための専用アドレスです。WARAは主ウォレットで受け取ります。");
+    text("p",profile.senderAddress,"wrap sender-address");
+    const nextAt = (profile.senderRotatedAt + 30 * 86400) * 1000;
+    const date = value => new Date(value).toLocaleString("ja-JP",{timeZone:"Asia/Tokyo"}) + " JST";
+    text("p","前回更新：" + date(profile.senderRotatedAt * 1000));
+    text("p","次回更新可能日：" + date(nextAt));
+    const remaining = Math.max(0,Math.ceil((nextAt - Date.now()) / 86400000));
+    const button = text("button","贈る用アドレスを更新（月1回）");
+    button.type = "button";
+    button.disabled = remaining > 0;
+    if (remaining) text("p",`更新まであと${remaining}日です。`,"muted");
+    const cleanup = text("button","以前の贈る用アドレスを整理");
+    cleanup.type = "button";
+    cleanup.className = "secondary";
+    cleanup.onclick = async () => {
+      cleanup.disabled = true;
+      try {
+        const result = await memberApi("sender-cleanup");
+        info(result.cleaned ? "以前のアドレスの整理が完了しました。" : "一部の整理を待っています。時間をおいて再試行できます。");
+      } catch (error) { info(error.message); }
+      finally { cleanup.disabled = false; }
+    };
+    button.onclick = async () => {
+      button.disabled = true;
+      try {
+        if (!await confirmDialog({title:"贈る用アドレスを更新",message:"新しい匿名用アドレスに切り替えます。今日使ったiineの数と主ウォレットは引き継ぎます。次の更新は30日後です。",confirmLabel:"更新する"})) return;
+        const pin = await keypad("アドレス更新の暗証番号","いつもの6桁のPINを入力してください。");
+        const result = await memberApi("sender-rotate",{pin});
+        updateSessionProfile(result.profile);
+        onUpdate(result.profile);
+        render(result.profile);
+        info("贈る用アドレスを更新しました。");
+      } catch (error) { info(error.message); }
+      finally { if (button.isConnected) button.disabled = remaining > 0; }
+    };
+  }
+  render(initial);
 }

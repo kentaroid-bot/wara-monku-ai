@@ -11,8 +11,9 @@ import { shopView } from "./views/shop.mjs";
 import { viewHelpers, receipt } from "./views/ui.mjs";
 
 export async function dashboard(ctx) {
-  const { el, info, path, profile, wallet, action, recordPayment, readHistory, esc: h } = ctx,
+  const { el, info, path, profile, wallet, senderWallet = wallet, action, recordPayment, readHistory, esc: h } = ctx,
     who = profile.address,
+    senderWho = profile.senderAddress || who,
     params = new URLSearchParams(location.search);
   const content = document.createElement("div");
   el.append(content);
@@ -33,7 +34,7 @@ export async function dashboard(ctx) {
     try {
       const requestedShop = path === "/shop" && params.has("group") && params.has("store")
         ? {group:params.get("group"), store:params.get("store")} : null;
-      const state = await loadState(who, force, requestedShop, directory);
+      const state = await loadState(who, force, requestedShop, directory, profile);
       if (turn !== sequence) return false;
       s = state;
       view();
@@ -63,7 +64,7 @@ export async function dashboard(ctx) {
     if (address !== who || !content.isConnected) return;
     if (payment === undefined) {
       const tx = await rpc.getTransaction(sig,{commitment:"confirmed",maxSupportedTransactionVersion:0});
-      const rows = entries(tx,sig,who);
+      const rows = entries(tx,sig,who,null,senderWho);
       if (!rows.length) return;
       payment = {amount:rows.reduce((sum,row)=>sum+row.n,0n),currency:rows[0].kusa ? "ina" : "wara",incoming:rows[0].incoming};
     }
@@ -103,7 +104,8 @@ export async function dashboard(ctx) {
   window.addEventListener("pageshow",e=>{ if (e.persisted) void recover(); });
   const send = async (ix, extra = [], msg = "取引が確定しました。", note = "") => {
     const access = note ? await profiles.noteAccess() : undefined;
-    const sig = await submit(profile, wallet, ix, extra, profile.address, note, access);
+    const sending = ix.at(-1)?.data[0] === 14;
+    const sig = await submit(sending ? {...profile,address:senderWho} : profile, sending ? senderWallet : wallet, ix, extra, who, note, access);
     recoveryNotice = "";
     const refreshed = await refresh(
       ix.some(
@@ -127,7 +129,7 @@ export async function dashboard(ctx) {
     s.rows.some(
       (r) => r.tag === 34 && r.group === a && r.to === b && r.status === 1,
     );
-  const viewContext = { ...ctx, ...helpers, state: () => s, content, params, who, profiles,
+  const viewContext = { ...ctx, ...helpers, state: () => s, content, params, who, senderWho, profiles,
     requests, ui, by, shopName, outgoing, send, view, refresh, h, registerWatch };
   const { newGroup, community } = communityViews(viewContext);
   const store = shopView(viewContext);

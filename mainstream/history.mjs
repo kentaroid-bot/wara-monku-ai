@@ -4,7 +4,7 @@ import { Buffer } from "buffer";
 import { rpc, program } from "./network.mjs";
 import { pk } from "./protocol.mjs";
 import { publicDevnetFallback } from "../shared/devnet.mjs";
-export function entries(tx, sig, address, storeId = null) {
+export function entries(tx, sig, address, storeId = null, senderAddress = address) {
   if (!tx?.meta || tx.meta.err) return [];
   const out = [];
   const message = tx.transaction.message;
@@ -22,7 +22,7 @@ export function entries(tx, sig, address, storeId = null) {
     if (
       storeId
         ? shop !== address || group !== storeId
-        : payer !== address && shop !== address
+        : ![address,senderAddress].includes(payer) && ![address,senderAddress].includes(shop)
     )
       continue;
     const n = d.readBigUInt64LE(1);
@@ -39,7 +39,7 @@ export function entries(tx, sig, address, storeId = null) {
       shop,
       n,
       kusa: k,
-      incoming: address === shop,
+      incoming: [address,senderAddress].includes(shop),
       time: tx.blockTime,
     });
   }
@@ -52,7 +52,7 @@ export function storyReceipt(r, h, by, shopName) {
     : r.incoming ? `${store}で ${r.n} WARA を受け取りました` : `${store} に ${r.n} WARA を贈りました`;
   const reaction = reactions.includes(r.memo);
   const detail = r.kusa
-    ? `${r.incoming ? "あなた" : "相手"}に +${r.n * 90n} WARA ／ ${r.incoming ? "贈る人" : "あなた"}に +${r.n * 10n} WARA`
+    ? `${r.incoming ? "あなた" : "相手"}に +${r.n * 100n} WARA`
     : `発行元：${by(r.origin)?.name || "地域"}`;
   const time = r.time ? new Date(r.time * 1000).toLocaleString("ja-JP", {month:"numeric", day:"numeric", hour:"2-digit", minute:"2-digit", timeZone:"Asia/Tokyo"}) + " JST · " : "";
   return `<li class="story"><span aria-hidden="true">${r.incoming ? "🌾" : "🌱"}</span>
@@ -66,8 +66,17 @@ const detailsPerRead = 5;
 const cooldownMs = 60_000;
 const isRateLimit = error => /\b429\b|too many requests/i.test(error?.message);
 
-export function paymentHistory(address, onPayment, [primary, fallback] = historyNodes) {
-  const wallet = pk(address);
+export function paymentHistory(address, onPayment, nodes = historyNodes, senderAddress = address) {
+  const readers = new Map();
+  return (storeId = null, storeAddress = address) => {
+    const key = storeId ? `${storeId}:${storeAddress}` : "home";
+    if (!readers.has(key)) readers.set(key,historyReader(storeId ? storeAddress : address,onPayment,nodes,
+      storeId ? storeAddress : senderAddress,storeId));
+    return readers.get(key)();
+  };
+}
+function historyReader(address, onPayment, [primary, fallback], senderAddress, storeId) {
+  const wallets = [...new Set([address,senderAddress])].map(pk);
   let cache = new Map();
   let attempt = 0;
   let primaryRetryAfter = 0;
@@ -93,7 +102,8 @@ export function paymentHistory(address, onPayment, [primary, fallback] = history
     }
     const latest = Math.max(0, ...rows.map(row => row.time || 0));
     if (latest) onPayment(latest * 1000);
-    return { rows, indexing: incomplete };
+    rows.sort((a,b)=>(b.time || 0)-(a.time || 0));
+    return { rows:rows.slice(0,20), indexing: incomplete };
   }
 
   function rateLimited(error) {
@@ -106,7 +116,9 @@ export function paymentHistory(address, onPayment, [primary, fallback] = history
     if (Date.now() < retryAfter) return snapshot(true);
     let signatures;
     try {
-      signatures = await request("getSignaturesForAddress", wallet, { limit: 20 }, "confirmed");
+      const lists = await Promise.all(wallets.map(wallet=>request("getSignaturesForAddress", wallet, {limit:storeId || wallets.length === 1 ? 20 : 10}, "confirmed")));
+      signatures = [...new Map(lists.flat().map(item=>[item.signature,item])).values()]
+        .sort((a,b)=>(b.blockTime || 0)-(a.blockTime || 0)).slice(0,20);
     } catch (error) {
       rateLimited(error);
       return snapshot(true);
@@ -123,7 +135,7 @@ export function paymentHistory(address, onPayment, [primary, fallback] = history
       try {
         const tx = await request("getTransaction", signature, { commitment: "confirmed", maxSupportedTransactionVersion: 0 });
         if (!tx?.meta || tx.transaction.signatures[0] !== signature) continue;
-        const rows = entries(tx, signature, address);
+        const rows = entries(tx, signature, address, storeId, senderAddress);
         for (const row of rows) row.time ??= blockTime;
         item.rows = rows;
       } catch (error) {

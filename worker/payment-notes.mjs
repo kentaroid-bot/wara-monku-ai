@@ -25,13 +25,15 @@ export async function stageNote(core, payerSignature, shop, note) {
 }
 
 export async function prepareNote(core) {
-  const actorAddress = core.b.access && !core.b.session ? (await core.readTicket(core.b.access,"payment-notes",false)).address : (await core.session()).m.address;
+  const member = core.b.access && !core.b.session ? {address:(await core.readTicket(core.b.access,"payment-notes",false)).address} : (await core.session()).m;
+  let actorAddress;
   const note = noteText(core.b.note,core.bad);
   let receipt, shop;
   try {
     const raw = Buffer.from(core.b.tx,"base64");
     if (raw.length > 1232) throw Error();
     const tx = Transaction.from(raw), last = tx.instructions.at(-1);
+    actorAddress = last.data[0] === 14 ? member.sender_address || member.address : member.address;
     const sponsor = tx.feePayer.toBase58() === actorAddress ? null : feeKey(core.env)?.publicKey;
     const actor = tx.signatures.find(s => s.publicKey.toBase58() === actorAddress);
     if (!actor?.signature || !tx.verifySignatures(false)) throw Error();

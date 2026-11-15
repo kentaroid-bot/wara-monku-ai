@@ -14,7 +14,8 @@ window.mount=(remaining,initial=0,member=true)=>{
 }; mount(3,10);`,resolveDir:process.cwd()},bundle:true,write:false,platform:"browser",define:{global:"globalThis"}});
 const browser=await chromium.launch({executablePath:process.env.CHROME_BIN});
 try {
-  const page=await browser.newPage({viewport:{width:320,height:844}}), errors=[];
+ for (const width of [320,390,1024]) for (const colorScheme of ["light","dark"]) {
+  const page=await browser.newPage({viewport:{width,height:844},colorScheme}), errors=[];
   page.on("pageerror",e=>errors.push(e.message));
   await page.route("**/*",route=>{
     const path=new URL(route.request().url()).pathname;
@@ -46,4 +47,6 @@ try {
   assert.equal(await page.locator(".iine-particles span").count(),0);
   assert.deepEqual(errors,[]);
   console.log("PASS game: remaining cap, zero/nonmember, custom reaction, busy lock, reset, reduced motion");
+  await page.close();
+ }
 } finally {await browser.close();}

@@ -84,5 +84,5 @@ test("wallet screens and service errors use iine and recipient vocabulary", asyn
     "mainstream/shop-profile.mjs","mainstream/shop-requests.mjs","mainstream/history.mjs","mainstream/scan.mjs",
     "mainstream/memo-ui.mjs","mainstream/member-ui.mjs","shared/shop-profile.mjs","shared/protocol.mjs",
     "worker/shop-profiles.mjs","worker/shop-requests.mjs"];
-  for(const file of files) assert.doesNotMatch(await readFile(new URL("../"+file,import.meta.url),"utf8"),/INA|店舗|ショップ|お店|レジ|お会計|支払う|店主/,file);
+  for(const file of files) assert.doesNotMatch((await readFile(new URL("../"+file,import.meta.url),"utf8")).replaceAll(/\b(?:SHOP|BUYER)_WARA_PER_INA\b/g,""),/INA|店舗|ショップ|お店|レジ|お会計|支払う|店主/,file);
 });

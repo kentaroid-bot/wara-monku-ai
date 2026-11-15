@@ -219,11 +219,12 @@ test("signed-in zero-SOL buyer joins, spends and transfers through Worker/D1 and
     "0007_private_community_names",
     "0008_community_access",
     "0009_payment_notes",
+    "0010_sender_wallets",
   ]) {
     const sql = await readFile("migrations/" + file + ".sql", "utf8");
     for (const stmt of sql
       .trim()
-      .split(/;\s*(?=CREATE |$)/)
+      .split(/;\s*(?=CREATE |ALTER |$)/)
       .filter(Boolean))
       await db.prepare(stmt).run();
   }
@@ -233,6 +234,7 @@ test("signed-in zero-SOL buyer joins, spends and transfers through Worker/D1 and
     )
     .bind(String(user))
     .run();
+  await db.prepare("UPDATE members SET sender_address=address WHERE id='buyer'").run();
   await db
     .prepare("INSERT INTO wallet_tickets VALUES(?,'trial','session',?,?)")
     .bind(
@@ -327,7 +329,7 @@ test("signed-in zero-SOL buyer joins, spends and transfers through Worker/D1 and
     },
   });
   const mint = mintFor(program, g);
-  const balance = (k) => account(ata(mint, k)).data.readBigUInt64LE(64);
+  const balance = (k) => account(ata(mint, k))?.data.readBigUInt64LE(64) || 0n;
   assert.equal(account(user), null);
   await submit(
     profile,
@@ -337,8 +339,8 @@ test("signed-in zero-SOL buyer joins, spends and transfers through Worker/D1 and
   );
   const day = (svm.getClock().unixTimestamp + 32400n) / 86400n;
   await submit(profile, wallet, spend(program, user, g, merchant, 1n, day, 0n));
-  assert.equal(balance(merchant), 90n);
-  assert.equal(balance(user), 10n);
+  assert.equal(balance(merchant), 100n);
+  assert.equal(balance(user), 0n);
   assert.equal(account(ata(mint, secondShop)), null);
   await t.test("only the reaction is broadcast; the confirmed merchant can read the private note", async () => {
     const note = "おいしかったです <3";
@@ -358,9 +360,15 @@ test("signed-in zero-SOL buyer joins, spends and transfers through Worker/D1 and
     broadcast.push(unconfirmed);
     assert.deepEqual(await (await read({access})).json(),{notes:[{sig:signature,note}]});
     assert.equal(signature,broadcast.at(-1));
-    assert.equal(balance(merchant),180n);
-    assert.equal(balance(user),20n);
+    assert.equal(balance(merchant),200n);
+    assert.equal(balance(user),0n);
   });
+  // Transfer existing WARA to fund the primary wallet; iine no longer refunds it.
+  admin([certify(program, owner.publicKey, g, user, "受取")]);
+  const funding = new Transaction({feePayer:owner.publicKey,recentBlockhash:svm.latestBlockhash()}).add(...transfer(program,merchant,g,user,[{origin:g,amount:20n}]));
+  svm.airdrop(String(merchant),5_000_000n);
+  funding.sign(owner,shop); execute(funding.serialize());
+  svm.setAccount({address:String(addr(program,"s3",g,user)),lamports:0n,data:Buffer.alloc(0),programAddress:String(SystemProgram.programId),executable:false});
   drop = true;
   const recovered = [];
   const onConfirmed = event => recovered.push(event.detail);

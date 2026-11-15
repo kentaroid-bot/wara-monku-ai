@@ -28,7 +28,9 @@ const chainRows = rows.map(row => {
 });
 const browser = await chromium.launch({executablePath:process.env.CHROME_BIN});
 try {
-  const page = await browser.newPage({viewport:{width:390,height:844}});
+ for (const width of [320,390,1024]) for (const colorScheme of ["light","dark"]) {
+  profile = {...profile,title:"パン屋",icon:"🥐",revision:1}; paid=false; signatureReads=0;
+  const page = await browser.newPage({viewport:{width,height:844},colorScheme});
   const errors=[];
   page.on("pageerror", e=>errors.push(e.message));
   page.on("console", m=>{if(m.type()==="error") errors.push(m.text());});
@@ -71,6 +73,7 @@ try {
       return route.fulfill({json:profile});
     }
     if (url.pathname === "/api/member/shop-profiles") return route.fulfill({json:{profiles:[profile]}});
+    if (url.pathname === "/api/member/session") return route.fulfill({json:{profile:{address:who,type:"phantom",managed:true}}});
     if (url.pathname.startsWith("/api/")) return route.fulfill({json:{}});
     return route.fulfill({path:resolve("dist","."+(url.pathname.endsWith("/") ? url.pathname+"index.html" : url.pathname))});
   });
@@ -153,7 +156,7 @@ try {
   await page.locator("#qr-out img").waitFor();
   await page.screenshot({path:"/tmp/wara-phase2-register.png"});
   paid = true;
-  await page.locator("#crystal-toast").filter({hasText:"+270"}).waitFor({timeout:15000});
+  await page.locator("#crystal-toast").filter({hasText:"+300"}).waitFor({timeout:15000});
   await page.locator(".story").filter({hasText:"3 iine"}).waitFor();
   await page.locator(".story").getByText("ひとこと「また来ます <3」").waitFor();
   await page.locator("#qr-out img").waitFor();
@@ -169,7 +172,7 @@ try {
   assert.equal(signatureReads,afterRemoval,"removing only the QR stops its watcher");
   const screenshots = process.env.IINE_SCREENSHOT_DIR;
   if (screenshots) await (await import("node:fs/promises")).mkdir(screenshots,{recursive:true});
-  for (const width of [320,390,1024]) for (const colorScheme of ["light","dark"]) {
+  {
     await page.setViewportSize({width,height:844}); await page.emulateMedia({colorScheme});
     const check = async name => {
       assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth <= innerWidth), `${name} overflows at ${width}`);
@@ -250,6 +253,8 @@ try {
     await page.locator("[data-tap]").click(); assert.equal(await page.locator("[data-count]").innerText(),"4");
   }
   assert.deepEqual(errors,[]);
-  console.log("390px: custom dialogs, live receipt/toast/history, QR cleanup passed");
-  console.log("390px: profile edit, market, pay/receive lists and direct register link passed");
+  console.log(`${width}px ${colorScheme}: custom dialogs, live receipt/toast/history, QR cleanup passed`);
+  console.log(`${width}px ${colorScheme}: profile edit, market, pay/receive lists and direct register link passed`);
+  await page.close();
+ }
 } finally { await browser.close(); }

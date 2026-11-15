@@ -20,10 +20,10 @@ const imageGuidance = /「カメラ・写真でQRを読む」でも読み取れ�
 const initialGuidance = 'ボタンを押して、カメラ撮影または写真からQRコードを読み取ってください。';
 const browser = await browsers[browserType].launch({ executablePath: process.env.CHROME_BIN });
 try {
-  for (const width of [320, 390]) for (const profile of ['browser', 'phantom-ua', 'phantom-provider']) {
+  for (const width of [320, 390, 1024]) for (const colorScheme of ["light","dark"]) for (const profile of ['browser', 'phantom-ua', 'phantom-provider']) {
     const inAppBrowser = profile !== 'browser';
     const userAgent = inAppBrowser ? 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148' + (profile === 'phantom-ua' ? ' Phantom/26.0' : '') : undefined;
-    const page = await browser.newPage({ viewport: { width, height: 844 }, isMobile: true, hasTouch: true, userAgent });
+    const page = await browser.newPage({ viewport: { width, height: 844 }, isMobile: true, hasTouch: true, colorScheme, userAgent });
     const errors = []; page.on('pageerror', e => errors.push(e.message));
     const waitForQr = async () => {
       try { await page.waitForFunction(() => !!window.accepted, null, { timeout: 10000 }); }

@@ -113,6 +113,13 @@ export async function wallet() {
   }
   return signer;
 }
+export async function senderWallet() {
+  if (profile?.managed && profile.senderAddress) {
+    if (active()?.senderAddress !== profile.senderAddress) throw Error("贈る用アドレスが更新されました。再読み込みしてください。");
+    return (await import("./member-ui.mjs")).siteSigner({...profile,address:profile.senderAddress});
+  }
+  return wallet();
+}
 export function action(form, handler) {
   if (!form) return;
   form.onsubmit = async (e) => {
@@ -157,7 +164,23 @@ async function render() {
     try { await restorePhantom(); } catch { /* Keep the normal sign-in available offline. */ }
     profile = active();
   }
-  const readHistory = profile && paymentHistory(profile.address, recordPayment);
+  if (profile?.managed && path !== "/support") {
+    const {memberApi,updateSessionProfile} = await import("./member-ui.mjs");
+    try {
+      const result = await memberApi("session");
+      updateSessionProfile(result.profile);
+      profile = result.profile;
+    } catch (error) {
+      if (error?.status !== 401) throw error;
+      signout();
+      profile = null;
+      if (path !== "/signup") {
+        location.replace("/signup/");
+        return;
+      }
+    }
+  }
+  const readHistory = profile && paymentHistory(profile.address, recordPayment, undefined, profile.senderAddress || profile.address);
   if (readHistory) {
     const checkReceipts = () => {
       if (document.hidden) return;
@@ -237,6 +260,7 @@ async function render() {
       if(sessionStorage.getItem(introducedKey)) { sessionStorage.removeItem(introducedKey); info("ご本人の財布を作りました。紙を本人に渡してください。今の画面は紹介者の財布です。"); }
       el.querySelector(".card h2").textContent="公開アドレス";
       (await import("./member-ui.mjs")).accountTools(el,info,await authMode());
+      (await import("./member-ui.mjs")).senderAccountTools(el,info,profile,next=>{profile=next;});
     }
     el.insertAdjacentHTML("beforeend", '<details><summary>毎日の iine のリセット</summary><p>毎日 0:00（JST）に、その日の残りが消え、新しい10 iineが使えるようになります。WARAは残ります。</p><a class="action secondary" href="/">今日の枠を読み直す</a></details>');
     await card();
@@ -256,6 +280,6 @@ async function render() {
     }
   }
   const { dashboard } = await import("./screens.mjs");
-  await dashboard({ el, info, path, profile, wallet, action, esc, recordPayment, readHistory });
+  await dashboard({ el, info, path, profile, wallet, senderWallet, action, esc, recordPayment, readHistory });
 }
 render().catch((e) => info(e.message));

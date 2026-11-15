@@ -563,10 +563,13 @@ test("SMS-verified introduction, isolated child login, card scope and linking th
   const { walletMessage }=await import("../shared/member-wire.mjs");
   const { spend, transfer, join }=await import("../mainstream/protocol.mjs");
   const { budgetInstructions }=await import("../app/protocol.mjs");
-  const { Keypair, Transaction, SystemProgram }=await import("@solana/web3.js");
+  const { Keypair, Transaction, SystemProgram, PublicKey }=await import("@solana/web3.js");
   const {default:manifest}=await import("../deployments/devnet.json",{with:{type:"json"}});
   const sql=await readFile(new URL("../migrations/0002_wallet_access.sql",import.meta.url),"utf8");
   for(const statement of sql.trim().split(/;\s*(?=CREATE |$)/).filter(Boolean)) await db.prepare(statement).run();
+  const senderSql=await readFile(new URL("../migrations/0010_sender_wallets.sql",import.meta.url),"utf8");
+  for(const statement of senderSql.split(";").filter(s=>s.trim())) await db.prepare(statement).run();
+  let fixtureMain;
   const env={DB:db,AUTH_PEPPER:randomBytes(32).toString("hex"),AUTH_MODE:"sms",WALLET_ACCESS:"enabled",
     TWILIO_VERIFY_SERVICE_SID:"VA"+"a".repeat(32),TWILIO_API_KEY:"SK"+"b".repeat(32),TWILIO_API_SECRET:"fixture"};
   const { workerDevnetUrl } = await import("../worker/devnet-rpc.mjs");
@@ -575,8 +578,18 @@ test("SMS-verified introduction, isolated child login, card scope and linking th
   const sent=new Map();
   t.mock.method(globalThis,"fetch",async (url,init)=>{
     if (String(url) === workerDevnetUrl) {
-      const {id, method} = JSON.parse(init.body);
+      const {id, method, params} = JSON.parse(init.body);
       if (method === "getGenesisHash") return Response.json({id, jsonrpc:"2.0", result:DEVNET_GENESIS});
+      if (method === "getMultipleAccounts") {
+        const {SYSVAR_CLOCK_PUBKEY} = await import("@solana/web3.js");
+        const values = params[0].map((key,i)=>{
+          if(key===String(SYSVAR_CLOCK_PUBKEY)) {const d=Buffer.alloc(40);d.writeBigInt64LE(10n*86400n-32400n,32);return {data:[d.toString("base64"),"base64"],owner:String(SystemProgram.programId),lamports:1,executable:false,rentEpoch:0};}
+          if(params[0][0]===String(SYSVAR_CLOCK_PUBKEY)) {const d=Buffer.alloc(25);d[0]=35;d.writeBigInt64LE(10n,1);d.writeBigUInt64LE(1n,17);return {data:[d.toString("base64"),"base64"],owner:manifest.program,lamports:1,executable:false,rentEpoch:0};}
+          if(i===0) {const d=Buffer.alloc(67);d[0]=31;new PublicKey(fixtureMain).toBuffer().copy(d,1);return {data:[d.toString("base64"),"base64"],owner:manifest.program,lamports:1,executable:false,rentEpoch:0};}
+          return null;
+        });
+        return Response.json({id,jsonrpc:"2.0",result:{context:{slot:1},value:values}});
+      }
       assert.equal(method, "isBlockhashValid");
       if (hashReply === "blocked") return new Response("Forbidden", {status:403});
       return Response.json({id, jsonrpc:"2.0", result:{context:{slot:1}, value:hashReply}});
@@ -665,16 +678,17 @@ test("SMS-verified introduction, isolated child login, card scope and linking th
   await call("introduce",{...registration,session:child.session},403);
   await call("pin",{session:child.session,newPin:"884411"},401);
   await call("card-info",{card:introduced.address},401);
-  const g=Keypair.generate().publicKey,store=Keypair.generate().publicKey, payer=new (await import("@solana/web3.js")).PublicKey(introduced.address);
+  const g=Keypair.generate().publicKey,store=Keypair.generate().publicKey, payer=new PublicKey(introduced.address), sender=new PublicKey(child.profile.senderAddress);
+  fixtureMain=introduced.address;
   const blockhash=String(Keypair.generate().publicKey);
-  const raw=ix=>new Transaction({feePayer:payer,recentBlockhash:blockhash}).add(...ix).serialize({requireAllSignatures:false,verifySignatures:false}).toString("base64");
-  const send=spend(manifest.program,payer,g,store,1,10,1);
+  const raw=(ix,feePayer=payer)=>new Transaction({feePayer,recentBlockhash:blockhash}).add(...ix).serialize({requireAllSignatures:false,verifySignatures:false}).toString("base64");
+  const send=spend(manifest.program,sender,g,store,1,10,1);
   const checkout={group:String(g),store:String(store),amount:1};
-  const cardBody={card:sheet.card,pin:childPin,checkout,tx:raw([budgetInstructions()[1],...send])};
+  const cardBody={card:sheet.card,pin:childPin,checkout,tx:raw([budgetInstructions()[1],...send],sender)};
   const signed=await call("card-sign",cardBody);
-  assert.ok(ed25519.verify(Buffer.from(signed.signature,"base64"),Transaction.from(Buffer.from(cardBody.tx,"base64")).serializeMessage(),payer.toBytes()));
+  assert.ok(ed25519.verify(Buffer.from(signed.signature,"base64"),Transaction.from(Buffer.from(cardBody.tx,"base64")).serializeMessage(),sender.toBytes()));
   await call("card-sign",{...cardBody,checkout:{...checkout,amount:2}},401);
-  await call("card-sign",{...cardBody,tx:raw([SystemProgram.transfer({fromPubkey:payer,toPubkey:store,lamports:10}),...send])},401);
+  await call("card-sign",{...cardBody,tx:raw([SystemProgram.transfer({fromPubkey:sender,toPubkey:store,lamports:10}),...send],sender)},401);
   const pay=raw([budgetInstructions()[1],...transfer(manifest.program,payer,g,store,[{origin:g,amount:2n}])]);
   await call("card-sign",{...cardBody,tx:pay},401);
   await call("sign",{session:child.session,tx:pay},401);
@@ -699,7 +713,7 @@ test("SMS-verified introduction, isolated child login, card scope and linking th
   const sponsoredCard = sponsoredTx(sponsoredInstructions([budgetInstructions()[1],...send],sponsor.publicKey,1000000));
   const proofForSponsor = await call("card-sign",{...cardBody,tx:sponsoredCard});
   assert.ok(ed25519.verify(Buffer.from(proofForSponsor.signature,"base64"),
-    Transaction.from(Buffer.from(sponsoredCard,"base64")).serializeMessage(),payer.toBytes()));
+    Transaction.from(Buffer.from(sponsoredCard,"base64")).serializeMessage(),sender.toBytes()));
   await call("card-sign",{...cardBody,tx:sponsoredCard,checkout:{...checkout,amount:2}},401);
   const sponsoredWara = sponsoredTx(sponsoredInstructions([budgetInstructions()[1],
     ...transfer(manifest.program,payer,g,store,[{origin:g,amount:2n}])], sponsor.publicKey,0));
@@ -734,7 +748,7 @@ test("SMS-verified introduction, isolated child login, card scope and linking th
   await call("introduce",{...registration,...cards(),session:parent.session},429);
   const rotated=cards();await call("cards",{session:linked.session,code:sheet.codes.at(-1),...rotated});
   await call("card-info",{card:sheet.card},401);
-  assert.equal((await call("card-info",{card:rotated.card})).address,introduced.address);
+  assert.equal((await call("card-info",{card:rotated.card})).address,child.profile.senderAddress);
 
   await t.test("the D1 member session lasts exactly seven days and using it does not renew it", async t => {
     assert.equal(parent.remainingMs, 604800000);

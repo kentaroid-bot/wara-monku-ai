@@ -21,7 +21,7 @@ export function feeKey(env) {
   return Keypair.fromSecretKey(bs58.decode(env.FEE_PAYER_SECRET));
 }
 
-function inspect(encoded, sponsor, member) {
+export function inspect(encoded, sponsor, member) {
   if (typeof encoded !== "string" || encoded.length > 1644) throw Error();
   const raw = Buffer.from(encoded, "base64");
   if (raw.length > 1232 || raw.toString("base64") !== encoded) throw Error();
@@ -30,12 +30,13 @@ function inspect(encoded, sponsor, member) {
   if (!eligible(tx.instructions, program) || !tx.feePayer?.equals(sponsor))
     throw Error();
   const actor = String(last.keys[0].pubkey);
-  // A signed paper-card purchase is relayed by the logged-in cashier.
-  if (
-    member !== actor &&
-    !(last.data[0] === 14 && member === String(last.keys[2].pubkey))
-  )
-    throw Error();
+  const {address, senderAddress = address} = typeof member === "string" ? {address:member} : member;
+  if (last.data[0] === 14) {
+    const shop = String(last.keys[2].pubkey);
+    const sender = actor === senderAddress && shop !== address && shop !== senderAddress;
+    const cashier = shop === address && actor !== address && actor !== senderAddress;
+    if (!sender && !cashier) throw Error();
+  } else if (actor !== address) throw Error();
   const valid =
     ([15,16,17,18].includes(last.data[0]))
       ? confirmedMessage(raw, actor, sponsor)

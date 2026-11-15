@@ -26,8 +26,11 @@ const WALLET_LEN: usize = 25; // tag + JST day + spent + nonce
 const POLICY_HEADER_LEN: usize = 33; // mode + invitation key
 const MAX_METADATA_LEN: usize = 400;
 const MAX_SHOP_NAME_LEN: usize = 120;
-const SHOP_WARA_PER_INA: u64 = 90;
-const BUYER_WARA_PER_INA: u64 = 10;
+const SHOP_WARA_PER_INA: u64 = 100;
+const AUTHORITY: u8 = 36;
+const SET_AUTHORITY: u8 = 19;
+const SPONSOR_JOIN: u8 = 20;
+const CLOSE_SENDER_ACCOUNT: u8 = 21;
 
 fn pda(program: &Pubkey, seeds: &[&[u8]], account: &AccountInfo) -> Result<u8, ProgramError> {
     let (id, bump) = Pubkey::find_program_address(seeds, program);
@@ -55,6 +58,7 @@ fn ensure_pda<'a>(
     seeds: &[&[u8]],
     len: usize,
 ) -> ProgramResult {
+    require(*sys.key == system_program::id(), 5)?;
     let bump = [pda(program, seeds, account)?];
     if account.owner != program {
         let mut full = seeds.to_vec();
@@ -112,10 +116,64 @@ fn shop(program: &Pubkey, row: &AccountInfo, g: &Pubkey, merchant: &Pubkey) -> P
         5,
     )
 }
+fn authority(program: &Pubkey, who: &AccountInfo, auth: &AccountInfo) -> ProgramResult {
+    signer(who)?;
+    pda(program, &[b"auth3"], auth)?;
+    require(auth.owner == program && auth.data_len() == 33, 5)?;
+    let d = auth.try_borrow_data()?;
+    require(d[0] == AUTHORITY && d[1..33] == who.key.to_bytes(), 5)
+}
+fn close_sender(program: &Pubkey, who: &AccountInfo, target: &AccountInfo,
+    recipient: &AccountInfo, auth: &AccountInfo, seeds: &[&[u8]], tag: u8, len: usize) -> ProgramResult {
+    authority(program, who, auth)?;
+    pda(program, seeds, target)?;
+    require(target.owner == program && target.data_len() == len &&
+        target.try_borrow_data()?[0] == tag && target.key != recipient.key &&
+        target.is_writable && recipient.is_writable, 5)?;
+    let total = recipient.lamports().checked_add(target.lamports()).ok_or(err(5))?;
+    **recipient.try_borrow_mut_lamports()? = total;
+    **target.try_borrow_mut_lamports()? = 0;
+    target.try_borrow_mut_data()?.fill(0);
+    target.resize(0)?;
+    target.assign(&system_program::id());
+    Ok(())
+}
 pub fn process(program: &Pubkey, accounts: &[AccountInfo], op: u8, rest: &[u8]) -> ProgramResult {
     let mut it = accounts.iter();
     let who = next_account_info(&mut it)?;
     signer(who)?;
+    if op == SET_AUTHORITY {
+        require(rest.len() == 32, 5)?;
+        let auth = next_account_info(&mut it)?;
+        let executable = next_account_info(&mut it)?;
+        let program_data = next_account_info(&mut it)?;
+        let sys = next_account_info(&mut it)?;
+        let loader = solana_program::bpf_loader_upgradeable::id();
+        require(it.next().is_none() && executable.key == program && executable.owner == &loader &&
+            executable.data_len() == 36 && program_data.owner == &loader && program_data.data_len() >= 45, 5)?;
+        {
+            let d = executable.try_borrow_data()?;
+            let pd = program_data.try_borrow_data()?;
+            require(u32::from_le_bytes(d[0..4].try_into().unwrap()) == 2 &&
+                d[4..36] == program_data.key.to_bytes() &&
+                u32::from_le_bytes(pd[0..4].try_into().unwrap()) == 3 &&
+                pd[12] == 1 && pd[13..45] == who.key.to_bytes(), 5)?;
+        }
+        ensure_pda(program, who, auth, sys, &[b"auth3"], 33)?;
+        let mut d = auth.try_borrow_mut_data()?;
+        d[0] = AUTHORITY;
+        d[1..33].copy_from_slice(rest);
+        return Ok(());
+    }
+    if op == CLOSE_SENDER_ACCOUNT && rest == [0] {
+        let user = next_account_info(&mut it)?;
+        let target = next_account_info(&mut it)?;
+        let recipient = next_account_info(&mut it)?;
+        let auth = next_account_info(&mut it)?;
+        require(it.next().is_none(), 5)?;
+        return close_sender(program, who, target, recipient, auth,
+            &[b"p3", user.key.as_ref()], WALLET, WALLET_LEN);
+    }
     let g = next_account_info(&mut it)?;
     if op == CREATE_GROUP {
         // mode + invite verification public key + UTF-8 display metadata.
@@ -159,6 +217,30 @@ pub fn process(program: &Pubkey, accounts: &[AccountInfo], op: u8, rest: &[u8]) 
     }
     let (owner, mode, invite) = group(g, program)?;
     match op {
+        SPONSOR_JOIN => {
+            let user = next_account_info(&mut it)?;
+            let row = next_account_info(&mut it)?;
+            let auth = next_account_info(&mut it)?;
+            let sys = next_account_info(&mut it)?;
+            require(rest.is_empty() && it.next().is_none() && *user.key != owner, 5)?;
+            authority(program, who, auth)?;
+            if row.owner == program {
+                require(row.data_len() == EDGE_LEN, 5)?;
+                let d = row.try_borrow_data()?;
+                require(d[0] == MEMBER && (d[65] == 1 || d[65] == 2 || d[65] == LEFT), 5)?;
+            }
+            edge_set(program, who, row, sys, b"m3", MEMBER, g.key, user.key, 2)
+        }
+        CLOSE_SENDER_ACCOUNT => {
+            require(rest == [1], 5)?;
+            let user = next_account_info(&mut it)?;
+            let target = next_account_info(&mut it)?;
+            let recipient = next_account_info(&mut it)?;
+            let auth = next_account_info(&mut it)?;
+            require(it.next().is_none(), 5)?;
+            close_sender(program, who, target, recipient, auth,
+                &[b"m3", g.key.as_ref(), user.key.as_ref()], MEMBER, EDGE_LEN)
+        }
         CERTIFY_SHOP => {
             // certify shop
             let merchant = next_account_info(&mut it)?;
@@ -271,9 +353,9 @@ pub fn process(program: &Pubkey, accounts: &[AccountInfo], op: u8, rest: &[u8]) 
             let person = next_account_info(&mut it)?;
             let mint = next_account_info(&mut it)?;
             let dst = next_account_info(&mut it)?;
-            let refund = next_account_info(&mut it)?;
             let sys = next_account_info(&mut it)?;
             let token = next_account_info(&mut it)?;
+            require(it.next().is_none(), 5)?;
             require(who.key != merchant.key, 6)?;
             shop(program, shop_row, g.key, merchant.key)?;
             if *who.key != owner {
@@ -289,11 +371,9 @@ pub fn process(program: &Pubkey, accounts: &[AccountInfo], op: u8, rest: &[u8]) 
             )?;
             let bump = pda(program, &[b"w3", g.key.as_ref()], mint)?;
             require(*token.key == spl_token::id() && mint.owner == token.key, 5)?;
-            for (a, expected) in [(dst, merchant.key), (refund, who.key)] {
-                require(a.owner == token.key, 5)?;
-                let ac = TokenAccount::unpack(&a.try_borrow_data()?)?;
-                require(ac.mint == *mint.key && ac.owner == *expected, 5)?;
-            }
+            require(dst.owner == token.key, 5)?;
+            let ac = TokenAccount::unpack(&dst.try_borrow_data()?)?;
+            require(ac.mint == *mint.key && ac.owner == *merchant.key, 5)?;
             {
                 let mut d = person.try_borrow_mut_data()?;
                 let last = i64::from_le_bytes(d[1..9].try_into().unwrap());
@@ -314,21 +394,12 @@ pub fn process(program: &Pubkey, accounts: &[AccountInfo], op: u8, rest: &[u8]) 
                 d[9..17].copy_from_slice(&spent.to_le_bytes());
                 d[17..25].copy_from_slice(&nonce.checked_add(1).ok_or(err(3))?.to_le_bytes());
             }
-            for (account, rate) in [(dst, SHOP_WARA_PER_INA), (refund, BUYER_WARA_PER_INA)] {
-                invoke_signed(
-                    &spl_token::instruction::mint_to_checked(
-                        token.key,
-                        mint.key,
-                        account.key,
-                        mint.key,
-                        &[],
-                        n * rate,
-                        0,
-                    )?,
-                    &[mint.clone(), account.clone(), token.clone()],
-                    &[&[b"w3", g.key.as_ref(), &[bump]]],
-                )?;
-            }
+            invoke_signed(
+                &spl_token::instruction::mint_to_checked(token.key, mint.key, dst.key,
+                    mint.key, &[], n * SHOP_WARA_PER_INA, 0)?,
+                &[mint.clone(), dst.clone(), token.clone()],
+                &[&[b"w3", g.key.as_ref(), &[bump]]],
+            )?;
             solana_program::msg!("WARA v3 Kusa payment; issuer:");
             g.key.log();
             Ok(())

@@ -19,8 +19,8 @@ export function crystallize(amount, incoming, currency = "ina") {
   toast.textContent = currency === "wara"
     ? (incoming ? `💖 ありがとう！ あなたに +${amount} WARA が届きました！` : `💖 ありがとう！ 相手に ${amount} WARA を贈りました！`)
     : incoming
-    ? `💖 ありがとう！ あなたに +${amount * 90n} / 贈る人に +${amount * 10n} WARA 結晶化！`
-    : `💖 ありがとう！ 相手に +${amount * 90n} / あなたに +${amount * 10n} WARA 結晶化！`;
+    ? `💖 ありがとう！ あなたに +${amount * 100n} WARA 結晶化！`
+    : `💖 ありがとう！ 相手に +${amount * 100n} WARA 結晶化！`;
   document.querySelector(".orb.wara")?.animate(
     [{transform: "scale(1)"}, {transform: "scale(1.035)", boxShadow: "0 0 20px #d5bc78"}, {transform: "scale(1)"}],
     {duration: matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : 550},

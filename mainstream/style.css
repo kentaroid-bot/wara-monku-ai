@@ -210,3 +210,6 @@ nav a[aria-current="page"]::after { width: 16px; height: 3px; bottom: .2rem; }
   .iine-particles { display: none; }
   a.orb, button { transition: none; }
 }
+
+.sender-account .sender-address { overflow-wrap: anywhere; font-family: monospace; }
+.sender-account button { white-space: normal; }

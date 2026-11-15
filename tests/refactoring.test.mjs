@@ -39,8 +39,8 @@ test("persisted storage names and legacy exports remain compatible", () => {
 test("guide retains its content and links without inline styles", async () => {
   const el = {};
   showGuide(el);
-  assert.match(el.innerHTML,/90 WARA/);
-  assert.match(el.innerHTML,/10 WARA/);
+  assert.match(el.innerHTML,/100 WARA/);
+  assert.match(el.innerHTML,/還元はありません/);
   assert.match(el.innerHTML,/href="\/communities\/"/);
   assert.match(el.innerHTML,/class="guide-steps"/);
   assert.doesNotMatch(el.innerHTML,/\sstyle=/);

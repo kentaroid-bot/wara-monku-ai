@@ -17,7 +17,7 @@ function feedbackSummary(reaction, note) {
 }
 
 export function shopView(ctx) {
-  const { el, state, content, params, who, profile, profiles, ui, form, btn, inp, link,
+  const { el, state, content, params, who, senderWho = who, profile, profiles, ui, form, btn, inp, link,
     gid, register, by, shopName, send, view, refresh, h, info, action,
     readHistory, recordPayment, registerWatch } = ctx;
   const setHeading = text => {
@@ -37,7 +37,7 @@ export function shopView(ctx) {
     if (!store) {
       const receiving = params.get("mode") === "receive";
       setHeading(receiving ? "受け取る" : "iineを贈る");
-      const choices = registerChoices(stores, s, who, receiving);
+      const choices = registerChoices(stores, s, who, receiving, senderWho);
       ui(`<section><h2>${receiving ? "受け取り窓口を選ぶ" : "相手を選ぶ"}</h2>
         <p>${receiving ? "受け取り名 · コミュニティ名を選んでQRを出せます。" : `今日の残り ${s.remaining} iine`}</p>
         ${choices.map(st => `<a class="shop-row recipient-row" href="${h(register(st.group, st.to))}">
@@ -53,6 +53,7 @@ export function shopView(ctx) {
       .map(([origin, n]) => ({ origin, amount: n }))
       .sort((a, b) => Number(b.origin === g.id) - Number(a.origin === g.id));
     const accepted = lots.reduce((a, l) => a + l.amount, 0n);
+    if (store.to === senderWho && senderWho !== who) { ui("<p>自分の贈る用アドレスには贈れません。</p>"); return; }
     const isShop = who === store.to;
     setHeading(isShop ? "受け取る" : "iineを贈る");
     const member =
@@ -107,7 +108,7 @@ export function shopView(ctx) {
         document.querySelector("#notice").append(a);
       });
     }
-    if (isShop) showHistory(content, readHistory, g.id, h, by, shopName, profiles);
+    if (isShop) showHistory(content, () => readHistory(g.id, store.to), g.id, h, by, shopName, profiles);
     const invoice = content.querySelector("#invoice");
     let qrTurn = 0;
     async function renderInvoice(v) {
@@ -174,6 +175,7 @@ export function shopView(ctx) {
       const note = paymentMemo(v.memo || "");
       const reaction = paymentReaction(v.reaction || "");
       const n = amount(v.ina);
+      if (store.to === who || store.to === senderWho) throw Error("自分には贈れません。");
       if (!member) throw Error("地域に参加してください。");
       if (n > s.remaining) throw Error("残りiineを超えています。");
       if (
@@ -182,21 +184,21 @@ export function shopView(ctx) {
             "へ " +
             n +
             " iine。相手に " +
-            n * 90n +
-            " WARA、あなたに " +
-            n * 10n +
+            n * 100n +
             " WARA。" + feedbackSummary(reaction,note) + "贈りますか？", confirmLabel: "贈る" })
       ) {
         info("取り消しました。");
         return;
       }
+      if (profile.managed && !s.rows.some(r=>r.tag === 33 && r.group === g.id && r.to === senderWho && r.status === 2)) {
+        const {memberApi} = await import("../member-ui.mjs");
+        await memberApi("sender-join",{group:g.id});
+      }
       await send(
-        spend(program, who, g.id, store.to, n, s.day, s.nonce, reaction),
+        spend(program, senderWho, g.id, store.to, n, s.day, s.nonce, reaction),
         [],
         "贈りました。相手に " +
-          n * 90n +
-          " WARA、あなたに " +
-          n * 10n +
+          n * 100n +
           " WARAが届きました。", note,
       );
       game.success();

@@ -38,3 +38,10 @@ test("every selectable icon round-trips through profile validation", () => {
   for (const icon of shopIcons) assert.equal(shopFields({...fields,icon}).icon,icon);
   assert.throws(()=>shopFields({...fields,icon:"not an icon"}));
 });
+
+test("recipient choices exclude both primary and sender addresses using primary membership",()=>{
+  const state={groups:[{id:"g",owner:"main"}],rows:[]};
+  const stores=["main","sender","friend"].map(to=>({group:"g",to}));
+  assert.deepEqual(registerChoices(stores,state,"main",false,"sender"),[stores[2]]);
+  assert.deepEqual(registerChoices(stores,state,"main",true,"sender"),[stores[0]]);
+});
