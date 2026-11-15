@@ -188,7 +188,7 @@ async function render() {
   const titles = {
     "/": "お財布",
     "/user": "お財布",
-    "/shop": "iineを贈る・受け取る",
+    "/shop": new URLSearchParams(location.search).get("mode") === "receive" ? "受け取る" : "iineを贈る",
     "/account": "アカウント",
     "/communities": "コミュニティ",
     "/communities/new": "コミュニティを開設",

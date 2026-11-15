@@ -57,7 +57,7 @@ button, .action, .button.file-picker {
   background: linear-gradient(135deg, color-mix(in srgb, #245e43, #f43f5e var(--blush)), color-mix(in srgb, #1b4d36, #e11d48 var(--blush)));
   color: var(--on-accent); font: 700 .9rem/1.4 system-ui,sans-serif; cursor: pointer; text-decoration: none;
   box-shadow: 0 4px 14px -2px color-mix(in srgb, #1b4d363b, rgba(244, 63, 94, 0.4) var(--blush));
-  transition: transform .15s ease, box-shadow .2s ease;
+  transition: transform .15s ease, box-shadow .2s ease; touch-action: manipulation;
 }
 button:active, .action:active, .file-picker:active { transform: scale(0.97); }
 .button.file-picker { position: relative; overflow: hidden; }
@@ -162,7 +162,7 @@ img { max-width: 100%; }
 
 /* Wallet cards are the primary navigation actions. */
 .twins { gap: .65rem; }
-a.orb { min-height: 13rem; padding: 1.1rem .8rem; border: 1px solid var(--line); text-decoration: none; transition: transform .15s ease; }
+a.orb { min-height: 13rem; padding: 1.1rem .8rem; border: 1px solid var(--line); text-decoration: none; transition: transform .15s ease; touch-action: manipulation; }
 a.orb:active { transform: scale(.98); }
 .orb-label { font-size: .86rem; }
 .orb-value { margin: 1rem 0; }
@@ -170,15 +170,15 @@ a.orb:active { transform: scale(.98); }
 .orb p { margin: 0; }
 .orb .dots { margin: .3rem 0 1rem; grid-template-columns: repeat(10,minmax(0,1fr)); gap: .18rem; }
 .orb-cta { margin-top: auto; padding-top: 1rem; font-size: .8rem; font-weight: 750; white-space: nowrap; }
-nav a { color: var(--quiet); gap: .3rem; padding: .4rem 0 .65rem; min-height: 60px; }
+nav a { color: var(--quiet); gap: .3rem; padding: .4rem 0 .65rem; min-height: 60px; touch-action: manipulation; }
 nav a[aria-current="page"] { color: var(--leaf); background: var(--wash); }
 nav svg { width: 22px; height: 22px; }
 nav .nav-label { font-size: .65rem; line-height: 1.2; font-weight: 650; white-space: nowrap; }
 nav a[aria-current="page"]::after { width: 16px; height: 3px; bottom: .2rem; }
-.recipient-row { min-height: 70px; gap: .8rem; border: 1px solid var(--line); padding: .85rem; }
+.recipient-row { min-height: 70px; gap: .8rem; border: 1px solid var(--line); padding: .85rem; touch-action: manipulation; }
 .recipient-row > span { min-width: 0; }
 .recipient-row > strong { flex-shrink: 0; font-size: .8rem; }
-.iine-stage { position: relative; isolation: isolate; overflow: hidden; text-align: center; border-radius: 1.4rem; background: var(--wash); padding: .8rem .6rem 1.3rem; }
+.iine-stage { position: relative; isolation: isolate; overflow: hidden; text-align: center; border-radius: 1.4rem; background: var(--wash); padding: .8rem .6rem 1.3rem; touch-action: manipulation; }
 .sound-toggle { display: flex; margin: 0 0 .5rem auto; font-size: .72rem; }
 .iine-emoji { font-size: 3.5rem; line-height: 1.3; }
 .iine-count { display: block; font-size: 1.8rem; font-weight: 800; font-variant-numeric: tabular-nums; }
@@ -192,7 +192,7 @@ nav a[aria-current="page"]::after { width: 16px; height: 3px; bottom: .2rem; }
 .tap-controls { display: flex; align-items: center; justify-content: center; gap: .6rem; }
 .tap-controls button { flex-shrink: 0; margin: 0; }
 .tap-controls .secondary { width: 44px; height: 44px; border-radius: 50%; padding: 0; }
-.tap-button { width: clamp(120px,36vw,160px); height: clamp(120px,36vw,160px); border-radius: 50%; flex-direction: column; gap: .3rem; font-size: 1.2rem; touch-action: manipulation; }
+.tap-button { width: clamp(120px,36vw,160px); height: clamp(120px,36vw,160px); border-radius: 50%; flex-direction: column; gap: .3rem; font-size: 1.2rem; }
 .tap-button span { font-size: 2.8rem; }
 .send-iine { position: sticky; bottom: calc(5.5rem + env(safe-area-inset-bottom)); z-index: 3; width: 100%; margin: .8rem 0 0; min-height: 52px; font-size: 1.05rem; }
 .iine-particles { position: absolute; inset: 0; overflow: hidden; pointer-events: none; z-index: 2; }

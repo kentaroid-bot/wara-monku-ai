@@ -17,9 +17,13 @@ function feedbackSummary(reaction, note) {
 }
 
 export function shopView(ctx) {
-  const { state, content, params, who, profile, profiles, ui, form, btn, inp, link,
+  const { el, state, content, params, who, profile, profiles, ui, form, btn, inp, link,
     gid, register, by, shopName, send, view, refresh, h, info, action,
     readHistory, recordPayment, registerWatch } = ctx;
+  const setHeading = text => {
+    const h1 = el?.querySelector("h1");
+    if (h1) h1.textContent = text;
+  };
   const privateNotes = profile.managed || profiles.supportsNotes;
   function store() {
     const s = state();
@@ -32,8 +36,9 @@ export function shopView(ctx) {
       );
     if (!store) {
       const receiving = params.get("mode") === "receive";
+      setHeading(receiving ? "受け取る" : "iineを贈る");
       const choices = registerChoices(stores, s, who, receiving);
-      ui(`<section><h2>${receiving ? "受け取る" : "相手を選ぶ"}</h2>
+      ui(`<section><h2>${receiving ? "受け取り窓口を選ぶ" : "相手を選ぶ"}</h2>
         <p>${receiving ? "受け取り名 · コミュニティ名を選んでQRを出せます。" : `今日の残り ${s.remaining} iine`}</p>
         ${choices.map(st => `<a class="shop-row recipient-row" href="${h(register(st.group, st.to))}">
           <span><span data-shop-label="${h(st.id)}" data-compact-label="1">${h(shopTitle(st))}</span> · ${h(groupForShop(st.group)?.name || "コミュニティ")}</span>
@@ -48,8 +53,9 @@ export function shopView(ctx) {
       .map(([origin, n]) => ({ origin, amount: n }))
       .sort((a, b) => Number(b.origin === g.id) - Number(a.origin === g.id));
     const accepted = lots.reduce((a, l) => a + l.amount, 0n);
-    const isShop = who === store.to,
-      member =
+    const isShop = who === store.to;
+    setHeading(isShop ? "受け取る" : "iineを贈る");
+    const member =
         g.owner === who ||
         s.rows.some(
           (r) =>

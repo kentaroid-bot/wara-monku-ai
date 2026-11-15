@@ -86,12 +86,15 @@ try {
   await page.getByRole("link",{name:/🦊 パン屋/}).waitFor();
   assert.deepEqual(await page.locator(".market-row strong").allTextContents(),groups.slice(0,4).map(g=>g.name));
   await page.goto(origin+"/shop/");
-  await page.getByRole("link",{name:"🦊 パン屋"}).waitFor();
+  await page.getByRole("link",{name:/開設済みの仲間/}).waitFor();
+  assert.equal(await page.locator("#screen h1").innerText(),"iineを贈る");
   const listedStores = () => page.locator('a[href^="/shop/?group="]').evaluateAll(links=>links.map(link=>new URL(link.href).searchParams.get("store")));
-  // The dynamically loaded caption is also inside the link; compare register destinations.
-  assert.deepEqual(await listedStores(),[stores[0].to,stores[1].to]);
+  // Own stores stay out of recipient choices; only other recipients in joined communities appear.
+  assert.deepEqual(await listedStores(),[stores[1].to]);
+  assert.equal(await page.getByRole("link",{name:/🦊 パン屋/}).count(),0);
   await page.goto(origin+"/shop/?mode=receive");
   await page.getByRole("link",{name:"🦊 パン屋"}).waitFor();
+  assert.equal(await page.locator("#screen h1").innerText(),"受け取る");
   assert.deepEqual(await listedStores(),[stores[0].to]);
   // A non-member can still follow a public register link and see the existing invitation to join.
   await page.goto(origin+"/shop/?"+new URLSearchParams({group:stores[2].group,store:stores[2].to}));
@@ -182,10 +185,13 @@ try {
     assert.notEqual(await page.locator(".orb.ina").evaluate(el=>getComputedStyle(el).backgroundImage),cool);
     await check("home-warm");
     await page.locator(".orb.ina").click(); await page.locator(".recipient-row").first().waitFor();
-    assert.match(await page.locator(".recipient-row").first().innerText(),/所属中/); await check("recipients");
+    assert.equal(await page.locator("#screen h1").innerText(),"iineを贈る");
+    assert.match(await page.locator(".recipient-row").first().innerText(),/開設済み/); await check("recipients");
     await page.goto(origin+"/shop/?mode=receive"); await page.locator(".recipient-row").first().waitFor();
+    assert.equal(await page.locator("#screen h1").innerText(),"受け取る");
     assert.match(await page.locator(".recipient-row").first().innerText(),/QRを出す/); await check("receivers");
     await page.locator(".recipient-row").first().click(); await page.locator("#qr-out img").waitFor();
+    assert.equal(await page.locator("#screen h1").innerText(),"受け取る");
     assert.ok(!new URL(await page.locator("#qr-out a").getAttribute("href")).searchParams.has("ina"));
     for (const n of [1,3,5]) {
       await page.locator(`[data-invoice="${n}"]`).click();
@@ -204,6 +210,9 @@ try {
     await check("paper-camera"); await page.keyboard.press("Escape");
     await page.goto(origin+"/shop/?"+new URLSearchParams({group:stores[1].group,store:stores[1].to}));
     await page.locator("[data-tap]").waitFor();
+    assert.equal(await page.locator("#screen h1").innerText(),"iineを贈る");
+    assert.equal(await page.locator("[data-minus]").evaluate(el=>getComputedStyle(el).touchAction),"manipulation");
+    assert.equal(await page.locator("[data-tap]").evaluate(el=>getComputedStyle(el).touchAction),"manipulation");
     const send=page.locator('#ina button[type="submit"]');
     assert.equal(await send.isDisabled(),true);
     for (let n=1;n<=10;n++) {
