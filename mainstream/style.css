@@ -247,8 +247,8 @@ nav a[aria-current="page"]::after { width: 24px; height: 3px; border-radius: 50%
 #ina { position: relative; border: 0; padding: 0; background: none; box-shadow: none; margin-top: .25rem; }
 .send-remaining { text-align: right; margin: 0; font-size: .9rem; }
 .iine-stage { position: relative; height: 300px; touch-action: manipulation; isolation: isolate; }
-.send-mascot { position: absolute; width: 43%; left: -10px; top: 0; height: 190px; object-fit: contain; }
-.receive-mascot { position: absolute; width: min(118px, calc(100% - 194px)); right: 0; bottom: -110px; height: 160px; object-fit: contain; z-index: -1; }
+.send-mascot { position: absolute; width: 45%; max-width: 170px; left: -1rem; top: 0; height: 190px; object-fit: contain; object-position: left top; }
+.receive-mascot { position: absolute; width: min(140px, calc(100% - 168px)); right: -1rem; bottom: -90px; height: 170px; object-fit: contain; object-position: right bottom; z-index: -1; }
 .tap-button { position: absolute; top: 65px; left: 35%; width: 145px; height: 145px; padding: 0; border: 0; background: none; box-shadow: none; }
 .iine-heart { width: 100%; transform: scale(var(--heart-scale,.45)); transition: transform .2s; }
 .send-dock { position: relative; margin-top: -65px; width: 182px; padding-bottom: 30px; }
@@ -266,36 +266,37 @@ nav a[aria-current="page"]::after { width: 24px; height: 3px; border-radius: 50%
 .sending .tap-button { animation: gift-fly 1.3s forwards; }
 @keyframes gift-fly { to { transform: translate(35px,150px) scale(.15); opacity: 0; } }
 @media (prefers-reduced-motion: no-preference) {
-  .home-sender { animation: gentle-sway 5.5s ease-in-out infinite; transform-origin: left center; }
-  .home-send:not([data-empty="true"]) .home-heart { animation: heart-float 3.2s ease-in-out infinite; }
-  .home-receive img { animation: banzai-idle 4.4s ease-in-out infinite; transform-origin: bottom right; }
-  .has-send-fx .home-sender { animation: sender-cheer .9s ease-in-out infinite; }
+  .home-sender { animation: gentle-sway 2.8s ease-in-out infinite; transform-origin: left center; }
+  .home-send:not([data-empty="true"]) .home-heart { animation: heart-float 2s ease-in-out infinite; }
+  .home-receive img { animation: banzai-idle 2.6s ease-in-out infinite; transform-origin: bottom right; }
+  .has-send-fx .home-sender { animation: sender-cheer .8s ease-in-out infinite; }
   .has-send-fx .home-receive img { animation: banzai-celebrate .72s ease-in-out infinite; }
   .home-sun-halo { animation: sun-halo-pulse 1.6s ease-in-out infinite; }
   .fx-particle { opacity: 0; animation: fx-arc var(--dur) cubic-bezier(.2,.75,.35,1) var(--delay) infinite; }
   .iine-stage:not([data-empty="true"]):not(.sending) .tap-button { animation: heart-wobble 2s ease-in-out infinite; }
 }
 
+/* Vertical skew keeps each outer edge attached while the characters sway. */
 @keyframes gentle-sway {
-  0%, 100% { transform: rotate(0deg) translateX(0); }
-  50% { transform: rotate(1.1deg) translateX(2px); }
+  0%, 100% { transform: skewY(0deg) scaleY(1); }
+  50% { transform: skewY(3.2deg) scaleY(.94); }
 }
 @keyframes heart-float {
   0%, 100% { transform: translateY(0) scale(1); }
-  50% { transform: translateY(-4px) scale(1.04); }
+  50% { transform: translateY(-9px) scale(1.13) rotate(-4deg); }
 }
 @keyframes banzai-idle {
-  0%, 100% { transform: translateY(0) rotate(0deg); }
-  50% { transform: translateY(-3px) rotate(-0.8deg); }
+  0%, 100% { transform: translateY(0) skewY(0deg) scaleY(1); }
+  50% { transform: translateY(-7px) skewY(-2.4deg) scaleY(1.03); }
 }
 @keyframes banzai-celebrate {
-  0%, 100% { transform: translateY(0) rotate(0deg) scale(1); }
-  35% { transform: translateY(-10px) rotate(-2.5deg) scale(1.05); }
-  65% { transform: translateY(-3px) rotate(1.5deg) scale(1.02); }
+  0%, 100% { transform: translateY(0) skewY(0deg) scaleY(1); }
+  35% { transform: translateY(-14px) skewY(-4deg) scaleY(1.06); }
+  65% { transform: translateY(-4px) skewY(2.4deg) scaleY(.98); }
 }
 @keyframes sender-cheer {
-  0%, 100% { transform: rotate(0deg) translateX(0); }
-  50% { transform: rotate(2deg) translateX(4px); }
+  0%, 100% { transform: skewY(0deg) scaleY(1); }
+  50% { transform: skewY(4.5deg) scaleY(.9); }
 }
 @keyframes sun-halo-pulse {
   0%, 100% { transform: translate(-50%, -50%) scale(0.92); opacity: 0.7; }

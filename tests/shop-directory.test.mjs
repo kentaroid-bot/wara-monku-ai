@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { listedGroups, registerChoices } from "../mainstream/shop-directory.mjs";
+import { shopTitle, shopEditor } from "../mainstream/shop-profile.mjs";
 import { shopFields, shopIcons } from "../shared/shop-profile.mjs";
 
 // Archive the four exact accounts, even if renamed or restored from an older directory cache.
@@ -35,8 +36,17 @@ test("every selectable icon round-trips through profile validation", () => {
   assert.ok(shopIcons.length >= 30);
   for (const icon of ["🐶","🦉","🐙","🍜","✂️","🏪"]) assert.ok(shopIcons.includes(icon));
   const fields = {title:"雑貨屋",caption:"",is_test:false};
-  for (const icon of shopIcons) assert.equal(shopFields({...fields,icon}).icon,icon);
-  assert.throws(()=>shopFields({...fields,icon:"not an icon"}));
+  for (const icon of ["", undefined, ...shopIcons]) assert.equal(shopFields({...fields,icon}).icon,icon ?? "");
+  for (const icon of ["なし", "not an icon", " ", null, 0, false, [], {}])
+    assert.throws(()=>shopFields({...fields,icon}));
+});
+
+test("caption-only edits allow an empty or omitted icon at the 140-character limit", () => {
+  const fields = {title:"雑貨屋",caption:"あ".repeat(140),is_test:false};
+  for (const icon of ["", undefined]) {
+    assert.deepEqual(shopFields({...fields,icon}), {...fields,icon:""});
+    assert.throws(()=>shopFields({...fields,icon,caption:"あ".repeat(141)}));
+  }
 });
 
 test("recipient choices exclude both primary and sender addresses using primary membership",()=>{
@@ -44,4 +54,15 @@ test("recipient choices exclude both primary and sender addresses using primary 
   const stores=["main","sender","friend"].map(to=>({group:"g",to}));
   assert.deepEqual(registerChoices(stores,state,"main",false,"sender"),[stores[2]]);
   assert.deepEqual(registerChoices(stores,state,"main",true,"sender"),[stores[0]]);
+});
+
+test("empty and unset icons render a bare title and default to the first None option", () => {
+  for (const icon of ["", undefined]) {
+    const store = {id:"shop",name:"雑貨屋",icon};
+    assert.equal(shopTitle(store),"雑貨屋");
+    assert.match(shopEditor(store,String), /<select name="icon"><option value="">なし<\/option>/);
+    assert.doesNotMatch(shopEditor(store,String), / selected/);
+  }
+  assert.equal(shopTitle({name:"雑貨屋",icon:"🦊"}),"🦊 雑貨屋");
+  assert.match(shopEditor({id:"shop",name:"雑貨屋",icon:"🦊"},String), /<option selected>🦊<\/option>/);
 });

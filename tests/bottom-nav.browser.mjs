@@ -13,7 +13,7 @@ const tabs = [
 
 try {
   for (const [width, colorScheme] of [320,390,1024].flatMap(width => ["light","dark"].map(theme => [width,theme]))) {
-    const page = await browser.newPage({ viewport: { width, height: 850 }, colorScheme });
+    const page = await browser.newPage({ viewport: { width, height: 850 }, colorScheme, reducedMotion:"no-preference" });
     page.setDefaultTimeout(15000);
     const errors = [];
     page.on("pageerror", e => errors.push(e.message));
@@ -52,6 +52,25 @@ try {
           signup.width>=44 && signup.height>=44 && signup.height<60 &&
           box(".home-receive-label").bottom<box("nav").top && document.documentElement.scrollWidth<=innerWidth;
       }),"labels and single-line sign-in button fit around artwork and navigation");
+      assert.ok(await page.evaluate(() => {
+        const box=s=>document.querySelector(s).getBoundingClientRect();
+        const clear=(a,b)=>a.right<=b.left || a.left>=b.right || a.bottom<=b.top || a.top>=b.bottom;
+        const animations=[".home-sender",".home-receive img"].map(s=>document.querySelector(s).getAnimations()[0]);
+        if (animations.some(a=>!a)) return false;
+        animations.forEach(a=>{a.pause();a.currentTime=0;});
+        let valid=true;
+        for (const a of animations) {
+          for (let step=0;step<=40;step++) {
+            a.currentTime=Number(a.effect.getTiming().duration)*step/40;
+            valid &&= clear(box(".home-send-label"),box(".home-sender")) &&
+              clear(box(".home-signin"),box(".home-receive img")) &&
+              box(".home-signin").top>=box(".home-sender").bottom && document.documentElement.scrollWidth<=innerWidth;
+          }
+          a.currentTime=0;
+        }
+        animations.forEach(a=>a.play());
+        return valid;
+      }),"signed-out labels and sign-in remain clear throughout both idle cycles");
     };
     const boxes = [];
     for (const [path, name] of tabs) {

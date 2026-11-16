@@ -61,7 +61,7 @@ export function shopEditor(store, h) {
   return `<details class="shop-editor"><summary>⚙️ 受け取り窓口情報を編集</summary><form id="edit-shop" data-shop="${h(store.id)}">
     <label>受け取り名<input name="title" required value="${h(store.name)}"></label>
     <label>一言紹介（140文字まで）<input name="caption" value="${h(store.caption || "")}"></label>
-    <label>アイコン<select name="icon">${shopIcons.map(icon=>`<option${icon === store.icon ? " selected" : ""}>${icon}</option>`).join("")}</select></label>
+    <label>アイコン<select name="icon"><option value="">なし</option>${shopIcons.map(icon=>`<option${icon === store.icon ? " selected" : ""}>${icon}</option>`).join("")}</select></label>
     <button>受け取り窓口情報を保存</button></form></details>`;
 }
 

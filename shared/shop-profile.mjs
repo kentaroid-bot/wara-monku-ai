@@ -5,10 +5,11 @@ export const shopIcons = [
 ];
 
 export function shopFields(input) {
+  const icon = input.icon === undefined ? "" : input.icon;
   const title = input.title?.trim(), caption = input.caption?.trim();
   if (!title || typeof caption !== "string" || [...title].length > 40 || [...caption].length > 140 ||
       /[\p{Cc}\u202a-\u202e\u2066-\u2069]/u.test(title + caption) ||
-      !shopIcons.includes(input.icon) || typeof input.is_test !== "boolean")
+      (typeof icon !== "string" || (icon !== "" && !shopIcons.includes(icon))) || typeof input.is_test !== "boolean")
     throw Error("受け取り名（40文字以内）、一言紹介（140文字以内）、アイコンを確認してください。");
-  return {title, caption, icon:input.icon, is_test:input.is_test};
+  return {title, caption, icon, is_test:input.is_test};
 }

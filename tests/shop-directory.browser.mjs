@@ -36,8 +36,8 @@ const chainRows = rows.map(row => {
 const browser = await chromium.launch({executablePath:process.env.CHROME_BIN});
 try {
  for (const width of [320,390,1024]) for (const colorScheme of ["light","dark"]) {
-  profile = {...profile,title:"パン屋",icon:"🥐",revision:1}; paid=false; signatureReads=0;
-  const page = await browser.newPage({viewport:{width,height:844},colorScheme});
+  profile = {...profile,title:"パン屋",caption:"手ごね",icon:undefined,revision:1}; paid=false; signatureReads=0;
+  const page = await browser.newPage({viewport:{width,height:844},colorScheme,reducedMotion:"no-preference"});
   page.setDefaultTimeout(15000);
   const errors=[];
   let profileUnavailable=false;
@@ -127,7 +127,29 @@ try {
   await page.getByText("⚙️ 受け取り窓口情報を編集").click();
   assert.equal(await page.locator("#edit-shop input[type=checkbox]").count(),0);
   assert.equal(await page.getByText("テスト受け取り窓口",{exact:true}).count(),0);
-  await page.locator("#edit-shop select").selectOption("🦊");
+  const iconSelect = page.locator('#edit-shop select[name="icon"]');
+  assert.equal(await iconSelect.inputValue(),"","unset icon initially selects None");
+  assert.equal(await iconSelect.locator("option").first().textContent(),"なし");
+  assert.equal(await iconSelect.locator("option").first().getAttribute("value"),"");
+  await iconSelect.selectOption({label:"なし"});
+  const caption = "あ".repeat(140);
+  await page.locator('#edit-shop input[name="caption"]').fill(caption);
+  await captureDirectory("receive-edit-none");
+  await page.getByRole("button",{name:"受け取り窓口情報を保存"}).click();
+  await page.waitForFunction(caption=>document.querySelector(".recipient-heading .shop-caption")?.textContent===caption,caption);
+  assert.equal(profile.title,"パン屋"); assert.equal(profile.icon,""); assert.equal(profile.caption,caption);
+  const bareTitle = () => page.locator(".recipient-heading h2").evaluate(el=>[...el.childNodes].filter(n=>n.nodeType===Node.TEXT_NODE).map(n=>n.textContent).join(""));
+  assert.equal(await bareTitle(),"パン屋","saved title has no leading or trailing space");
+  await page.reload();
+  await page.waitForFunction(caption=>document.querySelector(".recipient-heading .shop-caption")?.textContent===caption,caption);
+  await page.locator("[data-receive-menu]").click();
+  await page.getByText("⚙️ 受け取り窓口情報を編集").click();
+  assert.equal(await iconSelect.inputValue(),"","empty icon survives reload and deferred enhancement");
+  assert.equal(await page.locator('#edit-shop input[name="caption"]').inputValue(),caption);
+  assert.equal(await bareTitle(),"パン屋","deferred title enhancement adds no space");
+  await captureDirectory("receive-edit-none-reloaded");
+  await iconSelect.selectOption("🦊");
+  await page.locator('#edit-shop input[name="caption"]').fill("手ごね");
   await page.getByRole("button",{name:"受け取り窓口情報を保存"}).click();
   await page.getByRole("heading",{name:"🦊 パン屋"}).waitFor();
   await page.goto(origin+"/communities/");
@@ -301,6 +323,48 @@ try {
       const a=document.querySelector(".home-history").getBoundingClientRect(), b=document.querySelector(".home-receive img").getBoundingClientRect();
       return a.right<=b.left || a.left>=b.right || a.bottom<=b.top || a.top>=b.bottom;
     }),"home history does not cover the receiving character");
+    const motion = await page.evaluate(() => {
+      const box=s=>document.querySelector(s).getBoundingClientRect();
+      const clear=(a,b)=>a.right<=b.left || a.left>=b.right || a.bottom<=b.top || a.top>=b.bottom;
+      const selectors=[".home-sender",".home-heart",".home-receive img"];
+      const frame=box(".frame"), css=getComputedStyle(document.querySelector(".frame"));
+      const left=frame.left+parseFloat(css.borderLeftWidth), right=frame.right-parseFloat(css.borderRightWidth);
+      const results=[];
+      for (const celebrate of [false,true]) {
+        document.documentElement.classList.toggle("has-send-fx",celebrate);
+        const animations=selectors.map(s=>document.querySelector(s).getAnimations()[0]);
+        if (animations.some(a=>!a)) throw Error("missing home animation");
+        animations.forEach(a=>{a.pause();a.currentTime=0;});
+        // Sweep each complete cycle independently, including all keyframe peaks.
+        for (const [i,a] of animations.entries()) {
+          const tops=[];
+          for (let step=0;step<=40;step++) {
+            a.currentTime=Number(a.effect.getTiming().duration)*step/40;
+            const sender=box(selectors[0]), heart=box(selectors[1]), receiver=box(selectors[2]);
+            if (document.documentElement.scrollWidth>innerWidth ||
+                !clear(box(".home-send-label"),sender) || !clear(box(".home-send-label"),heart) ||
+                !clear(box(".home-history"),receiver) || !clear(box(".home-history"),heart) ||
+                !clear(box("nav"),receiver) ||
+                Math.abs(sender.left-left)>.01 || Math.abs(receiver.right-right)>.01)
+              throw Error(`home motion layout: ${celebrate}/${selectors[i]}/${step}`);
+            tops.push(box(selectors[i]).top);
+          }
+          results.push({celebrate,selector:selectors[i],duration:a.effect.getTiming().duration,topTravel:Math.max(...tops)-Math.min(...tops),samples:41});
+          a.currentTime=0;
+        }
+        animations.forEach(a=>a.play());
+      }
+      document.documentElement.classList.remove("has-send-fx");
+      return results;
+    });
+    for (const sample of motion) assert.ok(sample.topTravel>=6,`visible movement: ${JSON.stringify(sample)}`);
+    console.log(`PASS home motion ${width}px ${colorScheme}: ${JSON.stringify(motion)}`);
+    // Reapply the media query after the deterministic sweep and verify static mode too.
+    await page.emulateMedia({reducedMotion:"reduce"});
+    for (const selector of [".home-sender",".home-heart",".home-receive img"])
+      assert.equal(await page.locator(selector).evaluate(el=>getComputedStyle(el).animationName),"none");
+    await check("home-reduced");
+    await page.emulateMedia({reducedMotion:"no-preference"});
     await check("home");
     assert.equal(await page.locator("footer").count(),0);
     assert.equal(await page.getByRole("button",{name:"更新",exact:true}).count(),0);
@@ -369,6 +433,31 @@ try {
         const clear=(a,b)=>a.right<=b.left || a.left>=b.right || a.bottom<=b.top || a.top>=b.bottom;
         return [".tap-button",".iine-heart"].every(s=>[".send-dock",".charge-dots",".receive-mascot"].every(t=>clear(box(s),box(t)))) && box(".send-dock").right<=box(".receive-mascot").left;
       }),`heart and tap target clear the dock, dots and mascot at ${count}`);
+      const layout=await page.evaluate(()=>{
+        const box=s=>document.querySelector(s).getBoundingClientRect();
+        const frame=box(".frame"), style=getComputedStyle(document.querySelector(".frame"));
+        const sender=box(".send-mascot"), receiver=box(".receive-mascot"), dock=box(".send-dock");
+        const clear=(a,b)=>a.right<=b.left || a.left>=b.right || a.bottom<=b.top || a.top>=b.bottom;
+        return {
+          frameLeft:frame.left+parseFloat(style.borderLeftWidth), frameRight:frame.right-parseFloat(style.borderRightWidth),
+          senderLeft:sender.left, receiverRight:receiver.right, dockRight:dock.right, receiverLeft:receiver.left,
+          heartBottom:box(".iine-heart").bottom, receiverTop:receiver.top, receiverBottom:receiver.bottom,
+          toolsTop:box(".gift-tools").top, navTop:box("nav").top,
+          artworkClear:[sender,receiver].every(a=>[".send-dock",".gift-tools","nav"].every(s=>clear(a,box(s)))),
+          scrollWidth:document.documentElement.scrollWidth, innerWidth,
+          imageStyles:[".send-mascot",".receive-mascot"].map(s=>{
+            const css=getComputedStyle(document.querySelector(s)); return [css.objectFit,css.objectPosition];
+          }),
+        };
+      });
+      const context=`${width}px ${colorScheme} send-${count}`;
+      assert.ok(Math.abs(layout.senderLeft-layout.frameLeft)<.01,`sender meets the inner frame left edge: ${context}`);
+      assert.ok(Math.abs(layout.receiverRight-layout.frameRight)<.01,`receiver meets the inner frame right edge: ${context}`);
+      assert.deepEqual(layout.imageStyles,[["contain","0% 0%"],["contain","100% 100%"]],`artwork aligns within its image box: ${context}`);
+      assert.ok(layout.dockRight<=layout.receiverLeft,`dock clears the receiver: ${context}`);
+      assert.ok(layout.artworkClear,`mascots clear the dock, gift tools and navigation: ${context}`);
+      assert.ok(layout.scrollWidth<=layout.innerWidth,`no horizontal overflow: ${context}`);
+      console.log(`PASS send layout ${context}: ${JSON.stringify(layout)}`);
     };
     assert.equal(await send.isDisabled(),true); await checkHeart(0); await check("send-0");
     for (let n=1;n<=10;n++) {

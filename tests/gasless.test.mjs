@@ -422,7 +422,17 @@ test("signed-in zero-SOL buyer joins, spends and transfers through Worker/D1 and
     assert.equal((await call("shop-save",{...data,access,revision:1,caption:"あ".repeat(141)})).status,400);
     const read=async(id,auth={})=>(await (await call("shop-profiles",{shops:[id],...auth})).json()).profiles;
     assert.deepEqual((await read(id))[0],{shop:id,title:data.title,caption:data.caption,icon:"☕",is_test:true,revision:1});
-    assert.equal((await call("shop-save",{...data,access,revision:1,title:"新しい店",icon:"🦊",is_test:false})).status,200);
+    let revision = 1;
+    for (const icon of ["", undefined]) {
+      const caption = "あ".repeat(140);
+      assert.equal((await call("shop-save",{...data,access,revision,icon,caption})).status,200);
+      revision++;
+      assert.deepEqual((await read(id))[0],{shop:id,title:data.title,caption,icon:"",is_test:true,revision});
+    }
+    for (const icon of ["なし", "invalid", null, 0, false, [], {}])
+      assert.equal((await call("shop-save",{...data,access,revision,icon})).status,400);
+    assert.equal((await read(id))[0].revision,revision,"invalid icons do not write a revision");
+    assert.equal((await call("shop-save",{...data,access,revision,title:"新しい店",icon:"🦊",is_test:false})).status,200);
     const updated = (await read(id))[0];
     assert.deepEqual([updated.title,updated.icon],["新しい店","🦊"]);
     // A signed-in merchant may also edit without an auxiliary message signature.
