@@ -90,6 +90,21 @@ nav a[aria-current="page"]::after { content: ""; position: absolute; bottom: .2r
 .market-name { min-width: 0; }
 .market-meta { margin-left: auto; font-size: .68rem; white-space: nowrap; }
 .joined-badge { color: var(--leaf); font-size: .62rem; white-space: nowrap; }
+.page-head { display: flex; align-items: center; justify-content: space-between; gap: .5rem; }
+.page-head .page-action { flex-shrink: 0; margin-right: 0; }
+.community-directory { padding: .75rem; }
+.community-directory .section-head { flex-wrap: wrap; }
+.sort-control { margin: 0 0 0 auto; }
+.section-head select[data-public-sort] { width: auto; max-width: 100%; min-height: 44px; margin: 0; padding: .45rem .65rem; font-size: .78rem; }
+.community-directory .market-row { margin: .4rem 0; padding: 0 .4rem; border-radius: .6rem; }
+.community-directory .market-heading { flex-wrap: nowrap; align-items: center; gap: .5rem; }
+.community-directory .market-name { flex: 1; flex-wrap: nowrap; align-items: center; gap: .25rem; }
+.community-directory .market-heading a { display: flex; align-items: center; min-width: 44px; min-height: 44px; flex: 1; overflow: hidden; font-size: .8rem; }
+.community-directory strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.community-directory .market-meta { flex-shrink: 0; font-size: .62rem; }
+.unjoined-badge { font-size: .62rem; white-space: nowrap; }
+.directory-status { font-size: .76rem; }
+.directory-status:empty { display: none; }
 .guide-links { display: flex; flex-wrap: wrap; gap: .5rem 1rem; }
 .guide-links a { white-space: nowrap; }
 .shop-row { margin-top: .55rem; padding: .55rem; background: var(--tile); border-radius: .55rem; text-decoration: none; }

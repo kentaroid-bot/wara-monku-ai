@@ -1,3 +1,4 @@
+import { selectableModes, sortPublicGroups, directoryMetrics } from "../community-directory.mjs";
 import { memberApi } from "../member-ui.mjs";
 import { joinedGroupIds, listedGroups } from "../shop-directory.mjs";
 import { requestPanel } from "../shop-requests.mjs";
@@ -16,8 +17,12 @@ export function communityViews(ctx) {
   const { state, content, params, who, profile, requests, ui, form, btn, inp, sel,
     opt, link, gid, register, by, outgoing, send, view, h, info, action } = ctx;
   const access = shopWalletAccess(profile, ctx.wallet, "community-access");
-  const policyFields = () => sel("visibility", "公開範囲", opt("public", "公開（一覧に掲載）") + opt("private", "限定公開（リンク限定）")) +
-    sel("mode", "参加方式", modes.map((v, i) => opt(i, v)).join(""));
+  let publicSort = "members", directoryState;
+  let storage;
+  try { storage = globalThis.localStorage; } catch {}
+  const metrics = directoryMetrics({rpc, program, storage});
+  const policyFields = group => sel("visibility", "公開範囲", opt("public", "公開（一覧に掲載）") + opt("private", "限定公開（リンク限定）")) +
+    sel("mode", "参加方式", selectableModes(group).map(i => opt(i, modes[i])).join(""));
   function newGroup() {
     ui(
       '<p>開設したウォレットが最初の管理者になります。公開を選ぶと名称と説明がDevnetに掲載されます。開設者はコミュニティ口座の作成費とMetaplexの登録料をDevnet SOLで負担します。手数料支援が有効なときはトークン情報の口座保管料と取引手数料を運営が負担します。</p><form id="create">' +
@@ -40,22 +45,48 @@ export function communityViews(ctx) {
   }
   function community() {
     const s = state();
+    if (s !== directoryState) {
+      metrics.resetSupplies();
+      directoryState = s;
+    }
     const id = params.get("id"),
       g = by(id);
     if (!id) {
       const groups = listedGroups(s.groups), joined = joinedGroupIds(s, who);
-      const privateGroups = groups.filter(g => g.visibility === "private" && g.joined);
+      const publicGroups = groups.filter(g => g.visibility !== "private");
+      const joinedGroups = groups.filter(g => g.visibility === "private" ? Boolean(g.joined) : joined.has(g.id));
+      const nameLink = g => `<a href="${h(gid(g.id))}"><strong>${h(g.name)}</strong></a>`;
+      const publicRows = () => sortPublicGroups(publicGroups, s.rows, publicSort, metrics.supplies, metrics.created).map(g => {
+        const admitted = joined.has(g.id);
+        const status = s.rows.find(r => r.tag === 33 && r.group === g.id && r.to === who)?.status;
+        const label = admitted ? "参加中" : status === 1 ? "申請中" : status === 4 ? "停止中" : "未参加";
+        return `<article class="market-row"><div class="market-heading"><div class="market-name">${nameLink(g)}<small class="${admitted ? "joined" : "unjoined"}-badge">${label}</small></div><small class="market-meta">${h(g.category)}${admitted ? "" : " · " + h(modes[g.mode])}</small></div></article>`;
+      }).join("") || "<p>まだ登録がありません。</p>";
       ui(
-        `<section class=paper-card><div class="section-head"><h2>地域のコミュニティ</h2><a href="/communities/new/">＋ 開設</a></div>
-          ${groups.filter(g => g.visibility !== "private").map(g => {
-            const stores = s.rows.filter(r => r.tag === 32 && r.group === g.id);
-            return `<article class="market-row"><div class="market-heading"><div class="market-name"><a href="${h(gid(g.id))}"><strong>${h(g.name)}</strong></a>${joined.has(g.id) ? '<small class="joined-badge">参加中</small>' : ""}</div>
-              <small class="market-meta">${h(g.category)} · ${modes[g.mode]}</small></div>
-              ${stores.map(st => `<a class="shop-row" href="${h(register(g.id, st.to))}"><span data-shop-label="${h(st.id)}">${h(shopTitle(st))}${shopDetails(st,h)}</span><small>${st.to === who ? "QRを出す" : "贈る"} ›</small></a>`).join("")}</article>`;
-          }).join("") || "<p>まだ登録がありません。</p>"}</section>
-        ${privateGroups.length ? '<section class=paper-card><h2>自分の限定公開コミュニティ</h2>' +
-          privateGroups.map(g => link(gid(g.id), g.name)).join("") + '</section>' : ''}`,
+        `<section class="paper-card community-directory" data-joined-groups><h2>参加済みのコミュニティ</h2>
+          ${joinedGroups.map(g => `<article class="market-row"><div class="market-heading">${nameLink(g)}<small class="market-meta">${g.visibility === "private" ? "🔒 " : ""}${h(g.category)}</small></div></article>`).join("") || "<p>まだ参加しているコミュニティはありません。</p>"}</section>
+        <section class="paper-card community-directory" data-public-groups><div class="section-head"><h2>公開コミュニティ</h2><label class="sort-control"><span class="visually-hidden">並び替え</span><select data-public-sort name="sort"><option value="members">参加人数順</option><option value="new">新着順</option><option value="wara">総WARA順</option></select></label></div>
+          <p class="directory-status" role="status" data-sort-status></p><div data-public-rows>${publicRows()}</div></section>`,
       );
+      const select = content.querySelector("[data-public-sort]");
+      const rows = content.querySelector("[data-public-rows]");
+      const status = content.querySelector("[data-sort-status]");
+      let sequence = 0;
+      select.value = publicSort;
+      const sort = async () => {
+        const turn = ++sequence, selected = select.value;
+        publicSort = selected;
+        rows.innerHTML = publicRows();
+        status.textContent = selected === "members" ? "" : "並び替え情報を確認中…";
+        rows.setAttribute("aria-busy", String(selected !== "members"));
+        await metrics.load(selected, publicGroups, () => select.isConnected);
+        if (!select.isConnected || turn !== sequence) return;
+        rows.innerHTML = publicRows();
+        rows.setAttribute("aria-busy", "false");
+        status.textContent = "";
+      };
+      select.onchange = sort;
+      if (publicSort !== "members") void sort();
       return;
     }
     if (!g) {
@@ -116,7 +147,7 @@ export function communityViews(ctx) {
         (needsName ? inp("name", "コミュニティ名", 'maxlength="50" value="' + h(locked ? "" : g.name) + '"') : '') +
         '<label>説明<textarea name="description" maxlength="140">' + h(g.description || "") + '</textarea></label>' +
         sel("category", "カテゴリ", categories.map(c => opt(c, c)).join(""));
-      out += '<form id="policy"><h2>コミュニティの設定</h2>' + policyFields() + editFields +
+      out += '<form id="policy"><h2>コミュニティの設定</h2>' + policyFields(g) + editFields +
         '<p>設定を変更すると、共有リンクは新しくなります。これまで公開した名称や取引の記録は台帳に残ります。トークンと既存の参加資格は変わりません。保存容量が増える場合、追加の口座保管料は管理者が負担します。</p>' +
         btn(locked ? "設定を更新してリンクを再発行" : "署名して設定を更新") + '</form>';
       if (g.mode === 1 && !locked)

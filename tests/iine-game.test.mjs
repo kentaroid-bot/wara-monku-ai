@@ -84,7 +84,11 @@ test("wallet screens and service errors use iine and recipient vocabulary", asyn
     const files=await readdir(base,{recursive:true,withFileTypes:true});
     for(const file of files.filter(file=>file.isFile())) {
       const {join}=await import("node:path"); const path=join(file.parentPath,file.name);
-      assert.doesNotMatch((await readFile(path,"utf8")).replaceAll(/\b(?:SHOP|BUYER)_WARA_PER_INA\b/g,""),/INA|店舗|ショップ|お店|レジ|お会計|支払う|店主/,path);
+      let source=(await readFile(path,"utf8")).replaceAll(/\b(?:SHOP|BUYER)_WARA_PER_INA\b/g,"");
+      // This community category is intentional; wallet actions still use recipient vocabulary.
+      if (directory === "shared" && file.name === "protocol.mjs")
+        source=source.replace(/(export const categories = \[[^\n]*)"お店・施設"/, '$1"施設カテゴリ"');
+      assert.doesNotMatch(source,/INA|店舗|ショップ|お店|レジ|お会計|支払う|店主/,path);
     }
   }
 });

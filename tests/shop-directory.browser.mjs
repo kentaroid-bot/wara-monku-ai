@@ -5,18 +5,23 @@ import bs58 from "bs58";
 import { TOKEN_PROGRAM_ID } from "@solana/spl-token";
 import { Keypair, PublicKey, SystemProgram } from "@solana/web3.js";
 import manifest from "../deployments/devnet.json" with {type:"json"};
+import { mintFor } from "../shared/protocol.mjs";
+import { groupCreatedKey } from "../mainstream/storage-keys.mjs";
 import { DEVNET_GENESIS } from "../app/protocol.mjs";
 const { chromium } = await import(process.env.PLAYWRIGHT_MODULE || "playwright");
 const key = () => String(Keypair.generate().publicKey);
 const who = key(), admin = key(), origin = "https://wara.test";
 const groups = ["所属中","開設済み","自由参加","申請中","川辺の市場"].map((name,i) => ({
   tag:31,id:i === 4 ? "4SuDmQR72DnjC5GZ78oDk7u4G2w5edNFuVGKFRfEZsLU" : key(),
-  name,category:"地域",visibility:"public",owner:i === 1 || i === 4 ? who : admin,mode:0,
+  name,category:"地域",visibility:"public",owner:i === 1 || i === 4 ? who : admin,mode:i === 1 || i === 3 ? 2 : 0,
 }));
 const stores = groups.map((g,i) => ({tag:32,id:key(),group:g.id,name:g.name+"の仲間",to:i === 0 || i === 4 ? who : key()}));
 const otherStore = {tag:32,id:key(),group:groups[0].id,name:"花屋",to:key()};
 stores.push(otherStore);
-const rows = [...groups,...stores,...[0,3].map(i=>({tag:33,id:key(),to:who,group:groups[i].id,status:i === 0 ? 2 : 1}))];
+const privateGroup = {tag:31,id:key(),name:"仲間の集まり",category:"家族・友人",visibility:"private",owner:admin,mode:1,invite:admin,sealed:"test",joined:true,unlocked:true};
+groups.push(privateGroup);
+const memberRows = groups.slice(0,3).flatMap((g,i)=>Array.from({length:i === 0 ? 2 : 3-i},()=>({tag:33,id:key(),group:g.id,to:key(),status:2})));
+const rows = [...groups,...stores,...memberRows,...[0,3].map(i=>({tag:33,id:key(),to:who,group:groups[i].id,status:i === 0 ? 2 : 1}))];
 let profile = {shop:stores[0].id,title:"パン屋",caption:"手ごね",icon:"🥐",is_test:true,revision:1};
 let paid = false, signatureReads = 0;
 const paidSignature = bs58.encode(Buffer.alloc(64, 9));
@@ -24,7 +29,7 @@ const paymentData = Buffer.alloc(25); paymentData[0] = 14; paymentData.writeBigU
 const chainRows = rows.map(row => {
   const keys = row.tag === 31 ? [row.owner] : [row.group, row.to];
   const data = Buffer.concat([Buffer.from([row.tag]), ...keys.map(k => new PublicKey(k).toBuffer()),
-    row.tag === 31 ? Buffer.concat([Buffer.from([row.mode]), SystemProgram.programId.toBuffer(), Buffer.from(JSON.stringify({name:row.name,description:"",category:row.category}))]) :
+    row.tag === 31 ? Buffer.concat([Buffer.from([row.mode]), SystemProgram.programId.toBuffer(), Buffer.from(JSON.stringify(row.visibility === "private" ? {visibility:"private",sealed:row.sealed} : {name:row.name,description:"",category:row.category}))]) :
     row.tag === 32 ? Buffer.from(row.name) : Buffer.from([row.status])]);
   return {pubkey:row.id,account:{owner:manifest.program,data:[data.toString("base64"),"base64"],lamports:1,executable:false,rentEpoch:0}};
 });
@@ -37,6 +42,15 @@ try {
   const errors=[];
   let profileUnavailable=false;
   let ownerCertified=false, pendingRequests=[];
+  let supplyReads=0, creationReads=0;
+  let supplyValues=[10,20,40,30];
+  const screenshots = process.env.IINE_SCREENSHOT_DIR;
+  if (screenshots) await (await import("node:fs/promises")).mkdir(screenshots,{recursive:true});
+  const captureDirectory = async name => {
+    assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),`${name} overflow at ${width}`);
+    assert.equal(await page.locator("#screen [style]").count(),0);
+    if(screenshots) await page.screenshot({path:resolve(screenshots,`${width}-${colorScheme}-${name}.png`),fullPage:true});
+  };
   page.on("pageerror", e=>errors.push(e.message));
   page.on("console", m=>{if(m.type()==="error") errors.push(m.text());});
   await page.addInitScript(({who,prog,rows})=>{
@@ -52,6 +66,22 @@ try {
       const clock = {owner:String(SystemProgram.programId),data:[Buffer.alloc(40).toString("base64"),"base64"],lamports:1,executable:false,rentEpoch:0};
       const tokens = Buffer.alloc(165); tokens[108] = 1; tokens.writeBigUInt64LE(1000n,64);
       if (method === "getSignaturesForAddress") signatureReads++;
+      if (method === "getMultipleAccounts" && params[0].every(address=>groups.some(g=>String(mintFor(manifest.program,g.id))===address))) {
+        supplyReads++;
+        await new Promise(r=>setTimeout(r,120));
+        return route.fulfill({headers:cors,json:{id,jsonrpc:"2.0",result:{context:{slot:1},value:params[0].map(address=>{
+          const i=groups.findIndex(g=>String(mintFor(manifest.program,g.id))===address);
+          const data=Buffer.alloc(82); data.writeBigUInt64LE(BigInt(supplyValues[i] || 0),36);
+          return {...clock,owner:String(TOKEN_PROGRAM_ID),data:[data.toString("base64"),"base64"]};
+        })}}});
+      }
+      if (method === "getSignaturesForAddress" && params[1]?.limit===1000) {
+        creationReads++;
+        const i=groups.findIndex(g=>g.id===params[0]);
+        assert.ok(i>=0 && groups[i].visibility!=="private");
+        await new Promise(r=>setTimeout(r,80));
+        return route.fulfill({headers:cors,json:{id,jsonrpc:"2.0",result:[{signature:paidSignature,slot:[100,400,300,200][i],blockTime:[100,400,300,200][i],err:null,memo:null,confirmationStatus:"confirmed"}]}});
+      }
       const result = method === "getGenesisHash" ? DEVNET_GENESIS :
         method === "getMultipleAccounts" ? {context:{slot:1},value:params[0].map((_,i)=>i === 0 ? clock : i === 1 ? null :
           {...clock,owner:String(TOKEN_PROGRAM_ID),data:[tokens.toString("base64"),"base64"]})} :
@@ -66,6 +96,7 @@ try {
           }}} : [];
       return route.fulfill({json:{id,jsonrpc:"2.0",result},headers:cors});
     }
+    if (url.pathname === "/api/member/community-profiles") return route.fulfill({json:{groups:[privateGroup]}});
     if (url.pathname === "/api/member/payment-notes") {
       const {receipts,session} = req.postDataJSON();
       assert.ok(session);
@@ -100,8 +131,76 @@ try {
   await page.getByRole("button",{name:"受け取り窓口情報を保存"}).click();
   await page.getByRole("heading",{name:"🦊 パン屋"}).waitFor();
   await page.goto(origin+"/communities/");
-  await page.getByRole("link",{name:/🦊 パン屋/}).waitFor();
-  assert.deepEqual(await page.locator(".market-row strong").allTextContents(),groups.slice(0,4).map(g=>g.name));
+  await page.locator("[data-public-sort]").waitFor();
+  assert.equal(await page.locator("#screen h1").innerText(),"コミュニティ");
+  assert.equal(await page.locator(".page-head .page-action").getAttribute("href"),"/communities/new/");
+  assert.deepEqual(await page.locator(".community-directory h2").allTextContents(),["参加済みのコミュニティ","公開コミュニティ"]);
+  const joinedSection=page.locator("[data-joined-groups]"), publicSection=page.locator("[data-public-groups]");
+  assert.deepEqual(await joinedSection.locator("strong").allTextContents(),["所属中","開設済み","仲間の集まり"]);
+  assert.deepEqual(await joinedSection.locator(".market-meta").allTextContents(),["地域","地域","🔒 家族・友人"]);
+  assert.equal(await joinedSection.locator(".joined-badge, .unjoined-badge").count(),0);
+  assert.doesNotMatch(await joinedSection.innerText(),/参加中|承認制|招待コード/);
+  assert.equal(await page.locator(".community-directory .shop-row").count(),0);
+  assert.equal(await page.getByRole("link",{name:/🦊 パン屋/}).count(),0);
+  const publicNames=()=>publicSection.locator("strong").allTextContents();
+  assert.deepEqual(await publicNames(),["所属中","開設済み","自由参加","申請中"]);
+  assert.deepEqual(await publicSection.locator(".market-meta").allTextContents(),["地域","地域","地域 · 自由参加","地域 · 承認制"]);
+  assert.deepEqual(await publicSection.locator(".joined-badge, .unjoined-badge").allTextContents(),["参加中","参加中","未参加","申請中"]);
+  for(const name of ["所属中","開設済み"]) assert.equal(await joinedSection.getByRole("link",{name,exact:true}).count(),1);
+  assert.equal(supplyReads,0); assert.equal(creationReads,0);
+  assert.ok(await page.locator(".community-directory .market-heading").evaluateAll(rows=>rows.every(row=>{
+    const link=row.querySelector("a").getBoundingClientRect(), meta=row.querySelector(".market-meta").getBoundingClientRect();
+    return link.height>=44 && link.width>=44 && meta.top<link.bottom && meta.bottom>link.top;
+  })),"single-row communities have 44px link targets");
+  for(const selector of [".page-action","[data-public-sort]"]) assert.ok((await page.locator(selector).boundingBox()).height>=44);
+  await captureDirectory("communities-members");
+  const sort=page.locator("[data-public-sort]");
+  assert.deepEqual(await sort.locator("option").allTextContents(),["参加人数順","新着順","総WARA順"]);
+  await sort.selectOption("wara");
+  await sort.selectOption("members");
+  await sort.selectOption("wara");
+  await page.locator('[data-public-rows][aria-busy="false"]').waitFor();
+  assert.deepEqual(await publicNames(),["自由参加","申請中","開設済み","所属中"]);
+  assert.equal(supplyReads,1,"rapid toggles share the mint read");
+  await captureDirectory("communities-wara");
+  supplyValues=[50,20,40,30];
+  await page.getByRole("button",{name:"更新",exact:true}).click();
+  await page.waitForFunction(()=>document.querySelector('[data-public-rows][aria-busy="false"] strong')?.textContent === "所属中");
+  assert.equal(supplyReads,2,"refresh fetches current supplies");
+  assert.deepEqual(await publicNames(),["所属中","自由参加","申請中","開設済み"]);
+  await sort.selectOption("members"); await sort.selectOption("wara");
+  await page.locator('[data-public-rows][aria-busy="false"]').waitFor();
+  assert.equal(supplyReads,2,"sort changes reuse supplies within the refreshed state");
+  await sort.selectOption("new");
+  await page.locator('[data-public-rows][aria-busy="false"]').waitFor();
+  assert.deepEqual(await publicNames(),["開設済み","自由参加","申請中","所属中"]);
+  assert.equal(creationReads,4);
+  assert.equal(await page.evaluate(key=>Object.keys(JSON.parse(localStorage.getItem(key))).length,groupCreatedKey(manifest.program)),4);
+  await captureDirectory("communities-new");
+  await sort.selectOption("members"); await sort.selectOption("new");
+  await page.locator('[data-public-rows][aria-busy="false"]').waitFor();
+  assert.equal(creationReads,4);
+  await page.goto(origin+"/communities/new/");
+  await page.locator("#create").waitFor();
+  assert.deepEqual(await page.locator('#create select[name="mode"] option').allTextContents(),["招待コード","承認制"]);
+  const expectedCategories=["地域","学校","職場","サークル","イベント","お店・施設","家族・友人","オンライン","その他"];
+  assert.deepEqual(await page.locator('#create select[name="category"] option').allTextContents(),expectedCategories);
+  await captureDirectory("community-create");
+  await page.goto(origin+"/communities/?id="+groups[1].id);
+  await page.locator("#policy").waitFor();
+  assert.equal(await page.locator(".page-action").count(),0);
+  assert.deepEqual(await page.locator('#policy select[name="mode"] option').allTextContents(),["招待コード","承認制"]);
+  assert.deepEqual(await page.locator('#policy select[name="category"] option').allTextContents(),expectedCategories);
+  await captureDirectory("community-policy");
+  await page.goto(origin+"/communities/?id="+groups[4].id);
+  await page.locator("#policy").waitFor();
+  assert.deepEqual(await page.locator('#policy select[name="mode"] option').allTextContents(),["自由参加","招待コード","承認制"]);
+  assert.equal(await page.locator('#policy select[name="mode"]').inputValue(),"0");
+  // A navigation during a pending sort must leave the new form intact.
+  await page.goto(origin+"/communities/"); await page.locator("[data-public-sort]").waitFor();
+  await page.locator("[data-public-sort]").selectOption("wara");
+  await page.locator(".page-action").click(); await page.locator("#create").waitFor();
+  assert.equal(await page.locator("[data-public-rows]").count(),0);
   await page.goto(origin+"/shop/");
   await page.getByRole("link",{name:/開設済みの仲間/}).waitFor();
   assert.equal(await page.locator("#screen h1").innerText(),"iineを贈る");
@@ -188,8 +287,6 @@ try {
   const afterRemoval = signatureReads;
   await page.waitForTimeout(5500);
   assert.equal(signatureReads,afterRemoval,"removing only the QR stops its watcher");
-  const screenshots = process.env.IINE_SCREENSHOT_DIR;
-  if (screenshots) await (await import("node:fs/promises")).mkdir(screenshots,{recursive:true});
   {
     await page.setViewportSize({width,height:844}); await page.emulateMedia({colorScheme});
     const check = async name => {
@@ -349,7 +446,7 @@ try {
     const peerSelect = page.locator('form.treaty select[name="peer"]');
     await peerSelect.waitFor();
     assert.equal(await peerSelect.locator("..").evaluate(el=>el.firstChild.textContent),"申請先のコミュニティ");
-    assert.equal(await peerSelect.locator("option").count(),groups.length-1);
+    assert.equal(await peerSelect.locator("option").count(),groups.filter(g=>g.visibility!=="private").length-1);
     assert.doesNotMatch(await page.locator("#screen").innerText(),/通貨同盟|他の地域へ提携を申請|申請先の地域|\/private\/|\/Users\//);
     await check("community-uncertified");
     // Pending applicants retain the heading; certified owners retain their queue below the link.
@@ -374,7 +471,7 @@ try {
   // Profile failures remain visible off home, without hiding balance-read errors.
   profileUnavailable=true;
   const profileError="受け取り窓口プロフィールを取得できません。「更新」で再試行できます。";
-  for (const path of ["/account/","/communities/","/","/user/"]) {
+  for (const path of ["/account/","/communities/?id="+groups[0].id,"/","/user/"]) {
     const response = page.waitForResponse(r=>new URL(r.url()).pathname==="/api/member/shop-profiles");
     await page.goto(origin+path);
     await (await response).finished();

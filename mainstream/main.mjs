@@ -219,6 +219,8 @@ async function render() {
     "/communities/new": "コミュニティを開設",
   };
   el.innerHTML = "<h1>" + esc(titles[path] || "WARA") + "</h1>";
+  if (profile && path === "/communities" && !new URLSearchParams(location.search).get("id"))
+    el.innerHTML = '<div class="page-head">' + el.innerHTML + '<a class="action secondary page-action" href="/communities/new/">＋ 開設</a></div>';
   if (!profile) {
     const home = path === "/" || path === "/user";
     const group = new URLSearchParams(location.search).get("id");
