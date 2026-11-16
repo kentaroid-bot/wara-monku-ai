@@ -48,7 +48,7 @@ const u64 = (x) => {
   b.writeBigUInt64LE(BigInt(x));
   return b;
 };
-export const categories = ["地域", "学校", "サークル", "イベント"],
+export const categories = ["地域", "学校", "職場", "サークル", "イベント", "お店・施設", "家族・友人", "オンライン", "その他"],
   modes = ["自由参加", "招待コード", "承認制"];
 export function metadata(name, description, category) {
   name = String(name).trim();
