@@ -14,6 +14,8 @@ const groups = ["所属中","開設済み","自由参加","申請中","川辺の
   name,category:"地域",visibility:"public",owner:i === 1 || i === 4 ? who : admin,mode:0,
 }));
 const stores = groups.map((g,i) => ({tag:32,id:key(),group:g.id,name:g.name+"の仲間",to:i === 0 || i === 4 ? who : key()}));
+const otherStore = {tag:32,id:key(),group:groups[0].id,name:"花屋",to:key()};
+stores.push(otherStore);
 const rows = [...groups,...stores,...[0,3].map(i=>({tag:33,id:key(),to:who,group:groups[i].id,status:i === 0 ? 2 : 1}))];
 let profile = {shop:stores[0].id,title:"パン屋",caption:"手ごね",icon:"🥐",is_test:true,revision:1};
 let paid = false, signatureReads = 0;
@@ -34,6 +36,7 @@ try {
   page.setDefaultTimeout(15000);
   const errors=[];
   let profileUnavailable=false;
+  let ownerCertified=false, pendingRequests=[];
   page.on("pageerror", e=>errors.push(e.message));
   page.on("console", m=>{if(m.type()==="error") errors.push(m.text());});
   await page.addInitScript(({who,prog,rows})=>{
@@ -75,6 +78,14 @@ try {
       return route.fulfill({json:profile});
     }
     if (url.pathname === "/api/member/shop-profiles") return route.fulfill({json:{profiles:profileUnavailable ? null : [profile]}});
+    if (url.pathname === "/api/v3/shop-requests") {
+      assert.equal(req.method(),"GET");
+      const group = url.searchParams.get("group");
+      return route.fulfill({json:{
+        certified:group === groups[0].id || (group === groups[1].id && ownerCertified),
+        requests:group === groups[1].id ? pendingRequests : [],next:null,
+      }});
+    }
     if (url.pathname === "/api/auth/status") return route.fulfill({headers:{"X-Wara-Auth":"1"},json:{mode:"trial",version:3}});
     if (url.pathname === "/api/member/session") return route.fulfill({json:{profile:{address:who,type:"phantom",managed:true}}});
     if (url.pathname.startsWith("/api/")) return route.fulfill({json:{}});
@@ -96,7 +107,7 @@ try {
   assert.equal(await page.locator("#screen h1").innerText(),"iineを贈る");
   const listedStores = () => page.locator('a[href^="/shop/?group="]').evaluateAll(links=>links.map(link=>new URL(link.href).searchParams.get("store")));
   // Own stores stay out of recipient choices; only other recipients in joined communities appear.
-  assert.deepEqual(await listedStores(),[stores[1].to]);
+  assert.deepEqual(await listedStores(),[stores[1].to,otherStore.to]);
   assert.equal(await page.getByRole("link",{name:/🦊 パン屋/}).count(),0);
   await page.goto(origin+"/shop/?mode=receive");
   await page.locator("#qr-out img").waitFor();
@@ -302,6 +313,61 @@ try {
     assert.equal(await page.locator(".market-row > .tag-pill").count(),0);
     assert.doesNotMatch(await page.locator(".market-row").first().innerText(),/受け取り窓口 \d+件/);
     assert.ok(await page.locator(".market-heading .market-meta").first().isVisible());
+    // Community detail keeps both own and other shops after async profile enhancement.
+    await page.goto(origin+"/communities/?id="+groups[0].id);
+    const giftCard = page.locator("section.paper-card").filter({has:page.getByRole("heading",{name:"贈る",exact:true})});
+    const ownShop = giftCard.locator(`[data-shop-label="${stores[0].id}"]`);
+    await ownShop.filter({hasText:"🦊 パン屋"}).waitFor();
+    assert.equal(await ownShop.evaluate(el=>el.firstChild.textContent),"🦊 パン屋");
+    assert.equal(await ownShop.locator("small").innerText(),"手ごね");
+    assert.deepEqual(await giftCard.locator("a.action").evaluateAll(links=>links.map(a=>new URL(a.href).searchParams.get("store"))),[who,otherStore.to]);
+    assert.deepEqual(await giftCard.locator("[data-shop-label]").evaluateAll(labels=>labels.map(el=>el.firstChild.textContent)),["🦊 パン屋","花屋"]);
+    assert.equal(await giftCard.locator("[data-register-label]").count(),0);
+    assert.doesNotMatch(await giftCard.innerText(),/の受け取り窓口/);
+    const receive = page.getByRole("link",{name:"このコミュニティで受け取る",exact:true});
+    await receive.waitFor();
+    assert.equal(await receive.getAttribute("href"),await ownShop.locator("..").getAttribute("href"));
+    assert.equal(await page.getByRole("heading",{name:"このコミュニティで受け取り窓口を開く",exact:true}).count(),0);
+    assert.ok(await page.getByRole("heading",{name:"提携コミュニティ",exact:true}).isVisible());
+    assert.ok(await page.getByText("お互いに提携を承認したコミュニティのWARAを使えます。",{exact:true}).isVisible());
+    assert.ok(await page.getByText("提携中のコミュニティはありません。",{exact:true}).isVisible());
+    assert.doesNotMatch(await page.locator("#screen").innerText(),/通貨同盟|\/private\/|\/Users\//);
+    for (const id of [groups[0].id,stores[0].id,otherStore.id,who,otherStore.to])
+      assert.ok(!(await page.locator("#screen").innerText()).includes(id),"detail does not display internal IDs");
+    await check("community-certified");
+    await ownShop.click();
+    await page.locator("#qr-out img").waitFor();
+    assert.equal(await page.locator("#screen h1").innerText(),"受け取る");
+
+    await page.goto(origin+"/communities/?id="+groups[1].id);
+    const requestsPanel = page.locator("[data-shop-requests]");
+    await requestsPanel.getByRole("heading",{name:"このコミュニティで受け取り窓口を開く",exact:true}).waitFor();
+    assert.ok(await requestsPanel.locator("form[data-apply]").isVisible());
+    assert.ok(await requestsPanel.getByRole("button",{name:"受け取り窓口の開設を申請する",exact:true}).isVisible());
+    assert.equal(await receive.count(),0);
+    await page.getByText("他のコミュニティへ提携を申請",{exact:true}).click();
+    const peerSelect = page.locator('form.treaty select[name="peer"]');
+    await peerSelect.waitFor();
+    assert.equal(await peerSelect.locator("..").evaluate(el=>el.firstChild.textContent),"申請先のコミュニティ");
+    assert.equal(await peerSelect.locator("option").count(),groups.length-1);
+    assert.doesNotMatch(await page.locator("#screen").innerText(),/通貨同盟|他の地域へ提携を申請|申請先の地域|\/private\/|\/Users\//);
+    await check("community-uncertified");
+    // Pending applicants retain the heading; certified owners retain their queue below the link.
+    pendingRequests=[{request_id:"pending-own",merchant:who,title:"手づくりのお店"}];
+    await page.reload();
+    await requestsPanel.getByText("申請中：手づくりのお店の受け取り窓口（管理者の公認待ち）",{exact:true}).waitFor();
+    assert.ok(await requestsPanel.getByRole("heading",{name:"このコミュニティで受け取り窓口を開く",exact:true}).isVisible());
+    assert.equal(await requestsPanel.locator("form[data-apply]").count(),0);
+    ownerCertified=true;
+    pendingRequests=[{request_id:"pending-other",merchant:admin,title:"仲間のお店"}];
+    await page.reload();
+    await receive.waitFor();
+    assert.equal(await requestsPanel.locator("h2").count(),0);
+    assert.ok(await requestsPanel.getByRole("heading",{name:"受け取り窓口の開設申請（1件）",exact:true}).isVisible());
+    assert.ok(await requestsPanel.getByRole("button",{name:"公認して受け取り窓口を作る",exact:true}).isVisible());
+    assert.ok(await requestsPanel.evaluate(el=>Boolean(el.querySelector("a.action").compareDocumentPosition(el.querySelector("h3")) & Node.DOCUMENT_POSITION_FOLLOWING)));
+    ownerCertified=false; pendingRequests=[];
+    console.log(`PASS community copy ${width}px ${colorScheme}: certified, uncertified, pending, owner queue, self QR, profile enhancement and partnership copy`);
     await page.goto(origin+"/communities/new/"); await page.locator("#create").waitFor(); await check("community-new");
     console.log(`${width}px ${colorScheme}: home, lists, QR, paper camera, 1/3/5/10 tiers, reset, mute, guide passed`);
   }

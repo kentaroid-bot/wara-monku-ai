@@ -40,7 +40,7 @@ export function requestPanel(panel, {api, group, who, owner, esc, certify, info,
 
   function render(certified) {
     const mine = rows.find(r=>r.merchant === who);
-    const own = certified ? `<a class="action" href="${esc(register(group,who))}">受け取る</a>`
+    const own = certified ? `<a class="action" href="${esc(register(group,who))}">このコミュニティで受け取る</a>`
       : mine ? `<p>申請中：${esc(mine.title)}の受け取り窓口（管理者の公認待ち）</p>`
       : `<form data-apply><label>希望の受け取り名（最大40文字）<input name="title" required></label>
          <small>公認されると受け取り名が公開台帳に記録されます。</small><button>受け取り窓口の開設を申請する</button></form>`;
@@ -52,7 +52,7 @@ export function requestPanel(panel, {api, group, who, owner, esc, certify, info,
     const input = body.querySelector("[name=title]");
     const draft = input?.value;
     const focused = input && input === document.activeElement;
-    body.innerHTML = '<h2>このコミュニティで受け取り窓口を開く</h2>' + own + list;
+    body.innerHTML = (certified ? '' : '<h2>このコミュニティで受け取り窓口を開く</h2>') + own + list;
     const field = body.querySelector("[name=title]");
     if (field && draft) field.value = draft;
     if (field && focused) field.focus();

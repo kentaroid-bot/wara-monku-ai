@@ -146,10 +146,10 @@ export function communityViews(ctx) {
         )
         .join("");
     out +=
-      "<section class=paper-card><h2>受け取り窓口</h2>" +
+      "<section class=paper-card><h2>贈る</h2>" +
       (shops
         .map(
-          (r) => `<p><a class="action" href="${h(register(g.id,r.to))}"><span data-shop-label="${h(r.id)}" data-register-label="1">${h(shopTitle(r))}の受け取り窓口${shopDetails(r,h)}</span></a></p>`,
+          (r) => `<p><a class="action" href="${h(register(g.id,r.to))}"><span data-shop-label="${h(r.id)}">${h(shopTitle(r))}${shopDetails(r,h)}</span></a></p>`,
         )
         .join("") || "<p>まだ受け取り窓口はありません。</p>") +
       "</section>";
@@ -178,9 +178,9 @@ export function communityViews(ctx) {
           '"><input type="hidden" name="enable" value="' + enable + '">' + btn(label) + "</form>"
         : "") + "</article>";
     out +=
-      "<section class=paper-card><h2>通貨同盟（提携地域）</h2><p>双方が承認した地域のWARAを額面どおり受け入れます。</p>" +
+      "<section class=paper-card><h2>提携コミュニティ</h2><p>お互いに提携を承認したコミュニティのWARAを使えます。</p>" +
       (partners.map((p) => treatyRow(p, "提携中", "提携を解除", "0")).join("") ||
-        "<p>提携中の地域はありません</p>");
+        "<p>提携中のコミュニティはありません。</p>");
     if (owner) {
       const incoming = peers.filter((p) => !p.sent && p.received),
         pending = peers.filter((p) => p.sent && !p.received),
@@ -191,12 +191,12 @@ export function communityViews(ctx) {
       if (pending.length)
         out += "<h3>申請中（相手の承認待ち）</h3>" +
           pending.map((p) => treatyRow(p, "申請中（相手の承認待ち）", "申請を取り消す", "0")).join("");
-      out += '<details><summary>他の地域へ提携を申請</summary>' +
+      out += '<details><summary>他のコミュニティへ提携を申請</summary>' +
         (available.length
           ? '<form class="treaty">' +
-            sel("peer", "申請先の地域", available.map((p) => opt(p.id, p.name)).join("")) +
+            sel("peer", "申請先のコミュニティ", available.map((p) => opt(p.id, p.name)).join("")) +
             '<input type="hidden" name="enable" value="1">' + btn("提携を申請") + "</form>"
-          : "<p>申請可能な公開地域はありません</p>") + "</details>";
+          : "<p>申請可能な公開コミュニティはありません。</p>") + "</details>";
     }
     out += "</section>";
     ui(out);
