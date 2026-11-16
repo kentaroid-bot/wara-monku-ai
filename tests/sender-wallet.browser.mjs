@@ -187,16 +187,47 @@ try {
   assert.ok(await page.getByRole("button",{name:"履歴を更新",exact:true}).isVisible());
   await page.goto(origin+"/"); await page.locator("[data-receipt]").first().waitFor();
   assert.equal(await page.locator(".home-history .story").count(),5);
+  await page.evaluate(()=>{localStorage.removeItem("wara.v03.warmth.last");dispatchEvent(new Event("pageshow"));});
   await screenshot("home-5");
   await page.locator("[data-receipt]").first().click(); await screenshot("receipt-detail"); await page.keyboard.press("Escape");
-  spent=7n; await page.reload(); await page.locator('.home-send[data-empty="true"]').waitFor(); await screenshot("home-empty"); spent=2n;
+  spent=7n; await page.reload(); await page.locator('.home-send[data-empty="true"]').waitFor(); await screenshot("home-empty");
+  assert.equal(await page.locator(".home-heart").evaluate(el=>getComputedStyle(el).animationName),"none");
+  spent=2n; await page.reload(); await page.locator('.home-send[data-empty="false"]').waitFor(); await page.locator("[data-receipt]").first().waitFor();
   await page.evaluate(()=>{window.testNow=Date.now(); window.realNow=Date.now; Date.now=()=>window.testNow; localStorage.setItem("wara.v03.warmth.last",String(window.testNow)); dispatchEvent(new Event("pageshow"));});
-  assert.ok(await page.locator("html.has-send-fx").count()); await screenshot("home-celebration");
+  assert.ok(await page.locator("html.has-send-fx").count());
+  assert.equal(await page.locator(".home-send-fx .fx-particle").count(),12);
+  const animations={".home-sun-halo":"sun-halo-pulse",".home-send-fx .fx-particle":"fx-arc",".home-sender":"sender-cheer",".home-receive img":"banzai-celebrate",".home-heart":"heart-float"};
+  for (const [selector,name] of Object.entries(animations))
+    assert.equal(await page.locator(selector).first().evaluate(el=>getComputedStyle(el).animationName),name);
+  assert.ok(await page.locator(".home-send-fx .fx-heart").evaluateAll(imgs=>imgs.every(img=>img.complete && img.naturalWidth>0)));
+  assert.equal(await page.locator(".home-receipts > .stories > .story").first().evaluate(el=>getComputedStyle(el).backgroundColor),"rgba(246, 198, 72, 0.22)");
+  assert.ok(await page.evaluate(()=>{
+    const img=document.querySelector(".home-receive img"), a=img.getAnimations()[0];
+    const history=document.querySelector(".home-history").getBoundingClientRect();
+    a.pause();
+    const clear=[0,.18,.35,.5,.65,.82,1].every(phase=>{
+      a.currentTime=720*phase;
+      const b=img.getBoundingClientRect();
+      return history.right<=b.left || history.left>=b.right || history.bottom<=b.top || history.top>=b.bottom;
+    });
+    a.play(); return clear;
+  }),"home history clears the receiver throughout its celebration dance");
+  // Inspect the visible middle of the arc deterministically for screenshots.
+  await page.locator(".home-send-fx").evaluate(el=>el.getAnimations({subtree:true}).forEach(a=>{a.pause();a.currentTime=900;}));
+  await screenshot("home-celebration");
   await page.emulateMedia({reducedMotion:"reduce"});
-  assert.equal(await page.locator(".home-send-fx span").first().evaluate(el=>getComputedStyle(el).animationName),"none");
+  for (const selector of Object.keys(animations))
+    assert.equal(await page.locator(selector).first().evaluate(el=>getComputedStyle(el).animationName),"none");
+  assert.ok(await page.locator(".home-sun-halo").isVisible());
   await screenshot("home-reduced-motion"); await page.emulateMedia({reducedMotion:"no-preference"});
-  await page.evaluate(()=>{window.testNow+=7001;document.dispatchEvent(new Event("visibilitychange"));});
+  await page.evaluate(()=>{window.testNow+=7999;document.dispatchEvent(new Event("visibilitychange"));});
+  assert.equal(await page.locator("html.has-send-fx").count(),1,"celebration lasts through 7999ms");
+  await page.evaluate(()=>{window.testNow-=7999;});
+  await page.evaluate(()=>{window.testNow+=8001;document.dispatchEvent(new Event("visibilitychange"));});
   assert.equal(await page.locator("html.has-send-fx").count(),0);
+  assert.equal(await page.locator(".home-send-fx").isVisible(),false);
+  assert.equal(await page.locator(".home-sender").evaluate(el=>getComputedStyle(el).animationName),"gentle-sway");
+  assert.equal(await page.locator(".home-receive img").evaluate(el=>getComputedStyle(el).animationName),"banzai-idle");
   assert.ok(Number(await page.evaluate(()=>document.documentElement.style.getPropertyValue("--warmth")))>0);
   await page.evaluate(()=>{window.testNow+=900000;document.dispatchEvent(new Event("visibilitychange"));});
   assert.equal(await page.evaluate(()=>document.documentElement.style.getPropertyValue("--warmth")),"0");

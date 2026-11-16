@@ -2,6 +2,7 @@
 const appRoutes = Object.freeze(["", "user", "signup", "shop", "register", "support", "account", "communities", "communities/new"]);
 const specialRoutes = Object.freeze({ devnet: "app/index.html", mock: "index.html" });
 const copies = Object.freeze({
+  "manifest.webmanifest": "mainstream/manifest.webmanifest",
   "assets/wara-avatar.png": "assets/wara-avatar.png",
   "v3/ehon/heart.webp": "assets/ehon/heart.webp",
   "v3/ehon/sender.webp": "assets/ehon/sender.webp",

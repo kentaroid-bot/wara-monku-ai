@@ -62,6 +62,18 @@ try {
       assert.equal(await link.locator(".nav-label").innerText(), name);
       await link.click();
       assert.equal(new URL(page.url()).pathname, path);
+      assert.equal(new URL(page.url()).origin,origin);
+      assert.equal(await link.getAttribute("target"),null,"tabs navigate within the installed app");
+      assert.equal(await page.locator('link[rel="manifest"]').getAttribute("href"),"/manifest.webmanifest");
+      assert.equal(await page.locator('meta[name="apple-mobile-web-app-capable"]').getAttribute("content"),"yes");
+      assert.equal(await page.locator('meta[name="mobile-web-app-capable"]').getAttribute("content"),"yes");
+      assert.equal(await page.locator('meta[name="apple-mobile-web-app-status-bar-style"]').getAttribute("content"),"default");
+      assert.equal(await page.locator('meta[name="apple-mobile-web-app-title"]').getAttribute("content"),"WARA");
+      assert.equal(await page.locator('link[rel="apple-touch-icon"]').getAttribute("href"),"/assets/wara-avatar.png");
+      assert.equal(await page.locator('meta[name="theme-color"]').getAttribute("content"),"#f8f4e8");
+      const manifest=await page.evaluate(async()=>await (await fetch(document.querySelector('link[rel="manifest"]').href)).json());
+      assert.equal(manifest.scope,"/"); assert.equal(manifest.display,"standalone");
+      assert.ok(new URL(page.url()).pathname.startsWith(manifest.scope));
       await page.waitForSelector('nav a[aria-current="page"]');
       assert.equal(await nav.locator('[aria-current="page"]').count(), 1);
       assert.equal(await link.getAttribute("aria-current"), "page");
