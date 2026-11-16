@@ -46,14 +46,14 @@ export function communityViews(ctx) {
       const groups = listedGroups(s.groups), joined = joinedGroupIds(s, who);
       const privateGroups = groups.filter(g => g.visibility === "private" && g.joined);
       ui(
-        `<section><div class="section-head"><h2>地域のコミュニティ</h2><a href="/communities/new/">＋ 開設</a></div>
+        `<section class=paper-card><div class="section-head"><h2>地域のコミュニティ</h2><a href="/communities/new/">＋ 開設</a></div>
           ${groups.filter(g => g.visibility !== "private").map(g => {
             const stores = s.rows.filter(r => r.tag === 32 && r.group === g.id);
-            return `<article class="market-row"><a href="${h(gid(g.id))}"><strong>${h(g.name)}</strong></a>
-              <small>${h(g.category)} · ${modes[g.mode]} · 受け取り窓口 ${stores.length}件${joined.has(g.id) ? " · 参加中" : ""}</small>
+            return `<article class="market-row"><div class="market-heading"><div class="market-name"><a href="${h(gid(g.id))}"><strong>${h(g.name)}</strong></a>${joined.has(g.id) ? '<small class="joined-badge">参加中</small>' : ""}</div>
+              <small class="market-meta">${h(g.category)} · ${modes[g.mode]}</small></div>
               ${stores.map(st => `<a class="shop-row" href="${h(register(g.id, st.to))}"><span data-shop-label="${h(st.id)}">${h(shopTitle(st))}${shopDetails(st,h)}</span><small>${st.to === who ? "QRを出す" : "贈る"} ›</small></a>`).join("")}</article>`;
           }).join("") || "<p>まだ登録がありません。</p>"}</section>
-        ${privateGroups.length ? '<section><h2>自分の限定公開コミュニティ</h2>' +
+        ${privateGroups.length ? '<section class=paper-card><h2>自分の限定公開コミュニティ</h2>' +
           privateGroups.map(g => link(gid(g.id), g.name)).join("") + '</section>' : ''}`,
       );
       return;
@@ -69,7 +69,7 @@ export function communityViews(ctx) {
     const admitted = g.visibility === "private" ? Boolean(g.joined) : own?.status === 2;
     const shops = s.rows.filter((r) => r.tag === 32 && r.group === g.id);
     let out =
-      "<section><h2>" +
+      "<section class=paper-card><h2>" +
       h(g.name) +
       "</h2><p>" +
       h(g.description) +
@@ -146,7 +146,7 @@ export function communityViews(ctx) {
         )
         .join("");
     out +=
-      "<section><h2>受け取り窓口</h2>" +
+      "<section class=paper-card><h2>受け取り窓口</h2>" +
       (shops
         .map(
           (r) => `<p><a class="action" href="${h(register(g.id,r.to))}"><span data-shop-label="${h(r.id)}" data-register-label="1">${h(shopTitle(r))}の受け取り窓口${shopDetails(r,h)}</span></a></p>`,
@@ -166,7 +166,7 @@ export function communityViews(ctx) {
         btn("公認して受け取り窓口を作る") +
         "</form></details>";
     if (!owner && !admitted)
-      out += '<section><h2>受け取り窓口を開きたい方へ</h2><p>コミュニティに参加すると、この画面から受け取り窓口の開設を申請できます。</p></section>';
+      out += '<section class=paper-card><h2>受け取り窓口を開きたい方へ</h2><p>コミュニティに参加すると、この画面から受け取り窓口の開設を申請できます。</p></section>';
     const peers = s.groups
       .filter((p) => p.id !== id && p.visibility !== "private")
       .map((p) => ({ ...p, sent: outgoing(id, p.id), received: outgoing(p.id, id) }));
@@ -178,7 +178,7 @@ export function communityViews(ctx) {
           '"><input type="hidden" name="enable" value="' + enable + '">' + btn(label) + "</form>"
         : "") + "</article>";
     out +=
-      "<section><h2>通貨同盟（提携地域）</h2><p>双方が承認した地域のWARAを額面どおり受け入れます。</p>" +
+      "<section class=paper-card><h2>通貨同盟（提携地域）</h2><p>双方が承認した地域のWARAを額面どおり受け入れます。</p>" +
       (partners.map((p) => treatyRow(p, "提携中", "提携を解除", "0")).join("") ||
         "<p>提携中の地域はありません</p>");
     if (owner) {

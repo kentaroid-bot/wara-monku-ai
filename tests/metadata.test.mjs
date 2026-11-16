@@ -11,7 +11,7 @@ const metadataBinary=process.env.METADATA_PROGRAM_SO||'private/metaplex-token-me
 test('metadata CPI preserves credit and limits; creator, PDA and program checks reject substitution',
  {skip:!existsSync(metadataBinary)?'Dump the Devnet Metaplex binary as documented in TOKEN-METADATA.md':false},()=>{
  const svm=new LiteSVM(),program=Keypair.generate().publicKey,config=Keypair.generate(),creator=Keypair.generate(),receiver=Keypair.generate(),attacker=Keypair.generate();
- svm.addProgramFromFile(program.toBase58(),'target/deploy/straw_protocol.so');
+ svm.addProgramFromFile(program.toBase58(),process.env.STRAW_PROGRAM_SO || "target/deploy/straw_protocol.so");
  svm.addProgramFromFile(METADATA_PROGRAM.toBase58(),metadataBinary);
  for(const k of [creator,receiver,attacker])svm.airdrop(k.publicKey.toBase58(),10_000_000_000n);
  const send=(ix,signers=[creator])=>{svm.expireBlockhash();const t=new Transaction({feePayer:signers[0].publicKey,recentBlockhash:svm.latestBlockhash()}).add(...ix);t.sign(...signers);return svm.sendTransaction(getTransactionDecoder().decode(t.serialize()));};
@@ -54,7 +54,7 @@ test('community metadata belongs to its existing issuer and does not change the 
  const {createGroup,metadata,mintFor}=await import('../mainstream/protocol.mjs');
  const {createCommunityMetadataInstruction}=await import('../scripts/token-metadata.mjs');
  const svm=new LiteSVM(), program=Keypair.generate().publicKey;
- svm.addProgramFromFile(String(program),'target/deploy/straw_protocol.so');
+ svm.addProgramFromFile(String(program),process.env.STRAW_PROGRAM_SO || "target/deploy/straw_protocol.so");
  svm.addProgramFromFile(String(METADATA_PROGRAM),metadataBinary);
  const owner=Keypair.generate(), other=Keypair.generate(), group=Keypair.generate(), second=Keypair.generate();
  const send=(ix, ...signers)=>{

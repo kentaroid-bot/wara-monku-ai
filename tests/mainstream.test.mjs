@@ -33,7 +33,7 @@ test("phone challenge expires, locks after five guesses and can be consumed only
 function world() {
   const svm = new LiteSVM(),
     p = Keypair.generate().publicKey;
-  svm.addProgramFromFile(String(p), "target/deploy/straw_protocol.so");
+  svm.addProgramFromFile(String(p), process.env.STRAW_PROGRAM_SO || "target/deploy/straw_protocol.so");
   const users = Array.from({ length: 5 }, () => Keypair.generate());
   const [a, b, buyer, shop, third] = users;
   for (const k of users) svm.airdrop(String(k.publicKey), 5000000000n);

@@ -8,9 +8,13 @@ export async function checkRenameInBrowsers({runtime,base,rows,code,rpcRequest,a
   const browser = await chromium.launch({executablePath:process.env.CHROME_BIN});
   try {
     let simulateOutage = false;
+    const pageErrors=[], consoleErrors=[];
     async function open(account, oldInvite = false) {
-      const context = await browser.newContext({viewport:{width:390,height:844}});
+      const context = await browser.newContext({viewport:{width:Number(process.env.BROWSER_WIDTH || 390),height:844},colorScheme:process.env.BROWSER_THEME || "light"});
       const p = await context.newPage();
+      p.setDefaultTimeout(15000);
+      p.on("pageerror",error=>pageErrors.push(error.message));
+      p.on("console",message=>{if(message.type()==="error" && !(simulateOutage && message.text().includes("503"))) consoleErrors.push(message.text());});
       await p.addInitScript(({account,rows,program,code})=>{
         localStorage.setItem("wara.member",JSON.stringify({...account,profile:{managed:true,type:"phantom",address:account.address},expires:Date.now()+600000}));
         if (code) localStorage.setItem("wara.private."+account.address+"."+rows[0].id+"."+rows[0].invite,code);
@@ -61,6 +65,7 @@ export async function checkRenameInBrowsers({runtime,base,rows,code,rpcRequest,a
     // Fresh server membership overrides an empty local membership list.
     // Now retain the real membership row while simulating a read outage.
     await returning.evaluate(({rows,program})=>sessionStorage.setItem("wara.v03.policy-directory."+program,JSON.stringify({rows,at:Date.now()})),{rows,program:manifest.program});
+    assert.deepEqual(pageErrors,[]); assert.deepEqual(consoleErrors,[]);
     simulateOutage = true;
     await returning.evaluate(()=>document.dispatchEvent(new Event("visibilitychange")));
     await returning.getByRole("heading",{name:"限定公開コミュニティ（名称未確認）",exact:true}).waitFor();
@@ -68,5 +73,6 @@ export async function checkRenameInBrowsers({runtime,base,rows,code,rpcRequest,a
     await returning.evaluate(()=>document.dispatchEvent(new Event("visibilitychange")));
     await returning.getByRole("heading",{name:"月夜の集会",exact:true}).waitFor();
     assert.deepEqual(await participant.evaluate(()=>Object.keys(localStorage).filter(k=>k.startsWith("wara.private."))),[]);
+    assert.deepEqual(pageErrors,[]); assert.deepEqual(consoleErrors,[]);
   } finally {await browser.close()}
 }

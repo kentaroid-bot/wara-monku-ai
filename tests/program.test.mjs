@@ -8,7 +8,7 @@ import {addresses,initInstructions,enrollInstruction,paymentInstructions,decodeP
 
 function fixture(period=86400){
  const svm=new LiteSVM(),program=Keypair.generate().publicKey,config=Keypair.generate(),alice=Keypair.generate(),bob=Keypair.generate(),carol=Keypair.generate();
- svm.addProgramFromFile(program.toBase58(),'target/deploy/straw_protocol.so');
+ svm.addProgramFromFile(program.toBase58(),process.env.STRAW_PROGRAM_SO || "target/deploy/straw_protocol.so");
  for(const k of [alice,bob,carol])svm.airdrop(k.publicKey.toBase58(),10_000_000_000n);
  const clock=svm.getClock();clock.unixTimestamp=1700000000n;svm.setClock(clock);
  const tx=(ix,signers=[alice])=>{svm.expireBlockhash();const t=new Transaction({feePayer:signers[0].publicKey,recentBlockhash:svm.latestBlockhash()}).add(...ix);t.sign(...signers);return t;};

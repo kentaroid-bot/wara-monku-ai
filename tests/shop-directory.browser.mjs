@@ -31,7 +31,9 @@ try {
  for (const width of [320,390,1024]) for (const colorScheme of ["light","dark"]) {
   profile = {...profile,title:"パン屋",icon:"🥐",revision:1}; paid=false; signatureReads=0;
   const page = await browser.newPage({viewport:{width,height:844},colorScheme});
+  page.setDefaultTimeout(15000);
   const errors=[];
+  let profileUnavailable=false;
   page.on("pageerror", e=>errors.push(e.message));
   page.on("console", m=>{if(m.type()==="error") errors.push(m.text());});
   await page.addInitScript(({who,prog,rows})=>{
@@ -72,13 +74,14 @@ try {
       profile = {...profile,title,caption,icon,is_test,revision:2};
       return route.fulfill({json:profile});
     }
-    if (url.pathname === "/api/member/shop-profiles") return route.fulfill({json:{profiles:[profile]}});
+    if (url.pathname === "/api/member/shop-profiles") return route.fulfill({json:{profiles:profileUnavailable ? null : [profile]}});
+    if (url.pathname === "/api/auth/status") return route.fulfill({headers:{"X-Wara-Auth":"1"},json:{mode:"trial",version:3}});
     if (url.pathname === "/api/member/session") return route.fulfill({json:{profile:{address:who,type:"phantom",managed:true}}});
     if (url.pathname.startsWith("/api/")) return route.fulfill({json:{}});
     return route.fulfill({path:resolve("dist","."+(url.pathname.endsWith("/") ? url.pathname+"index.html" : url.pathname))});
   });
   await page.goto(origin+"/shop/?mode=receive");
-  await page.getByRole("link",{name:"🥐 パン屋"}).click();
+  await page.locator("[data-receive-menu]").click();
   await page.getByText("⚙️ 受け取り窓口情報を編集").click();
   assert.equal(await page.locator("#edit-shop input[type=checkbox]").count(),0);
   assert.equal(await page.getByText("テスト受け取り窓口",{exact:true}).count(),0);
@@ -96,9 +99,8 @@ try {
   assert.deepEqual(await listedStores(),[stores[1].to]);
   assert.equal(await page.getByRole("link",{name:/🦊 パン屋/}).count(),0);
   await page.goto(origin+"/shop/?mode=receive");
-  await page.getByRole("link",{name:"🦊 パン屋"}).waitFor();
+  await page.locator("#qr-out img").waitFor();
   assert.equal(await page.locator("#screen h1").innerText(),"受け取る");
-  assert.deepEqual(await listedStores(),[stores[0].to]);
   // A non-member can still follow a public register link and see the existing invitation to join.
   await page.goto(origin+"/shop/?"+new URLSearchParams({group:stores[2].group,store:stores[2].to}));
   await page.getByRole("link",{name:"コミュニティに参加して贈る"}).waitFor();
@@ -107,16 +109,17 @@ try {
   await page.goto(origin+"/shop/?"+new URLSearchParams({group:stores[1].group,store:stores[1].to}));
   await page.locator("[data-tap]").click();
   const feedback=page.locator("#ina .payment-memo");
-  await feedback.locator("summary").click();
+  await page.locator("[data-open-memo]").click();
   const smile=feedback.getByRole("button",{name:"😊"});
   await smile.click(); assert.equal(await smile.getAttribute("aria-pressed"),"true");
   await smile.click(); assert.equal(await smile.getAttribute("aria-pressed"),"false");
   await feedback.getByRole("button",{name:"助かりました"}).click();
   assert.equal(await feedback.getByLabel("ひとこと").inputValue(),"助かりました");
   await feedback.getByLabel("ひとこと").fill("また来ます、ありがとう");
-  await page.locator("#ina").getByRole("button",{name:"贈る"}).click();
+  await page.keyboard.press("Escape");
+  await page.locator("#ina").getByRole("button",{name:"贈る",exact:true}).click();
   await page.getByRole("dialog").waitFor();
-  await page.screenshot({path:"/tmp/wara-phase2-confirm.png"});
+  if (!process.env.SCREENSHOT_FILTER) await page.screenshot({path:"/tmp/wara-phase2-confirm.png"});
   await page.keyboard.press("Escape");
   await page.getByText("取り消しました。",{exact:true}).waitFor();
   // A phone wallet can retain the previous site connection after the user switches accounts.
@@ -130,19 +133,20 @@ try {
       async disconnect(){ this.isConnected=false; this.publicKey=null; },
     }};
   },{who,wrong:admin});
-  await page.locator("#ina").getByRole("button",{name:"贈る"}).click();
+  await page.locator("#ina").getByRole("button",{name:"贈る",exact:true}).click();
   await page.getByRole("dialog").getByRole("button",{name:"贈る",exact:true}).click();
   const recheck=page.getByRole("button",{name:"Phantomの接続を確認する"});
   await recheck.waitFor();
+  assert.equal(new URL(page.url()).pathname,"/shop/");
   assert.ok((await page.locator("#notice").innerText()).includes(who.slice(-6)));
   await page.evaluate(()=>window.selectRegistered());
   await recheck.click();
   await page.getByText(/登録した財布に接続しました/).waitFor();
   assert.equal(await page.getByRole("dialog").count(),0);
-  await page.locator(".wara-gift > summary").click();
+  await page.locator("[data-open-wara]").click();
   await page.locator('#wara input[name="amount"]').fill("10");
   await page.locator("#wara").getByRole("button",{name:"WARAを贈る"}).click();
-  await page.getByRole("dialog").getByRole("button",{name:"キャンセル"}).click();
+  await page.locator(".confirm-dialog").getByRole("button",{name:"キャンセル"}).click();
   await page.goto(origin+"/communities/?id="+groups[1].id);
   await page.locator('#policy select[name="mode"]').selectOption("1");
   await page.locator("#policy button").click();
@@ -154,16 +158,19 @@ try {
   await page.goto(origin+"/shop/?"+new URLSearchParams({group:stores[0].group,store:who}));
   await page.locator('[data-invoice="3"]').click();
   await page.locator("#qr-out img").waitFor();
-  await page.screenshot({path:"/tmp/wara-phase2-register.png"});
+  if (!process.env.SCREENSHOT_FILTER) await page.screenshot({path:"/tmp/wara-phase2-register.png"});
   paid = true;
   await page.locator("#crystal-toast").filter({hasText:"+300"}).waitFor({timeout:15000});
+  await page.locator("[data-receive-menu]").click();
   await page.locator(".story").filter({hasText:"3 iine"}).waitFor();
   await page.locator(".story").getByText("ひとこと「また来ます <3」").waitFor();
+  await page.keyboard.press("Escape");
   await page.locator("#qr-out img").waitFor();
   await page.locator("#qr-out").evaluate(el=>el.remove());
   const afterPayment = signatureReads;
   await page.waitForTimeout(5500);
   assert.equal(signatureReads,afterPayment,"payment stops the register watcher");
+  await page.locator(".invoice-custom summary").click();
   await page.locator('#invoice button[type="submit"]').click();
   await page.locator("#qr-out img").waitFor();
   await page.locator("#qr-out").evaluate(el=>el.remove());
@@ -176,37 +183,59 @@ try {
     await page.setViewportSize({width,height:844}); await page.emulateMedia({colorScheme});
     const check = async name => {
       assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth <= innerWidth), `${name} overflows at ${width}`);
-      if (screenshots) await page.screenshot({path:resolve(screenshots,`${width}-${colorScheme}-${name}.png`),fullPage:true});
+      if (screenshots && (!process.env.SCREENSHOT_FILTER || new RegExp(process.env.SCREENSHOT_FILTER).test(`${width}-${colorScheme}-${name}`))) await page.screenshot({path:resolve(screenshots,`${width}-${colorScheme}-${name}.png`),fullPage:true});
     };
-    await page.goto(origin+"/"); await page.locator(".orb.ina").waitFor();
+    await page.goto(origin+"/"); await page.locator(".home-receipts").waitFor();
     assert.equal(await page.locator(".quick-actions").count(),0);
-    assert.equal(await page.locator(".orb.ina").getAttribute("href"),"/shop/");
+    assert.equal(await page.locator(".home-send").getAttribute("href"),"/shop/");
     await page.evaluate(()=>document.documentElement.style.setProperty("--warmth","0"));
     await check("home");
-    const cool=await page.locator(".orb.ina").evaluate(el=>getComputedStyle(el).backgroundImage);
-    await page.evaluate(()=>document.documentElement.style.setProperty("--warmth","1"));
-    assert.notEqual(await page.locator(".orb.ina").evaluate(el=>getComputedStyle(el).backgroundImage),cool);
+    assert.equal(await page.locator("footer").count(),0);
+    assert.equal(await page.getByRole("button",{name:"更新",exact:true}).count(),0);
+    assert.equal(await page.getByRole("button",{name:"履歴を更新",exact:true}).count(),0);
+    assert.ok(await page.locator(".home-receive-label").isVisible());
+    assert.equal(await page.locator(".home-receive-label").innerText(),"うけとる");
+    assert.equal(await page.locator(".home-send-label").innerText(),"おくる");
+    assert.ok(await page.evaluate(() => {
+      const box=s=>document.querySelector(s).getBoundingClientRect(), label=box(".home-send-label");
+      return [".top-counters",".theme",".home-sender"].every(s=>{
+        const b=box(s); return label.right<=b.left || label.left>=b.right || label.bottom<=b.top || label.top>=b.bottom;
+      }) && box(".home-receive-label").bottom<box("nav").top;
+    }),"home labels do not overlap counters, theme, artwork or navigation");
+    assert.equal(await page.locator("details#origins").count(),0);
+    await page.locator(".top-counters a").click();
+    const originsDialog = page.getByRole("dialog",{name:"WARAの発行元内訳"});
+    assert.ok(await originsDialog.locator("#origins").isVisible());
+    await originsDialog.getByRole("button",{name:"状態を更新",exact:true}).click();
+    await page.locator(".home-receipts").waitFor();
+    assert.equal(await page.getByRole("dialog").count(),0);
+    assert.deepEqual(await page.locator(".home-send").evaluate(el=>{
+      document.documentElement.style.setProperty("--warmth","0"); const cool=getComputedStyle(el,"::before").opacity;
+      document.documentElement.style.setProperty("--warmth","1"); return [cool,getComputedStyle(el,"::before").opacity];
+    }),["0","1"]);
     await check("home-warm");
-    await page.locator(".orb.ina").click(); await page.locator(".recipient-row").first().waitFor();
-    assert.equal(await page.locator("#screen h1").innerText(),"iineを贈る");
+    await page.locator(".home-send").click(); await page.locator(".recipient-row").first().waitFor();
+    assert.equal(await page.getByRole("dialog").getAttribute("aria-label"),"相手を選ぶ");
     assert.match(await page.locator(".recipient-row").first().innerText(),/開設済み/); await check("recipients");
-    await page.goto(origin+"/shop/?mode=receive"); await page.locator(".recipient-row").first().waitFor();
-    assert.equal(await page.locator("#screen h1").innerText(),"受け取る");
-    assert.match(await page.locator(".recipient-row").first().innerText(),/QRを出す/); await check("receivers");
-    await page.locator(".recipient-row").first().click(); await page.locator("#qr-out img").waitFor();
+    await check("picker");
+    await page.goto(origin+"/shop/"); await page.locator(".recipient-row").first().waitFor(); await check("recipient-list");
+    await page.goto(origin+"/shop/?mode=receive"); await page.locator("#qr-out img").waitFor();
     assert.equal(await page.locator("#screen h1").innerText(),"受け取る");
     assert.ok(!new URL(await page.locator("#qr-out a").getAttribute("href")).searchParams.has("ina"));
     for (const n of [1,3,5]) {
       await page.locator(`[data-invoice="${n}"]`).click();
       await page.waitForFunction(n=>document.querySelector("#qr-out a")?.href.endsWith("ina="+n),n);
     }
+    await page.locator(".invoice-custom summary").click();
     await page.locator('#invoice input[name="custom"]').fill("10");
     await page.locator('#invoice input[name="custom"]').press("Tab");
     await page.waitForFunction(()=>document.querySelector("#qr-out a")?.href.endsWith("ina=10"));
     await page.locator('[data-invoice="0"]').click(); await page.locator("#qr-out img").waitFor();
+    await page.locator(".invoice-custom summary").click();
     await check("receive-qr");
+    await page.locator("[data-receive-menu]").click();
     await page.getByRole("button",{name:"📷 紙カードを読み取る（カメラ起動）",exact:true}).click();
-    const scan=page.getByRole("dialog"); await scan.waitFor();
+    const scan=page.getByRole("dialog").last(); await scan.waitFor();
     assert.match(await scan.innerText(),/本人のiineカード/);
     assert.equal(await scan.locator('input[type="file"][accept="image/*"]').count(),1);
     assert.ok(await scan.getByRole("button",{name:"カメラを開く",exact:true}).isVisible());
@@ -217,7 +246,7 @@ try {
     assert.equal(await page.locator("[data-minus]").evaluate(el=>getComputedStyle(el).touchAction),"manipulation");
     assert.equal(await page.locator("[data-tap]").evaluate(el=>getComputedStyle(el).touchAction),"manipulation");
     const send=page.locator('#ina button[type="submit"]');
-    assert.equal(await send.isDisabled(),true);
+    assert.equal(await send.isDisabled(),true); await check("send-0");
     for (let n=1;n<=10;n++) {
       await page.locator("[data-tap]").click();
       assert.equal(await page.locator("[data-count]").innerText(),String(n));
@@ -226,7 +255,16 @@ try {
         assert.equal(await page.locator("[data-emoji]").innerText(),emoji);
         assert.equal(await page.locator('#ina input[name="reaction"]').inputValue(),emoji);
         assert.equal(await page.locator(".charge-dots .selected").count(),n);
+        const mascot=await page.locator(".receive-mascot").boundingBox();
+        const dock=await page.locator(".send-dock").boundingBox();
+        assert.ok(dock.x+dock.width<=mascot.x,"gift controls do not cover the receiving character");
+        assert.equal(await send.locator("span").count(),0,"send stamp contains only its number");
         await check("send-"+n);
+        if(n===5) {
+          await send.click(); await page.locator(".confirm-dialog").waitFor();
+          await check("send-confirm-5"); await page.keyboard.press("Escape");
+          assert.equal(new URL(page.url()).pathname,"/shop/");
+        }
       }
     }
     await page.locator("[data-tap]").click(); assert.equal(await page.locator("[data-count]").innerText(),"10");
@@ -240,8 +278,32 @@ try {
     await page.reload(); await page.locator("[data-sound]").waitFor();
     assert.equal(await page.locator("[data-sound]").getAttribute("aria-pressed"),String(preference !== "off"));
     await page.goto(origin+"/support/"); await page.getByRole("heading",{name:"毎日 0:00（JST）にリセット",exact:true}).waitFor(); await check("guide");
+    assert.equal(await page.getByRole("link",{name:"旧Devnet検証版"}).getAttribute("href"),"/devnet/");
+    assert.equal(await page.getByRole("link",{name:"この仕組みの原案"}).getAttribute("href"),"https://github.com/kentaroid-bot/emergency-straw-protocol");
+    await page.goto(origin+"/communities/"); await page.locator(".market-row").first().waitFor(); await check("communities");
+    assert.equal(await page.locator(".market-row > .tag-pill").count(),0);
+    assert.doesNotMatch(await page.locator(".market-row").first().innerText(),/受け取り窓口 \d+件/);
+    assert.ok(await page.locator(".market-heading .market-meta").first().isVisible());
+    await page.goto(origin+"/communities/new/"); await page.locator("#create").waitFor(); await check("community-new");
     console.log(`${width}px ${colorScheme}: home, lists, QR, paper camera, 1/3/5/10 tiers, reset, mute, guide passed`);
   }
+  // Profile failures remain visible off home, without hiding balance-read errors.
+  profileUnavailable=true;
+  const profileError="受け取り窓口プロフィールを取得できません。「更新」で再試行できます。";
+  for (const path of ["/account/","/communities/","/","/user/"]) {
+    const response = page.waitForResponse(r=>new URL(r.url()).pathname==="/api/member/shop-profiles");
+    await page.goto(origin+path);
+    await (await response).finished();
+    await page.waitForLoadState("networkidle");
+    if (path === "/" || path === "/user/") assert.equal(await page.locator("#notice").innerText(),"");
+    else assert.ok((await page.locator("#notice").innerText()).includes(profileError));
+  }
+  await page.evaluate(sig=>sessionStorage.setItem("wara.ui.sent",JSON.stringify({amount:"300",sig})),paidSignature);
+  await page.goto(origin+"/"); await page.waitForLoadState("networkidle");
+  assert.match(await page.locator("#notice").innerText(),/贈りました。相手に 300 WARAが届きました。/);
+  assert.ok(!(await page.locator("#notice").innerText()).includes(profileError));
+  assert.ok(await page.locator('#notice a[href*="explorer.solana.com"]').isVisible());
+  profileUnavailable=false;
   // Legacy QR presets and an environment without audio/haptics still work.
   await page.addInitScript(()=>{
     window.AudioContext=undefined; window.webkitAudioContext=undefined;

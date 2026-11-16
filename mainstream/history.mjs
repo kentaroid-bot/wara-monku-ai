@@ -1,3 +1,4 @@
+import { dialogPanel } from "./ehon-dialog.mjs";
 import { memoProgram, readPaymentMemo, reactions } from "../shared/payment-memo.mjs";
 import { Connection } from "@solana/web3.js";
 import { Buffer } from "buffer";
@@ -147,20 +148,44 @@ function historyReader(address, onPayment, [primary, fallback], senderAddress, s
   return () => pending ??= read().finally(() => { pending = null; });
 }
 
-export function showHistory(el, readHistory, storeId, h, by, shopName, profiles) {
+export function showHistory(el, readHistory, storeId, h, by, shopName, profiles, compact = false) {
   const section = document.createElement("section");
+  section.className = compact ? "home-receipts" : "paper-card";
   section.dataset.paymentHistory = "";
   section.innerHTML = '<div class="section-head"><h2>ありがとうの履歴</h2><small>直近の循環</small></div><ol class="stories"></ol><p role="status"></p><button type="button" class="secondary">履歴を更新</button>';
   el.append(section);
   const body = section.querySelector("ol"), status = section.querySelector('[role="status"]'),
     btn = section.querySelector("button");
+  btn.hidden = compact;
+  function draw(rows) {
+    const shown = compact ? rows.slice(0, 5) : rows;
+    body.innerHTML = compact ? shown.map((r,i) => `<li class="story"><button type="button" class="receipt-row" data-receipt="${i}"><span>${h(r.incoming ? "相手 " + r.payer.slice(0,5) + "…" : shopName(r.group,r.shop) || "受け取り窓口")}</span><strong>${r.incoming ? "+" + (r.kusa ? r.n * 100n : r.n) : r.kusa ? "♥" + r.n : "−" + r.n}</strong></button></li>`).join("") : shown.map(r => storyReceipt(r,h,by,shopName)).join("");
+    for (const button of body.querySelectorAll("[data-receipt]")) button.onclick = async () => {
+      let row = shown[Number(button.dataset.receipt)];
+      const detail = document.createElement("ul"); detail.className = "stories receipt-detail-list";
+      detail.innerHTML = storyReceipt(row,h,by,shopName);
+      const party = document.createElement("p"); party.className = "wrap";
+      const peer = row.incoming ? row.payer : row.shop;
+      party.textContent = "相手：" + peer.slice(0,6) + "…" + peer.slice(-6);
+      party.title = peer;
+      const dialog = dialogPanel(section, "贈りものの詳細", [detail,party]);
+      dialog.addEventListener("close", () => dialog.remove(), {once:true}); dialog.showModal();
+      if (row.incoming && row.payerSignature && profiles?.supportsNotes && !row.note) {
+        try {
+          const {notes} = await profiles.readNotes([{sig:row.sig,payerSignature:row.payerSignature}]);
+          row = {...row,note:notes.find(n=>n.sig===row.sig)?.note};
+          if (dialog.isConnected) detail.innerHTML = storyReceipt(row,h,by,shopName);
+        } catch { const p=document.createElement("p"); p.textContent="ひとことを取得できません。履歴を更新して再試行してください。"; detail.after(p); }
+      }
+    };
+  }
   async function refresh(manual = false) {
     btn.disabled = true;
     status.textContent = "直近20件の取引を確認しています…";
     try {
       const result = await readHistory();
       const rows = storeId ? result.rows.filter(row => row.incoming && row.group === storeId) : result.rows;
-      body.innerHTML = rows.map(r => storyReceipt(r, h, by, shopName)).join("");
+      draw(rows);
       status.textContent = result.indexing ? "最新の取引を一部照会中です。しばらくしてから続きを確認できます。" :
         rows.length ? "" : "直近20件に確定した贈りものはありません。";
       if (profiles?.supportsNotes) {
@@ -168,20 +193,20 @@ export function showHistory(el, readHistory, storeId, h, by, shopName, profiles)
         const receipts = [...new Map(incoming.map(r=>[r.sig,{sig:r.sig,payerSignature:r.payerSignature}])).values()];
         if (!receipts.length) return;
         if (!profiles.canReadNotes() && !manual) {
-          status.textContent += " ひとことを見るには「履歴を更新」で財布を確認してください。";
+          status.textContent += compact ? " ひとことは履歴を押すと確認できます。" : " ひとことを見るには「履歴を更新」で財布を確認してください。";
           return;
         }
         try {
           const {notes} = await profiles.readNotes(receipts);
           const texts = new Map(notes.map(n=>[n.sig,n.note]));
           const rendered = new Set();
-          body.innerHTML = rows.map(row=>{
+          draw(rows.map(row=>{
             const note = row.incoming && !rendered.has(row.sig) && texts.get(row.sig);
             if (note) rendered.add(row.sig);
-            return storyReceipt({...row,note},h,by,shopName);
-          }).join("");
+            return {...row,note};
+          }));
         } catch {
-          status.textContent += " ひとことを取得できません。「履歴を更新」で再試行できます。";
+          status.textContent += compact ? " ひとことは履歴を押して再確認できます。" : " ひとことを取得できません。「履歴を更新」で再試行できます。";
         }
       }
     } catch {

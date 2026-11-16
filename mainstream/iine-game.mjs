@@ -60,17 +60,19 @@ export function createIineSound(env = globalThis) {
 
 export function iineStage() {
   return `<div class="iine-stage">
-    <button type="button" class="secondary sound-toggle" data-sound aria-pressed="true">効果音 ON</button>
-    <div class="iine-emoji" data-emoji aria-hidden="true">🌱</div>
-    <output class="iine-count" aria-live="polite"><strong data-count>0</strong> iine</output>
-    <p data-tier>タップして iine をためよう</p>
-    <div class="charge-dots" aria-hidden="true">${"<i></i>".repeat(10)}</div>
-    <div class="tap-controls"><button type="button" class="secondary" data-minus aria-label="1つ減らす">−</button>
-    <button type="button" class="tap-button" data-tap aria-label="iineを1つ増やす"><span data-tap-icon aria-hidden="true">👍</span>iine!</button>
-    <button type="button" class="secondary" data-reset aria-label="0にリセット">↺</button></div>
-    <input type="hidden" name="ina" value="0">
+    <img class="send-mascot" src="/v3/ehon/sender.webp" alt="">
+    <button type="button" class="tap-button" data-tap aria-label="iineを1つ増やす"><img class="iine-heart" src="/v3/ehon/heart.webp" alt=""></button>
+    <img class="receive-mascot" src="/v3/ehon/receiver.webp" alt="">
+    <span data-emoji class="visually-hidden" aria-hidden="true"></span><p data-tier class="visually-hidden" role="status"></p>
     <div class="iine-particles" aria-hidden="true"></div>
-  </div>`;
+    <output class="gift-flight" aria-live="polite"></output>
+  </div><div class="send-dock"><div class="charge-dots" aria-hidden="true"></div>
+    <div class="tap-controls"><button type="button" class="secondary" data-minus aria-label="1つ減らす">−</button>
+    <button type="submit" class="send-iine" aria-label="贈る" disabled><strong data-count>0</strong></button>
+    <button type="button" class="secondary" data-reset aria-label="0にリセット">↺</button></div>
+    <input type="hidden" name="ina" value="0"></div>
+    <div class="gift-tools"><button type="button" class="secondary sound-toggle" data-sound aria-label="効果音を切り替える" aria-pressed="true">🔊</button>
+    <button type="button" class="secondary" data-open-memo aria-label="ひとことを添える">✎</button><button type="button" class="secondary" data-open-wara aria-label="WARAを贈る">🌾</button></div>`;
 }
 
 let sharedSound;
@@ -87,16 +89,17 @@ export function bindIineGame(form, { initial = 0, remaining = 10, member = true,
     form.elements.ina.value = count;
     form.querySelector("[data-count]").textContent = count;
     emoji.textContent = tier.emoji;
-    form.querySelector("[data-tier]").textContent = tier.label;
-    form.querySelector("[data-tap-icon]").textContent = count ? tier.emoji : "👍";
+    form.querySelector("[data-tier]").textContent = !member ? "コミュニティに参加すると贈れます。" : Number(remaining) === 0 ? "今日のiineは使い切りました。" : tier.label;
+    stage.style.setProperty("--heart-scale", String(1 + count * .035));
+    stage.dataset.empty = String(Number(remaining) === 0 || !member);
+    const left = form.querySelector("[data-remaining]");
+    if (left) left.textContent = String(Number(remaining) - count);
     if (form.elements.reaction) {
       form.elements.reaction.value = count ? tier.emoji : "";
       for (const button of form.querySelectorAll("[data-reaction]"))
         button.setAttribute("aria-pressed", String(button.dataset.reaction === form.elements.reaction.value));
     }
-    form.querySelectorAll(".charge-dots i").forEach((dot, i) => {
-      dot.className = i < count ? "selected" : i < Number(remaining) ? "available" : "used";
-    });
+    form.querySelector(".charge-dots").innerHTML = '<i class="red-dot selected"></i>'.repeat(count);
     if (confirm) confirm.disabled = !member || count === 0;
     tap.disabled = !member || Number(remaining) === 0;
     form.querySelector("[data-minus]").disabled = count === 0;
@@ -104,7 +107,7 @@ export function bindIineGame(form, { initial = 0, remaining = 10, member = true,
   }
   const soundButton = form.querySelector("[data-sound]");
   function renderSound() {
-    soundButton.textContent = "効果音 " + (sound.enabled ? "ON" : "OFF");
+    soundButton.textContent = sound.enabled ? "🔊" : "🔇";
     soundButton.setAttribute("aria-pressed", String(sound.enabled));
   }
   soundButton.onclick = () => { sound.toggle(); renderSound(); sound.play("tap"); };
@@ -119,7 +122,7 @@ export function bindIineGame(form, { initial = 0, remaining = 10, member = true,
     const previous = getTier(count).emoji;
     count = next; render();
     sound.play("tap", count, previous !== getTier(count).emoji); vibrate(12);
-    animate(emoji, [{transform:"scale(.85)"},{transform:"scale(1.22)"},{transform:"scale(1)"}], 220);
+    animate(tap, [{transform:"scale(.85)"},{transform:"scale(1.22)"},{transform:"scale(1)"}], 220);
     if (!reduced()) {
       const particle = document.createElement("span"); particle.textContent = getTier(count).emoji;
       particle.style.left = (25 + Math.random() * 50) + "%";
@@ -135,5 +138,10 @@ export function bindIineGame(form, { initial = 0, remaining = 10, member = true,
   form.querySelector("[data-minus]").onclick = () => adjust(false);
   form.querySelector("[data-reset]").onclick = () => adjust(true);
   render(); renderSound();
-  return { unlock: sound.unlock, success: () => sound.play("success") };
+  return { unlock: sound.unlock, success: async () => {
+    sound.play("success");
+    const flight = form.querySelector(".gift-flight"); flight.textContent = "+" + count * 100;
+    stage.classList.add("sending");
+    if (!reduced()) await new Promise(resolve => setTimeout(resolve, 1300));
+  } };
 }

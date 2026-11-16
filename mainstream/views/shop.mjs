@@ -1,3 +1,4 @@
+import { dialogPanel } from "../ehon-dialog.mjs";
 import { iineStage, bindIineGame, clampCount } from "../iine-game.mjs";
 import { registerChoices } from "../shop-directory.mjs";
 import { shopTitle, shopDetails, shopEditor } from "../shop-profile.mjs";
@@ -25,7 +26,7 @@ export function shopView(ctx) {
     if (h1) h1.textContent = text;
   };
   const privateNotes = profile.managed || profiles.supportsNotes;
-  function store() {
+  function storeView() {
     const s = state();
     const groupForShop = id => by(id) || s.rows.find(row=>row.tag === 31 && row.id === id);
     const stores = s.rows.filter(r => r.tag === 32 && (r.to === who ||
@@ -38,7 +39,11 @@ export function shopView(ctx) {
       const receiving = params.get("mode") === "receive";
       setHeading(receiving ? "受け取る" : "iineを贈る");
       const choices = registerChoices(stores, s, who, receiving, senderWho);
-      ui(`<section><h2>${receiving ? "受け取り窓口を選ぶ" : "相手を選ぶ"}</h2>
+      if (receiving && choices.length === 1) {
+        params.set("group", choices[0].group); params.set("store", choices[0].to);
+        return storeView();
+      }
+      ui(`<section class="paper-card"><h2>${receiving ? "受け取り窓口を選ぶ" : "相手を選ぶ"}</h2>
         <p>${receiving ? "受け取り名 · コミュニティ名を選んでQRを出せます。" : `今日の残り ${s.remaining} iine`}</p>
         ${choices.map(st => `<a class="shop-row recipient-row" href="${h(register(st.group, st.to))}">
           <span><span data-shop-label="${h(st.id)}" data-compact-label="1">${h(shopTitle(st))}</span> · ${h(groupForShop(st.group)?.name || "コミュニティ")}</span>
@@ -63,18 +68,18 @@ export function shopView(ctx) {
             r.tag === 33 && r.group === g.id && r.to === who && r.status === 2,
         );
     const n = invoiceAmount(params) || "0";
-    ui(`<section class="recipient-heading"><h2 data-shop-label="${h(store.id)}">${h(shopTitle(store))}${shopDetails(store,h)}</h2>
-      <small>${h(g.name)} · ${h(short(store.to))}</small></section>` +
+    ui(`<section class="recipient-heading"><a class="back-stamp" href="/" aria-label="お財布へ戻る">←</a><h2 data-shop-label="${h(store.id)}">${h(shopTitle(store))}${shopDetails(store,h)}</h2>
+      <small>${h(g.name)} · ${h(short(store.to))}</small>${isShop ? '<button type="button" class="secondary" data-receive-menu aria-label="受け取りメニュー">⋯</button>' : ""}</section>` +
       (isShop
         ? `<section class="receive-card"><h2>受け取りQR</h2><p>このQRを相手に見せてください</p>
           <div id="qr" aria-live="polite"></div>
           <form id="invoice"><input type="hidden" name="ina" value="${n}">
-            <div class="memo-chips invoice-chips">${[0,1,3,5].map(count => `<button type="button" class="secondary" data-invoice="${count}" aria-pressed="${Number(n) === count}">${count ? count + " iine" : "おまかせ（枚数指定なし）"}</button>`).join("")}</div>
-            <label>枚数を指定（1〜10 iine）<input name="custom" type="number" min="1" max="10" step="1" placeholder="任意の枚数" value="${n === "0" ? "" : n}"></label>
-            <button type="submit" class="secondary">QRを更新</button>
+            <div class="memo-chips invoice-chips">${[0,1,3,5].map(count => `<button type="button" class="secondary" data-invoice="${count}" aria-pressed="${Number(n) === count}">${count ? count + " ♥" : "おまかせ"}</button>`).join("")}</div>
+            <details class="invoice-custom"><summary>枚数を指定（1〜10 iine）</summary><label>任意の枚数<input name="custom" type="number" min="1" max="10" step="1" placeholder="任意の枚数" value="${n === "0" ? "" : n}"></label>
+            <button type="submit" class="secondary">QRを更新</button></details>
           </form><p class="muted">QRを表示している間、届いたありがとうを確認します。</p></section>` + shopEditor(store,h)
-        : `<form id="ina"><p>今日の残り ${s.remaining} iine</p>` + iineStage() +
-          (member ? '<button type="submit" class="send-iine" disabled>贈る</button>' + memoFields(privateNotes) : link(gid(g.id), "コミュニティに参加して贈る")) +
+        : `<form id="ina"><p class="send-remaining">残り <strong data-remaining>${s.remaining}</strong> ♥</p>` + iineStage() +
+          memoFields(privateNotes) + (member ? "" : link(gid(g.id), "コミュニティに参加して贈る")) +
           '</form><details class="wara-gift"><summary>🌾 持っているWARAを贈る</summary><form id="wara"><h2>WARAを贈る</h2><p>この相手に贈れるWARA：<strong>' +
           accepted + ' WARA</strong></p><details><summary>発行元の内訳</summary>' +
           lots.map(l => '<p>' + h(by(l.origin)?.name) + '：' + l.amount + ' WARA</p>').join('') + '</details>' +
@@ -108,7 +113,16 @@ export function shopView(ctx) {
         document.querySelector("#notice").append(a);
       });
     }
-    if (isShop) showHistory(content, () => readHistory(g.id, store.to), g.id, h, by, shopName, profiles);
+    if (isShop) {
+      showHistory(content, () => readHistory(g.id, store.to), g.id, h, by, shopName, profiles);
+      const menuBody=document.createElement("div");
+      const choices=registerChoices(stores,s,who,true,senderWho);
+      menuBody.innerHTML='<h3>窓口を切り替える</h3>'+choices.map(st=>`<a class="shop-row" href="${h(register(st.group,st.to))}">${h(shopTitle(st))}</a>`).join("");
+      const editor=content.querySelector("#edit-shop")?.closest("details") || content.querySelector("#edit-shop");
+      const menu=dialogPanel(content,"受け取りメニュー",[menuBody,...[editor,content.querySelector(".paper-receive"),content.querySelector("[data-payment-history]")].filter(Boolean)]);
+      content.querySelector("[data-receive-menu]").onclick=()=>menu.showModal();
+      content.querySelector(".receive-card").insertAdjacentHTML("beforeend",'<img class="receive-hero" src="/v3/ehon/receiver.webp" alt="">');
+    }
     const invoice = content.querySelector("#invoice");
     let qrTurn = 0;
     async function renderInvoice(v) {
@@ -166,7 +180,15 @@ export function shopView(ctx) {
       updateInvoice();
     }
     const inaForm = content.querySelector("#ina");
-    if (inaForm) bindMemoChips(inaForm);
+    if (inaForm) {
+      bindMemoChips(inaForm);
+      const fields=inaForm.querySelector(".payment-memo"); fields.open=true;
+      const memo=dialogPanel(inaForm,"ひとことを添える",[fields]);
+      inaForm.querySelector("[data-open-memo]").onclick=()=>memo.showModal();
+      const gift=content.querySelector(".wara-gift"); gift.open=true;
+      const wara=dialogPanel(content,"WARAを贈る",[gift]);
+      inaForm.querySelector("[data-open-wara]").onclick=()=>wara.showModal();
+    }
     const game = inaForm && bindIineGame(inaForm, {initial:clampCount(n, s.remaining), remaining:s.remaining, member});
     const waraForm = content.querySelector("#wara");
     if (waraForm) bindMemoChips(waraForm);
@@ -194,14 +216,17 @@ export function shopView(ctx) {
         const {memberApi} = await import("../member-ui.mjs");
         await memberApi("sender-join",{group:g.id});
       }
-      await send(
+      const sig = await send(
         spend(program, senderWho, g.id, store.to, n, s.day, s.nonce, reaction),
         [],
         "贈りました。相手に " +
           n * 100n +
-          " WARAが届きました。", note,
+          " WARAが届きました。", note, false,
       );
-      game.success();
+      await game.success();
+      recordPayment();
+      sessionStorage.setItem("wara.ui.sent",JSON.stringify({sig,amount:String(n * 100n)}));
+      location.assign("/");
     });
     form("wara", async (v) => {
       const note = paymentMemo(v.memo || "");
@@ -219,5 +244,5 @@ export function shopView(ctx) {
       );
     });
   }
-  return store;
+  return storeView;
 }

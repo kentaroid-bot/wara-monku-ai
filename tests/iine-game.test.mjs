@@ -45,13 +45,13 @@ test("sound preference persists and the synth rises, chimes and stops while mute
   assert.equal(createIineSound(env).enabled,false);
 });
 
-test("home balance cards link to gift and receive with ten dots and no expiry badges", () => {
+test("home stage exposes real balances, gift/receive links and empty hearts", () => {
   const html = twinCards({remaining:3n,funds:new Map([["g",1234n]])});
-  assert.match(html,/<a class="orb kusa ina" href="\/shop\/">/);
-  assert.match(html,/<a class="orb wara" href="\/shop\/\?mode=receive">/);
-  assert.equal((html.match(/<i class=/g)||[]).length,10);
-  assert.match(html,/1,234/); assert.match(html,/相手を選ぶ/); assert.match(html,/ありがとうの結晶/);
-  assert.doesNotMatch(html,/24:00|永続|INA/);
+  assert.match(html,/class="home-send" href="\/shop\/"/);
+  assert.match(html,/href="\/shop\/\?mode=receive"/);
+  assert.match(html,/1,234/); assert.match(html,/相手を選ぶ/);
+  assert.match(html,/data-empty="false"/);
+  assert.match(twinCards({remaining:0n,funds:new Map()}),/data-empty="true"/);
   assert.match(twinCards(null),/—/);
 });
 
@@ -78,11 +78,13 @@ test("recipient validation keeps the protocol limits with wallet vocabulary", as
 });
 
 test("wallet screens and service errors use iine and recipient vocabulary", async () => {
-  const {readFile}=await import("node:fs/promises");
-  const files=["mainstream/index.html","mainstream/balances.mjs","mainstream/screens.mjs","mainstream/main.mjs",
-    "mainstream/views/shop.mjs","mainstream/views/community.mjs","mainstream/views/guide.mjs",
-    "mainstream/shop-profile.mjs","mainstream/shop-requests.mjs","mainstream/history.mjs","mainstream/scan.mjs",
-    "mainstream/memo-ui.mjs","mainstream/member-ui.mjs","shared/shop-profile.mjs","shared/protocol.mjs",
-    "worker/shop-profiles.mjs","worker/shop-requests.mjs"];
-  for(const file of files) assert.doesNotMatch((await readFile(new URL("../"+file,import.meta.url),"utf8")).replaceAll(/\b(?:SHOP|BUYER)_WARA_PER_INA\b/g,""),/INA|店舗|ショップ|お店|レジ|お会計|支払う|店主/,file);
+  const {readFile,readdir}=await import("node:fs/promises");
+  for (const directory of ["mainstream","shared","worker"]) {
+    const base=new URL("../"+directory+"/",import.meta.url);
+    const files=await readdir(base,{recursive:true,withFileTypes:true});
+    for(const file of files.filter(file=>file.isFile())) {
+      const {join}=await import("node:path"); const path=join(file.parentPath,file.name);
+      assert.doesNotMatch((await readFile(path,"utf8")).replaceAll(/\b(?:SHOP|BUYER)_WARA_PER_INA\b/g,""),/INA|店舗|ショップ|お店|レジ|お会計|支払う|店主/,path);
+    }
+  }
 });
