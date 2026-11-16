@@ -75,6 +75,12 @@ test("all published routes/assets are served with report-only CSP and HSTS; othe
     const response = await fetch(origin+path,{method:"HEAD"});
     assert.equal(response.status,200,path);
     assert.equal(await response.text(),"");
+    if (path.endsWith(".webp")) {
+      assert.equal(response.headers.get("Content-Type"),"image/webp");
+      const get=await fetch(origin+path);
+      assert.equal(get.status,200); assert.equal(get.headers.get("Content-Type"),"image/webp");
+      assert.ok((await get.arrayBuffer()).byteLength>0);
+    }
     for (const [name,value] of Object.entries(securityHeaders)) assert.equal(response.headers.get(name),value,path);
     assert.equal(response.headers.get("Content-Security-Policy"),null);
   }

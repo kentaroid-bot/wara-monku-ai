@@ -33,7 +33,7 @@ for (const visibility of ["public", "private"]) for (const mode of [0,1,2])
   test(visibility + " × mode " + mode + ": opening, admission and policy rotation", {skip:!existsSync(binary)}, async t => {
     storage(t);
     const svm = new LiteSVM();
-    svm.addProgramFromFile(String(program), "target/deploy/straw_protocol.so");
+    svm.addProgramFromFile(String(program), process.env.STRAW_PROGRAM_SO || "target/deploy/straw_protocol.so");
     svm.addProgramFromFile(String(METADATA_PROGRAM), binary);
     const owner = key(), group = key(), guest = key(), outsider = key(), sponsor = key();
     const id = String(group.publicKey), who = owner.publicKey, user = guest.publicKey;

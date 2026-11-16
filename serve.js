@@ -33,6 +33,8 @@ function createServer() {
             js: "text/javascript",
             json: "application/json",
             png: "image/png",
+            webp: "image/webp",
+            jpg: "image/jpeg",
           }[file.split(".").pop()] || "text/plain",
         "Cache-Control": "no-store",
       });

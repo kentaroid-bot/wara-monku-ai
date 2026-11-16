@@ -198,7 +198,7 @@ async function smsFlow(el, info, mode, intent, done) {
       panel(
         el,
         "電話番号を確認",
-        '<p data-code></p><label>SMSの確認コード<input name="code" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" maxlength="6" required></label><button type="submit">次へ</button><div><button type="button" class="text-link" data-retry>確認コードを再送する</button></div>',
+        '<p data-code></p><label>SMSの確認コード<input name="code" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" maxlength="6" required></label><button type="submit" class="hand-btn">次へ</button><div><button type="button" class="text-link" data-retry>確認コードを再送する</button></div>',
         async ({ code }) => done(phone, await resolveWallet(phone, auth, code)),
         info,
       );
@@ -406,7 +406,7 @@ function phoneEntry(el, info, mode, intent) {
 }
 export function memberSignup(el, info, mode) {
   el.innerHTML =
-    '<h1>登録・サインイン</h1><section><button data-phone>電話番号でサインイン</button><button data-name>お名前でサインイン</button><button class="secondary" data-new>電話番号で新規登録</button><p>携帯をお持ちでない方の新規登録は、紹介者のアカウントから行います。</p></section>';
+    '<h1>登録・サインイン</h1><section class=paper-card><button data-phone>電話番号でサインイン</button><button data-name>お名前でサインイン</button><button class="secondary" data-new>電話番号で新規登録</button><p>携帯をお持ちでない方の新規登録は、紹介者のアカウントから行います。</p></section>';
   el.querySelector("[data-phone]").onclick = () =>
     phoneEntry(el, info, mode, "signin");
   el.querySelector("[data-new]").onclick = () =>

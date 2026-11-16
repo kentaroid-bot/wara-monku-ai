@@ -26,12 +26,15 @@ try {
   const now=Math.floor(Date.now()/1000),expires=(now+600)*1000;
   let active={managed:true,type:"phantom",address:who,senderAddress:senderWho,senderRotatedAt:now-31*86400,carriedDay:10,carriedSpent:3};
   const signatureRequests=[],historyReads=[],accountReads=[];
-  let rotations=0,sessionStatus=200;const paymentSteps=[],cardSteps=[];
+  let rotations=0,sessionStatus=200,fullHistory=false,rpcDelay=0,rpcUnavailable=false,sentGift=false,spent=2n;const paymentSteps=[],cardSteps=[];
   const primarySig=bs58.encode(Buffer.alloc(64,1)),senderSig=bs58.encode(Buffer.alloc(64,2));
+  const historySigs=Array.from({length:20},(_,i)=>bs58.encode(Buffer.alloc(64,i+30)));
   const rows=[{tag:31,id:g,owner:who,mode:0,invite:who,name:"地域",description:"",category:"地域",visibility:"public"},
     ...[who,senderWho,shopWho].map((to,i)=>({tag:32,id:String(addr(program,"s3",group,to)),group:g,to,name:["自分の窓口","贈る用の窓口","仲間の窓口"][i]}))];
   const page=await browser.newPage({viewport:{width,height:850},colorScheme});
+  page.setDefaultTimeout(15000);
   const errors=[];page.on("pageerror",e=>errors.push(e.message));
+  page.on("console",m=>{if(m.type()==="error")errors.push(m.text());});
   await page.addInitScript(({active,expires,rows,program})=>{
     if(!sessionStorage.getItem("browser-initialized")) {
       localStorage.setItem("wara.member",JSON.stringify({session:"browser-session",profile:active,expires}));
@@ -52,9 +55,11 @@ try {
       if(method==="getGenesisHash")result=DEVNET_GENESIS;
       else if(method==="getProgramAccounts")result=[];
       else if(method==="getMultipleAccounts") {
+        if(rpcUnavailable) return route.fulfill({json:{id,jsonrpc:"2.0",error:{code:-32000,message:"fixture read unavailable"}},headers});
+        if(rpcDelay) await new Promise(resolve=>setTimeout(resolve,rpcDelay));
         accountReads.push(params[0]);
         const clock=Buffer.alloc(40);clock.writeBigInt64LE(10n*86400n-32400n,32);
-        const daily=Buffer.alloc(25);daily[0]=35;daily.writeBigInt64LE(10n,1);daily.writeBigUInt64LE(2n,9);daily.writeBigUInt64LE(4n,17);
+        const daily=Buffer.alloc(25);daily[0]=35;daily.writeBigInt64LE(10n,1);daily.writeBigUInt64LE(spent,9);daily.writeBigUInt64LE(4n,17);
         const token=Buffer.alloc(165);token[108]=1;token.writeBigUInt64LE(750n,64);
         result={context:{slot:1},value:[account(clock,SystemProgram.programId),account(daily),account(token,new PublicKey("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"))]};
       } else if(method==="getAccountInfo") {
@@ -65,10 +70,13 @@ try {
         historyReads.push(params);
         result=params[0]===senderWho ? [{signature:senderSig,slot:3,blockTime:300,err:null,memo:null,confirmationStatus:"confirmed"},{signature:primarySig,slot:2,blockTime:200,err:null,memo:null,confirmationStatus:"confirmed"}]
           : [{signature:primarySig,slot:2,blockTime:200,err:null,memo:null,confirmationStatus:"confirmed"}];
+        if(fullHistory) result=historySigs.slice(params[0]===senderWho?0:10,params[0]===senderWho?10:20).map((signature,i)=>({signature,slot:30-i,blockTime:500-i-(params[0]===senderWho?0:10),err:null,memo:null,confirmationStatus:"confirmed"}));
+        if(sentGift && params[0]===senderWho) result=[{signature:bs58.encode(Buffer.alloc(64,7)),slot:50,blockTime:Math.floor(Date.now()/1000),err:null,memo:null,confirmationStatus:"confirmed"},...result].slice(0,params[1].limit);
       } else if(method==="getTransaction") {
-        const outgoing=params[0]===senderSig;
+        const latest=params[0]===bs58.encode(Buffer.alloc(64,7));
+        const outgoing=latest || params[0]===senderSig || historySigs.indexOf(params[0])>=0 && historySigs.indexOf(params[0])<10;
         const data=Buffer.alloc(25);data[0]=14;data.writeBigUInt64LE(1n,1);
-        result={slot:outgoing?3:2,blockTime:outgoing?300:200,version:"legacy",meta:{err:null,fee:5000,preBalances:[1,1,1,1],postBalances:[1,1,1,1]},transaction:{signatures:[params[0]],message:{header:{numRequiredSignatures:1,numReadonlySignedAccounts:0,numReadonlyUnsignedAccounts:1},accountKeys:[outgoing?senderWho:shopWho,g,outgoing?shopWho:who,String(program)],recentBlockhash:g,instructions:[{programIdIndex:3,accounts:[0,1,2],data:bs58.encode(data)}]}}};
+        result={slot:outgoing?3:2,blockTime:latest?Math.floor(Date.now()/1000):fullHistory?500-historySigs.indexOf(params[0]):outgoing?300:200,version:"legacy",meta:{err:null,fee:5000,preBalances:[1,1,1,1],postBalances:[1,1,1,1]},transaction:{signatures:[params[0]],message:{header:{numRequiredSignatures:1,numReadonlySignedAccounts:0,numReadonlyUnsignedAccounts:1},accountKeys:[outgoing?senderWho:shopWho,g,outgoing?shopWho:who,String(program)],recentBlockhash:g,instructions:[{programIdIndex:3,accounts:[0,1,2],data:bs58.encode(data)}]}}};
       } else throw Error("Unexpected browser RPC "+method);
       return route.fulfill({json:{id,jsonrpc:"2.0",result},headers});
     }
@@ -80,7 +88,7 @@ try {
     if(url.pathname==="/api/member/card-prepare") {cardSteps.push("prepare");return route.fulfill({json:{prepared:true,carriedDay:10,carriedSpent:7}});}
     if(url.pathname==="/api/member/sender-join") {paymentSteps.push("join");return route.fulfill({json:{prepared:true}});}
     if(url.pathname==="/api/relay") {
-      paymentSteps.push("relay");
+      paymentSteps.push("relay"); sentGift=true;
       const tx=Transaction.from(Buffer.from(req.postDataJSON().tx,"base64"));
       assert.equal(String(tx.instructions.at(-1).keys[0].pubkey),senderWho);
       assert.equal(tx.instructions.at(-1).keys.length,10);
@@ -97,18 +105,24 @@ try {
       return route.fulfill({json:{profile:active}});
     }
     if(url.pathname==="/api/member/shop-profiles")return route.fulfill({json:{profiles:[]}});
-    if(url.pathname==="/api/member/payment-notes")return route.fulfill({json:{notes:[]}});
+    if(url.pathname==="/api/member/payment-notes")return route.fulfill({json:{notes:req.postDataJSON().receipts.map(r=>({sig:r.sig,note:"大切なひとこと"}))}});
     if(url.pathname.startsWith("/api/"))return route.fulfill({json:{}});
     if(url.pathname==="/v3/main.js")return route.fulfill({contentType:"text/javascript",body:bundle});
     return route.fulfill({path:resolve("dist","."+(url.pathname.endsWith("/")?url.pathname+"index.html":url.pathname))});
   });
-  await page.goto(origin+"/");await page.locator(".orb.ina").waitFor();
-  assert.equal(await page.locator(".orb.ina strong").innerText(),"5");
-  assert.equal(await page.locator(".orb.wara strong").innerText(),"750");
+  await page.goto(origin+"/");await page.waitForFunction(()=>document.querySelector(".top-counters > span strong")?.textContent==="5");
+  assert.equal(await page.locator(".top-counters > span strong").innerText(),"5");
+  assert.equal(await page.locator(".top-counters a strong").innerText(),"750");
   assert.ok(accountReads.some(keys=>keys[1]===String(addr(program,"p3",senderWho)) && keys[2]===String(ata(mintFor(program,group),who))));
   await page.waitForFunction(()=>document.querySelectorAll(".stories li").length===2);
   const stories=await page.locator(".stories li").allTextContents();
-  assert.match(stories[0],/贈りました/);assert.match(stories[1],/受け取りました/);assert.match(stories[0],/100 WARA/);
+  assert.match(stories[0],/♥1/);assert.match(stories[1],/\+100/);
+  await page.locator("[data-receipt]").first().click();
+  assert.match(await page.getByRole("dialog").innerText(),/贈りました/);
+  await page.keyboard.press("Escape");
+  await page.locator("[data-receipt]").nth(1).click();
+  await page.getByRole("dialog").getByText("ひとこと「大切なひとこと」",{exact:true}).waitFor();
+  await page.keyboard.press("Escape");
   assert.ok(historyReads.some(([address,options])=>address===who && options.limit===10));
   assert.ok(historyReads.some(([address,options])=>address===senderWho && options.limit===10));
   await page.evaluate(({g,shopWho})=>{
@@ -144,8 +158,62 @@ try {
   await page.locator('#ina button[type="submit"]').click();
   await page.getByRole("dialog").getByRole("button",{name:"贈る",exact:true}).click();
   await page.getByText("贈りました。相手に 100 WARAが届きました。",{exact:false}).waitFor();
+  await page.waitForURL(origin+"/");
+  await page.locator(".home-send").waitFor();
+  assert.ok(await page.locator("html").evaluate(el=>el.classList.contains("has-send-fx")));
+  await page.locator("#notice a[href*='explorer.solana.com']").waitFor();
+  if(process.env.EHON_SCREENSHOT_DIR && !process.env.SCREENSHOT_FILTER) await page.screenshot({path:resolve(process.env.EHON_SCREENSHOT_DIR,`${width}-${colorScheme}-home-after-send.png`)});
+  await page.locator("[data-receipt]").first().click();
+  assert.ok((await page.getByRole("dialog").locator("a").getAttribute("href")).includes(bs58.encode(Buffer.alloc(64,7))),"newly confirmed gift leads the home history");
+  await page.keyboard.press("Escape");
   assert.deepEqual(paymentSteps,["join","sign","relay"]);
   assert.equal(await page.evaluate(()=>window.phantomCalls),0);
+  fullHistory=true; rpcDelay=1800;
+  await page.goto(origin+"/account/");await page.locator(".sender-account").waitFor();
+  assert.ok(await page.locator("#exit").isVisible());
+  assert.ok(await page.locator(".card img").evaluate(img=>img.complete && img.naturalWidth>0));
+  assert.equal(await page.locator("[data-payment-history]").count(),0,"settings render before slow RPC");
+  await page.locator("[data-payment-history] .story").first().waitFor(); rpcDelay=0;
+  await page.waitForFunction(()=>document.querySelectorAll(".stories > .story").length===20);
+  assert.equal(await page.locator(".stories > .story").count(),20);
+  await page.getByText("ひとこと「大切なひとこと」",{exact:true}).first().waitFor();
+  assert.equal(await page.locator(".stories a[href*='explorer.solana.com']").count(),20);
+  const screenshot=async name=>{
+    assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
+    if(process.env.EHON_SCREENSHOT_DIR && (!process.env.SCREENSHOT_FILTER || new RegExp(process.env.SCREENSHOT_FILTER).test(`${width}-${colorScheme}-${name}`))) await page.screenshot({path:resolve(process.env.EHON_SCREENSHOT_DIR,`${width}-${colorScheme}-${name}.png`),fullPage:true});
+  };
+  await screenshot("account-20");
+  assert.ok(await page.locator("details#origins").isVisible());
+  assert.ok(await page.getByRole("button",{name:"履歴を更新",exact:true}).isVisible());
+  await page.goto(origin+"/"); await page.locator("[data-receipt]").first().waitFor();
+  assert.equal(await page.locator(".home-history .story").count(),5);
+  await screenshot("home-5");
+  await page.locator("[data-receipt]").first().click(); await screenshot("receipt-detail"); await page.keyboard.press("Escape");
+  spent=7n; await page.reload(); await page.locator('.home-send[data-empty="true"]').waitFor(); await screenshot("home-empty"); spent=2n;
+  await page.evaluate(()=>{window.testNow=Date.now(); window.realNow=Date.now; Date.now=()=>window.testNow; localStorage.setItem("wara.v03.warmth.last",String(window.testNow)); dispatchEvent(new Event("pageshow"));});
+  assert.ok(await page.locator("html.has-send-fx").count()); await screenshot("home-celebration");
+  await page.emulateMedia({reducedMotion:"reduce"});
+  assert.equal(await page.locator(".home-send-fx span").first().evaluate(el=>getComputedStyle(el).animationName),"none");
+  await screenshot("home-reduced-motion"); await page.emulateMedia({reducedMotion:"no-preference"});
+  await page.evaluate(()=>{window.testNow+=7001;document.dispatchEvent(new Event("visibilitychange"));});
+  assert.equal(await page.locator("html.has-send-fx").count(),0);
+  assert.ok(Number(await page.evaluate(()=>document.documentElement.style.getPropertyValue("--warmth")))>0);
+  await page.evaluate(()=>{window.testNow+=900000;document.dispatchEvent(new Event("visibilitychange"));});
+  assert.equal(await page.evaluate(()=>document.documentElement.style.getPropertyValue("--warmth")),"0");
+  await page.goto(origin+"/account/");await page.locator(".sender-account").waitFor();
+  rpcUnavailable=true;
+  await page.goto(origin+"/account/"); await page.locator("#exit").waitFor();
+  await page.locator("#notice").filter({hasText:"取得できません"}).waitFor();
+  assert.ok(await page.locator(".sender-account").isVisible());
+  assert.ok(await page.locator("#exit").isEnabled());
+  await screenshot("account-rpc-unavailable");
+  await page.goto(origin+"/");
+  await page.locator("#notice").filter({hasText:"取得できません"}).waitFor();
+  assert.ok(await page.getByRole("button",{name:"更新",exact:true}).isVisible());
+  rpcUnavailable=false;
+  await page.getByRole("button",{name:"更新",exact:true}).click();
+  await page.locator(".home-receipts").waitFor();
+  assert.equal(await page.getByRole("button",{name:"更新",exact:true}).count(),0);
   await page.goto(origin+"/account/");await page.locator(".sender-account").waitFor();
   assert.equal(await page.locator(".sender-address").innerText(),senderWho);
   assert.ok(await page.getByText(who,{exact:true}).count()>=1);
@@ -162,6 +230,7 @@ try {
     await (await import("node:fs/promises")).mkdir(process.env.SENDER_SCREENSHOT_DIR,{recursive:true});
     await page.screenshot({path:resolve(process.env.SENDER_SCREENSHOT_DIR,`${width}-${colorScheme}.png`),fullPage:true});
   }
+  assert.deepEqual(errors,[],"normal screens have no console or page errors");
   sessionStatus=503;
   await page.goto(origin+"/account/");
   await page.locator("#notice").getByText("一時的に利用できません。",{exact:true}).waitFor();
@@ -180,7 +249,11 @@ try {
   await page.goto(origin+"/signup/");
   await page.getByRole("button",{name:"お名前でサインイン",exact:true}).waitFor();
   assert.equal(await page.evaluate(()=>localStorage.getItem("wara.member")),null);
-  assert.deepEqual(errors,[]);
+  assert.deepEqual(errors,[
+    'Failed to load resource: the server responded with a status of 503 (Service Unavailable)',
+    'Failed to load resource: the server responded with a status of 401 (Unauthorized)',
+    'Failed to load resource: the server responded with a status of 401 (Unauthorized)',
+  ],"only deliberately injected HTTP failures are logged");
   console.log(`PASS sender ${width}px ${colorScheme}: separate signer/quota/balance, merged history, self exclusion, PIN rotation, retained session, 401 signup recovery and 503 session preservation`);
   await page.close();
  }

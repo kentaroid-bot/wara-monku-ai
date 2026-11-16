@@ -43,6 +43,7 @@ const info = (message) => {
 };
 const pathname = location.pathname.replace(/\/+$/, "") || "/";
 const path = pathname === "/register" ? "/shop" : pathname;
+document.body.classList.toggle("stage-page", ["/", "/user", "/shop"].includes(path));
 const tab = path === "/support" ? "guide" :
   ["/", "/user", "/shop"].includes(path) ? "wallet" :
   path.startsWith("/communities") ? "market" : "me";
@@ -64,6 +65,7 @@ function paintWarmth() {
   const age = Date.now() - lastPayment;
   const warmth = lastPayment > 0 && age >= 0 ? Math.max(0, Math.min(1, (cooldown - age) / (cooldown - 60_000))) : 0;
   document.documentElement.style.setProperty("--warmth", String(warmth));
+  document.documentElement.classList.toggle("has-send-fx", lastPayment > 0 && age >= 0 && age < 7000);
   if (warmth && !document.hidden) coolingTimer = setTimeout(paintWarmth, 1000);
 }
 
@@ -140,7 +142,7 @@ export function action(form, handler) {
   };
 }
 const welcome =
-  '<section class="welcome"><small>はじめての方へ</small><h2>今日のいいねを、ありがとうに。</h2><p>毎日届く10 iineで食事や仕事に感謝を贈れます。受け取ったWARAは、明日も財布に残ります。</p><a class="action" href="/signup/">登録・サインイン</a></section>';
+  '<section class="welcome"><small>はじめての方へ</small><h2>今日のいいねを、ありがとうに。</h2><p>毎日届く10 iineで感謝を贈れます。受け取ったWARAは、明日も財布に残ります。</p><a class="action" href="/signup/">登録・サインイン</a></section>';
 async function card() {
   const box = el.querySelector(".card");
   if (!box) return;
@@ -218,7 +220,7 @@ async function render() {
   };
   el.innerHTML = "<h1>" + esc(titles[path] || "WARA") + "</h1>";
   if (!profile) {
-    if (tab === "wallet") el.insertAdjacentHTML("beforeend", twinCards(null));
+    const home = path === "/" || path === "/user";
     const group = new URLSearchParams(location.search).get("id");
     if (path === "/communities" && group && sessionStorage.getItem(pendingInvite(group)))
       sessionStorage.setItem(afterInviteKey, group);
@@ -227,7 +229,7 @@ async function render() {
         afterSigninKey,
         "/shop/" + location.search,
       );
-    el.insertAdjacentHTML("beforeend", welcome);
+    el.insertAdjacentHTML("beforeend", home ? twinCards(null) : welcome);
     return;
   }
   const invitedGroup = sessionStorage.getItem(afterInviteKey);
@@ -239,7 +241,7 @@ async function render() {
   if (path === "/account") {
     el.insertAdjacentHTML(
       "beforeend",
-      "<section><h2>" +
+      '<section class="paper-card"><h2>' +
         {
           phantom: "Phantom",
           paper: "窓口発行",
@@ -263,7 +265,9 @@ async function render() {
       (await import("./member-ui.mjs")).senderAccountTools(el,info,profile,next=>{profile=next;});
     }
     el.insertAdjacentHTML("beforeend", '<details><summary>毎日の iine のリセット</summary><p>毎日 0:00（JST）に、その日の残りが消え、新しい10 iineが使えるようになります。WARAは残ります。</p><a class="action secondary" href="/">今日の枠を読み直す</a></details>');
-    await card();
+    void card().catch(error => info(error.message));
+    const { dashboard } = await import("./screens.mjs");
+    void dashboard({ el, info, path, profile, wallet, senderWallet, action, esc, recordPayment, readHistory }).catch(error => info(error.message));
     return;
   }
   if (path === "/") {

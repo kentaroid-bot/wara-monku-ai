@@ -31,7 +31,7 @@ test("metadata route rejects malformed mints without auth and validates UTF-8 to
 
 for (const hidden of [false,true]) test((hidden ? "private" : "public") + " opening atomically registers metadata through the fee relay", {skip:!existsSync(binary)}, async t => {
   const svm = new LiteSVM(), owner = pair(), group = pair(), sponsor = pair(), guest = pair();
-  svm.addProgramFromFile(String(program),"target/deploy/straw_protocol.so");
+  svm.addProgramFromFile(String(program),process.env.STRAW_PROGRAM_SO || "target/deploy/straw_protocol.so");
   svm.addProgramFromFile(String(METADATA_PROGRAM),binary);
   for (const k of [owner,sponsor,guest]) svm.airdrop(String(k.publicKey),1_000_000_000n);
   const groupId = String(group.publicKey), code = bs58.encode(pair().secretKey.slice(0,32));

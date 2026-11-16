@@ -24,6 +24,7 @@ try {
     const inAppBrowser = profile !== 'browser';
     const userAgent = inAppBrowser ? 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148' + (profile === 'phantom-ua' ? ' Phantom/26.0' : '') : undefined;
     const page = await browser.newPage({ viewport: { width, height: 844 }, isMobile: true, hasTouch: true, colorScheme, userAgent });
+    page.setDefaultTimeout(15000);
     const errors = []; page.on('pageerror', e => errors.push(e.message));
     const waitForQr = async () => {
       try { await page.waitForFunction(() => !!window.accepted, null, { timeout: 10000 }); }

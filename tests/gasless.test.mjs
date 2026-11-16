@@ -41,7 +41,7 @@ const wire = (tx) =>
 
 test("signed-in zero-SOL buyer joins, spends and transfers through Worker/D1 and the deployed program binary", async (t) => {
   const svm = new LiteSVM();
-  svm.addProgramFromFile(String(program), "target/deploy/straw_protocol.so");
+  svm.addProgramFromFile(String(program), process.env.STRAW_PROGRAM_SO || "target/deploy/straw_protocol.so");
   const sponsor = key(),
     owner = key(),
     group = key(),

@@ -43,7 +43,7 @@ export async function signup(el, info) {
 
   function entry() {
     info("");
-    el.innerHTML = `<h1>登録・サインイン</h1><section>
+    el.innerHTML = `<h1>登録・サインイン</h1><section class=paper-card>
       <button data-intent="signin">サインイン</button>
       <button class="secondary" data-intent="create">新しく財布を作る</button>
       ${transferAvailable ? '<button class="secondary" data-intent="transfer">この端末の財布を引き継ぐ</button>' : ""}
@@ -78,7 +78,7 @@ export async function signup(el, info) {
   function codeStep(intent, phone, proof) {
     screen("電話番号を確認", `<p>${sms ? "SMSに届いた6桁のコードを入力してください。" : "試験用コード：" + (proof.trialCode ?? proof.local.code)}</p>
       <label>6桁の確認コード<input name="otp" autocomplete="one-time-code" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" required></label>
-      <button type="submit">次へ</button><div><button type="button" class="text-link" data-resend>コードを再発行</button></div>`);
+      <button type="submit" class="hand-btn">次へ</button><div><button type="button" class="text-link" data-resend>コードを再発行</button></div>`);
     el.querySelector("[data-resend]").onclick = () => phoneStep(intent);
     el.querySelector("[name=otp]").focus();
     submit(async (form) => {
@@ -107,7 +107,7 @@ export async function signup(el, info) {
       ${step.transfer ? '<p class="wrap" data-address></p>' : ""}
       ${knownType ? "" : '<label>ウォレットの方法<select name="method"><option value="embedded">組み込みウォレット</option><option value="phantom">Phantom</option><option value="paper">地域の紙カード</option></select></label>'}
       <label data-password>ウォレット用パスワード（8文字以上）<input name="pass" type="password" minlength="8" autocomplete="${!knownType ? "new-password" : "current-password"}"></label>
-      <button type="submit"></button>`);
+      <button type="submit" class="hand-btn"></button>`);
     const form = el.querySelector("form");
     const method = () => knownType ?? form.elements.method.value;
     const update = () => {

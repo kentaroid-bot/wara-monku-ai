@@ -5,7 +5,7 @@ import { Keypair, PublicKey, Transaction } from "@solana/web3.js";
 import { createGroup, certify, metadata, setAuthority, addr } from "../shared/protocol.mjs";
 export function senderWorld(program = Keypair.generate().publicKey) {
   const svm = new LiteSVM();
-  svm.addProgramFromFile(String(program),"target/deploy/straw_protocol.so");
+  svm.addProgramFromFile(String(program),process.env.STRAW_PROGRAM_SO || "target/deploy/straw_protocol.so");
   const [owner,authority,user,shop,outsider] = Array.from({length:5},()=>Keypair.generate());
   for(const k of [owner,authority,user,shop,outsider]) svm.airdrop(String(k.publicKey),5_000_000_000n);
   const clock=svm.getClock(); clock.unixTimestamp=1_800_000_000n; svm.setClock(clock);

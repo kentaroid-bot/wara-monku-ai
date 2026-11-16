@@ -3,6 +3,14 @@ const appRoutes = Object.freeze(["", "user", "signup", "shop", "register", "supp
 const specialRoutes = Object.freeze({ devnet: "app/index.html", mock: "index.html" });
 const copies = Object.freeze({
   "assets/wara-avatar.png": "assets/wara-avatar.png",
+  "v3/ehon/heart.webp": "assets/ehon/heart.webp",
+  "v3/ehon/sender.webp": "assets/ehon/sender.webp",
+  "v3/ehon/receiver.webp": "assets/ehon/receiver.webp",
+  "v3/ehon/paper-tile.webp": "assets/ehon/paper-tile.webp",
+  "v3/ehon/nav-home.webp": "assets/ehon/nav-home.webp",
+  "v3/ehon/nav-community.webp": "assets/ehon/nav-community.webp",
+  "v3/ehon/nav-guide.webp": "assets/ehon/nav-guide.webp",
+  "v3/ehon/nav-account.webp": "assets/ehon/nav-account.webp",
   "v3/style.css": "mainstream/style.css",
   "devnet/style.css": "app/style.css",
   "devnet/deployment.json": "deployments/devnet.json",

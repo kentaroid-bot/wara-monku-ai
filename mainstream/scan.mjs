@@ -45,7 +45,7 @@ export function scannerBox(el, kind, accept) {
     (kind === "confirm" ? "大事な手続き用QRを読む" : dailyCard ? "iineカードを読む" : kind === "store" ? "受け取りQRを読み取る" : "受け取り窓口の公開アドレスをQRから読む") +
     '</summary><label class="button file-picker">カメラ・写真でQRを読む<input type="file" accept="image/*"></label>' +
     (inAppBrowser ? '' : '<button type="button" class="button secondary">カメラを開く</button><button type="button" class="button secondary">停止</button>') +
-    '<video hidden muted autoplay playsinline webkit-playsinline aria-label="QR読み取り用カメラ" style="max-width:100%"></video><canvas hidden></canvas><p role="status">' +
+    '<video hidden muted autoplay playsinline webkit-playsinline aria-label="QR読み取り用カメラ" class="scanner-video"></video><canvas hidden></canvas><p role="status">' +
     initialGuidance + (inAppBrowser ? '' : 'カメラを開く場合、使用を確認されたら「許可」を選んでください。') + '</p>';
   el.append(box);
   const stat = (t) => (box.querySelector("p").textContent = t);
