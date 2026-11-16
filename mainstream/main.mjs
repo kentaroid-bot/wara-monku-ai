@@ -65,7 +65,7 @@ function paintWarmth() {
   const age = Date.now() - lastPayment;
   const warmth = lastPayment > 0 && age >= 0 ? Math.max(0, Math.min(1, (cooldown - age) / (cooldown - 60_000))) : 0;
   document.documentElement.style.setProperty("--warmth", String(warmth));
-  document.documentElement.classList.toggle("has-send-fx", lastPayment > 0 && age >= 0 && age < 7000);
+  document.documentElement.classList.toggle("has-send-fx", lastPayment > 0 && age >= 0 && age < 8000);
   if (warmth && !document.hidden) coolingTimer = setTimeout(paintWarmth, 1000);
 }
 

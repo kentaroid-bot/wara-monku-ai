@@ -10,6 +10,7 @@ import server from "../serve.js";
 import * as keys from "../mainstream/storage-keys.mjs";
 import { memberSessionKey } from "../mainstream/identity.mjs";
 import { pendingInvite } from "../mainstream/community-privacy.mjs";
+import { twinCards } from "../mainstream/balances.mjs";
 import { showGuide } from "../mainstream/views/guide.mjs";
 
 test("persisted storage names and legacy exports remain compatible", () => {
@@ -92,4 +93,36 @@ test("all published routes/assets are served with report-only CSP and HSTS; othe
     assert.equal((await fetch(origin+path)).status,404,path);
   assert.equal((await fetch(origin+"/shop/",{method:"POST"})).status,404);
   assert.match(await (await fetch(origin+"/support/")).text(),/<html/);
+});
+
+
+test("home celebration uses decorative cutouts without HTML inline styles", async () => {
+  const html = twinCards({remaining:10,funds:new Map()});
+  assert.doesNotMatch(html,/\sstyle\s*=/i);
+  assert.match(html,/<div class="home-send-fx" aria-hidden="true"><div class="home-sun-halo"><\/div>/);
+  assert.equal((html.match(/class="fx-particle /g) || []).length,12);
+  assert.equal((html.match(/<img class="fx-particle fx-heart" src="\/v3\/ehon\/heart.webp" alt="">/g) || []).length,4);
+  for (const name of ["index.html","balances.mjs","iine-game.mjs"]) {
+    assert.doesNotMatch(await readFile(new URL("../mainstream/"+name,import.meta.url),"utf8"),/\sstyle\s*=/i,name);
+  }
+});
+
+test("standalone manifest is published with the correct MIME type and root scope", async t => {
+  const http=server.createServer(); http.listen(0,"127.0.0.1"); await once(http,"listening");
+  t.after(()=>new Promise(resolve=>{http.close(resolve);http.closeAllConnections();}));
+  const origin=`http://127.0.0.1:${http.address().port}`;
+  const response=await fetch(origin+"/manifest.webmanifest");
+  assert.equal(response.status,200);
+  assert.equal(response.headers.get("Content-Type"),"application/manifest+json");
+  const manifest=await response.json();
+  assert.equal(manifest.scope,"/"); assert.equal(manifest.start_url,"/"); assert.equal(manifest.display,"standalone");
+  assert.equal(manifest.name,"WARA | iineのお財布"); assert.equal(manifest.lang,"ja");
+  assert.equal(manifest.theme_color,"#f8f4e8");
+  const icon=manifest.icons[0], png=Buffer.from(await (await fetch(origin+icon.src)).arrayBuffer());
+  assert.equal(icon.sizes,`${png.readUInt32BE(16)}x${png.readUInt32BE(20)}`);
+  for (const route of publicRoutes.appRoutes) {
+    const html=await (await fetch(origin+"/"+route+(route ? "/" : ""))).text();
+    assert.match(html,/<link rel="manifest" href="\/manifest.webmanifest">/);
+    assert.match(html,/<meta name="apple-mobile-web-app-capable" content="yes">/);
+  }
 });

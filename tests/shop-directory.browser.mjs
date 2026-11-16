@@ -188,7 +188,11 @@ try {
     await page.goto(origin+"/"); await page.locator(".home-receipts").waitFor();
     assert.equal(await page.locator(".quick-actions").count(),0);
     assert.equal(await page.locator(".home-send").getAttribute("href"),"/shop/");
-    await page.evaluate(()=>document.documentElement.style.setProperty("--warmth","0"));
+    await page.evaluate(()=>{localStorage.removeItem("wara.v03.warmth.last");dispatchEvent(new Event("pageshow"));});
+    assert.ok(await page.evaluate(()=>{
+      const a=document.querySelector(".home-history").getBoundingClientRect(), b=document.querySelector(".home-receive img").getBoundingClientRect();
+      return a.right<=b.left || a.left>=b.right || a.bottom<=b.top || a.top>=b.bottom;
+    }),"home history does not cover the receiving character");
     await check("home");
     assert.equal(await page.locator("footer").count(),0);
     assert.equal(await page.getByRole("button",{name:"更新",exact:true}).count(),0);
@@ -246,7 +250,19 @@ try {
     assert.equal(await page.locator("[data-minus]").evaluate(el=>getComputedStyle(el).touchAction),"manipulation");
     assert.equal(await page.locator("[data-tap]").evaluate(el=>getComputedStyle(el).touchAction),"manipulation");
     const send=page.locator('#ina button[type="submit"]');
-    assert.equal(await send.isDisabled(),true); await check("send-0");
+    const scales=[];
+    const checkHeart=async count=>{
+      // Let the size transition finish before measuring the artwork.
+      await page.waitForTimeout(250);
+      scales.push(await page.locator(".iine-stage").evaluate(el=>Number(getComputedStyle(el).getPropertyValue("--heart-scale"))));
+      assert.ok(Math.abs(scales.at(-1)-(.45+count*.06))<.0001);
+      assert.ok(await page.evaluate(()=>{
+        const box=s=>document.querySelector(s).getBoundingClientRect();
+        const clear=(a,b)=>a.right<=b.left || a.left>=b.right || a.bottom<=b.top || a.top>=b.bottom;
+        return [".tap-button",".iine-heart"].every(s=>[".send-dock",".charge-dots",".receive-mascot"].every(t=>clear(box(s),box(t)))) && box(".send-dock").right<=box(".receive-mascot").left;
+      }),`heart and tap target clear the dock, dots and mascot at ${count}`);
+    };
+    assert.equal(await send.isDisabled(),true); await checkHeart(0); await check("send-0");
     for (let n=1;n<=10;n++) {
       await page.locator("[data-tap]").click();
       assert.equal(await page.locator("[data-count]").innerText(),String(n));
@@ -259,6 +275,7 @@ try {
         const dock=await page.locator(".send-dock").boundingBox();
         assert.ok(dock.x+dock.width<=mascot.x,"gift controls do not cover the receiving character");
         assert.equal(await send.locator("span").count(),0,"send stamp contains only its number");
+        if ([5,10].includes(n)) await checkHeart(n);
         await check("send-"+n);
         if(n===5) {
           await send.click(); await page.locator(".confirm-dialog").waitFor();
@@ -267,6 +284,7 @@ try {
         }
       }
     }
+    assert.ok(scales[0]<.5 && scales[0]<scales[1] && scales[1]<scales[2],"heart grows from 0 through 5 to 10 taps");
     await page.locator("[data-tap]").click(); assert.equal(await page.locator("[data-count]").innerText(),"10");
     await send.click(); await page.getByRole("dialog").waitFor();
     assert.match(await page.getByRole("dialog").innerText(),/公開する絵文字：🌾/);

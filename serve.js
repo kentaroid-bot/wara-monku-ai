@@ -32,6 +32,7 @@ function createServer() {
             css: "text/css",
             js: "text/javascript",
             json: "application/json",
+            webmanifest: "application/manifest+json",
             png: "image/png",
             webp: "image/webp",
             jpg: "image/jpeg",

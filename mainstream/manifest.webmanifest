@@ -1,0 +1,13 @@
+{
+  "name": "WARA | iineのお財布",
+  "short_name": "WARA",
+  "lang": "ja",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#f8f4e8",
+  "theme_color": "#f8f4e8",
+  "icons": [
+    { "src": "/assets/wara-avatar.png", "sizes": "1254x1254", "type": "image/png", "purpose": "any" }
+  ]
+}

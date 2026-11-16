@@ -90,7 +90,7 @@ export function bindIineGame(form, { initial = 0, remaining = 10, member = true,
     form.querySelector("[data-count]").textContent = count;
     emoji.textContent = tier.emoji;
     form.querySelector("[data-tier]").textContent = !member ? "コミュニティに参加すると贈れます。" : Number(remaining) === 0 ? "今日のiineは使い切りました。" : tier.label;
-    stage.style.setProperty("--heart-scale", String(1 + count * .035));
+    stage.style.setProperty("--heart-scale", String(0.45 + count * 0.06));
     stage.dataset.empty = String(Number(remaining) === 0 || !member);
     const left = form.querySelector("[data-remaining]");
     if (left) left.textContent = String(Number(remaining) - count);

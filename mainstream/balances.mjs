@@ -7,7 +7,7 @@ export function twinCards(state, signedIn = Boolean(state)) {
       <a href="#origins" aria-label="保有WARAと発行元"><strong>${total?.toLocaleString("ja-JP") ?? "—"}</strong> 🌾</a></div>
     <a class="home-send" href="/shop/" aria-label="相手を選ぶ" data-empty="${remaining === 0n || remaining === 0}">
       <span class="home-send-label" aria-hidden="true">おくる</span><img class="home-heart" src="/v3/ehon/heart.webp" alt=""><img class="home-sender" src="/v3/ehon/sender.webp" alt=""><span class="visually-hidden">相手を選ぶ</span></a>
-    <div class="home-send-fx" aria-hidden="true">${Array.from({length:12},(_,i)=>`<span>${i%3 ? "✦" : "♥"}</span>`).join("")}</div>
+    <div class="home-send-fx" aria-hidden="true"><div class="home-sun-halo"></div>${Array.from({length:12},(_,i)=>i%3 === 0 ? '<img class="fx-particle fx-heart" src="/v3/ehon/heart.webp" alt="">' : '<i class="fx-particle fx-spark"></i>').join("")}</div>
     <div class="home-history">${signedIn ? "" : '<a class="action home-signin" href="/signup/">登録・サインイン</a>'}</div>
     <a class="home-receive" href="/shop/?mode=receive" aria-label="受け取る"><img src="/v3/ehon/receiver.webp" alt=""><span class="home-receive-label" aria-hidden="true">うけとる</span></a>
   </div>`;
