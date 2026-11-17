@@ -247,8 +247,8 @@ nav a[aria-current="page"]::after { width: 24px; height: 3px; border-radius: 50%
 #ina { position: relative; border: 0; padding: 0; background: none; box-shadow: none; margin-top: .25rem; }
 .send-remaining { text-align: right; margin: 0; font-size: .9rem; }
 .iine-stage { position: relative; height: 300px; touch-action: manipulation; isolation: isolate; }
-.send-mascot { position: absolute; width: 45%; max-width: 170px; left: -1rem; top: 0; height: 190px; object-fit: contain; object-position: left top; }
-.receive-mascot { position: absolute; width: min(140px, calc(100% - 168px)); right: -1rem; bottom: -90px; height: 170px; object-fit: contain; object-position: right bottom; z-index: -1; }
+.send-mascot { position: absolute; width: 45%; max-width: 170px; left: -1rem; top: 0; height: 190px; object-fit: contain; object-position: left top; transform-origin: left center; }
+.receive-mascot { position: absolute; width: min(140px, calc(100% - 168px)); right: -1rem; bottom: -90px; height: 170px; object-fit: contain; object-position: right bottom; transform-origin: bottom right; z-index: -1; }
 .tap-button { position: absolute; top: 65px; left: 35%; width: 145px; height: 145px; padding: 0; border: 0; background: none; box-shadow: none; }
 .iine-heart { width: 100%; transform: scale(var(--heart-scale,.45)); transition: transform .2s; }
 .send-dock { position: relative; margin-top: -65px; width: 182px; padding-bottom: 30px; }
@@ -264,7 +264,10 @@ nav a[aria-current="page"]::after { width: 24px; height: 3px; border-radius: 50%
 .gift-flight { display: none; position: absolute; right: 5%; bottom: 0; color: var(--forest); font-size: 1.8rem; font-weight: bold; }
 .sending .gift-flight { display: block; animation: home-celebrate 1.3s forwards; }
 .sending .tap-button { animation: gift-fly 1.3s forwards; }
-@keyframes gift-fly { to { transform: translate(35px,150px) scale(.15); opacity: 0; } }
+@keyframes gift-fly {
+  40% { transform: translate(-10px,-10px) scale(.15); opacity: 1; }
+  to { transform: translate(-10px,150px) scale(.15); opacity: 0; }
+}
 @media (prefers-reduced-motion: no-preference) {
   .home-sender { animation: gentle-sway 2.8s ease-in-out infinite; transform-origin: left center; }
   .home-send:not([data-empty="true"]) .home-heart { animation: heart-float 2s ease-in-out infinite; }
@@ -274,6 +277,21 @@ nav a[aria-current="page"]::after { width: 24px; height: 3px; border-radius: 50%
   .home-sun-halo { animation: sun-halo-pulse 1.6s ease-in-out infinite; }
   .fx-particle { opacity: 0; animation: fx-arc var(--dur) cubic-bezier(.2,.75,.35,1) var(--delay) infinite; }
   .iine-stage:not([data-empty="true"]):not(.sending) .tap-button { animation: heart-wobble 2s ease-in-out infinite; }
+  .iine-stage:not([data-empty="true"]):not(.sending) .send-mascot { animation: gentle-sway 2.8s ease-in-out infinite; }
+  .iine-stage:not([data-empty="true"]):not(.sending) .receive-mascot { animation: receive-idle 2.6s ease-in-out infinite; }
+  .iine-stage.sending .send-mascot { animation: sender-cheer .8s ease-in-out infinite; }
+  .iine-stage.sending .receive-mascot { animation: receive-celebrate .72s ease-in-out infinite; }
+}
+
+/* The narrow gift scene only has room to compress upward and inward. */
+@keyframes receive-idle {
+  0%, 100% { transform: skewY(0deg) scaleY(1) scaleX(1); }
+  50% { transform: skewY(1deg) scaleY(.94) scaleX(.99); }
+}
+@keyframes receive-celebrate {
+  0%, 100% { transform: translateY(0) skewY(0deg) scaleY(1) scaleX(1); }
+  35% { transform: translateY(-1px) skewY(2deg) scaleY(.88) scaleX(.96); }
+  65% { transform: translateY(0) skewY(.5deg) scaleY(.96) scaleX(.99); }
 }
 
 /* Vertical skew keeps each outer edge attached while the characters sway. */
@@ -320,6 +338,7 @@ nav a[aria-current="page"]::after { width: 24px; height: 3px; border-radius: 50%
 .receive-card #invoice label { display: flex; align-items: center; gap: .5rem; }
 .receive-card #invoice input[name="custom"] { width: 90px; }
 @media (prefers-reduced-motion: reduce) {
+  .iine-stage .send-mascot, .iine-stage .receive-mascot { animation: none; }
   .sending .tap-button, .sending .gift-flight { animation: none; }
   .iine-heart { transition: none; }
 }

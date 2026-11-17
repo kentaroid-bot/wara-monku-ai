@@ -44,7 +44,7 @@ try {
   let ownerCertified=false, pendingRequests=[];
   let supplyReads=0, creationReads=0;
   let supplyValues=[10,20,40,30];
-  const screenshots = process.env.IINE_SCREENSHOT_DIR;
+  const screenshots = process.env.SCREENSHOT_DIR || process.env.IINE_SCREENSHOT_DIR;
   if (screenshots) await (await import("node:fs/promises")).mkdir(screenshots,{recursive:true});
   const captureDirectory = async name => {
     assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),`${name} overflow at ${width}`);
@@ -459,10 +459,86 @@ try {
       assert.ok(layout.scrollWidth<=layout.innerWidth,`no horizontal overflow: ${context}`);
       console.log(`PASS send layout ${context}: ${JSON.stringify(layout)}`);
     };
+    const checkSendMotion=async(mode,count)=>{
+      const samples=await page.evaluate(({mode,count})=>{
+        const stage=document.querySelector(".iine-stage");
+        stage.classList.toggle("sending",mode==="sending");
+        if(mode==="tap") document.querySelector("[data-tap]").click();
+        const selectors=[".send-mascot",".receive-mascot",".tap-button",".iine-heart"];
+        const elements=selectors.map(s=>document.querySelector(s));
+        const animations=elements.flatMap(el=>el.getAnimations());
+        animations.forEach(a=>{a.pause();a.currentTime=0;});
+        const box=s=>document.querySelector(s).getBoundingClientRect();
+        const clear=(a,b)=>a.right<=b.left || a.left>=b.right || a.bottom<=b.top || a.top>=b.bottom;
+        const frame=box(".frame"), css=getComputedStyle(document.querySelector(".frame"));
+        const left=frame.left+parseFloat(css.borderLeftWidth), right=frame.right-parseFloat(css.borderRightWidth);
+        const verify=phase=>{
+          const sender=box(selectors[0]),receiver=box(selectors[1]);
+          const checks={
+            senderEdge:Math.abs(sender.left-left)<.01,receiverEdge:Math.abs(receiver.right-right)<.01,
+            dock:box(".send-dock").right<=receiver.left,
+            tap:clear(box(".tap-button"),receiver),heart:clear(box(".iine-heart"),receiver),
+            artwork:[sender,receiver].every(a=>[".send-dock",".gift-tools","nav"].every(s=>clear(a,box(s)))),
+            overflow:document.documentElement.scrollWidth<=innerWidth,
+          };
+          if(Object.values(checks).some(ok=>!ok)) throw Error(`send motion ${mode}/${count}/${phase}: ${JSON.stringify(checks)}`);
+        };
+        const results=[];
+        const sweep=(animation,selector)=>{
+          const tops=[],transforms=[];
+          for(let step=0;step<=40;step++) {
+            if(mode==="tap") {
+              // One real clock: the heart pulse, size transition and both reactions overlap.
+              for(const a of animations) a.currentTime=Math.min(320*step/40,Number(a.effect.getTiming().duration));
+            } else animation.currentTime=Number(animation.effect.getTiming().duration)*step/40;
+            verify(`${selector}/${step}`);
+            const el=document.querySelector(selector);
+            tops.push(el.getBoundingClientRect().top);transforms.push(getComputedStyle(el).transform);
+          }
+          results.push({mode,count,selector,topTravel:Math.max(...tops)-Math.min(...tops),transforms:new Set(transforms).size,samples:41});
+          animations.forEach(a=>a.currentTime=0);
+        };
+        for(const [i,el] of elements.entries()) {
+          const animation=el.getAnimations().find(a=>mode==="tap" ? !(a instanceof CSSAnimation) : a instanceof CSSAnimation);
+          if(i<2 && !animation) throw Error(`missing ${mode} motion: ${selectors[i]}`);
+          if(animation) sweep(animation,selectors[i]);
+        }
+        if(mode==="tap") {
+          // A tap can arrive at any point in the independent heart wobble.
+          const wobble=elements[2].getAnimations().find(a=>a instanceof CSSAnimation);
+          for(const phase of [.44,.5,.58]) for(let step=0;step<=40;step++) {
+            for(const a of animations) if(!(a instanceof CSSAnimation))
+              a.currentTime=Math.min(320*step/40,Number(a.effect.getTiming().duration));
+            wobble.currentTime=Number(wobble.effect.getTiming().duration)*phase;
+            verify(`wobble-${phase}/${step}`);
+          }
+        }
+        // Keep a deterministic peak for screenshots; restore normal playback below.
+        for(const a of animations) a.currentTime=mode==="tap" ? Math.min(112,Number(a.effect.getTiming().duration)) : Number(a.effect.getTiming().duration)*.35;
+        verify("screenshot");
+        return results;
+      },{mode,count});
+      for(const sample of samples.filter(s=>s.selector.endsWith("mascot"))) {
+        assert.ok(sample.topTravel>5,`visible motion ${width}/${colorScheme}: ${JSON.stringify(sample)}`);
+        assert.ok(sample.transforms>20,`varying transform: ${JSON.stringify(sample)}`);
+      }
+      if(mode==="tap" && count===10) await check("send-tap");
+      if(mode==="sending" && count===10) await check("sending");
+      await page.evaluate(()=>{
+        for(const el of document.querySelectorAll(".iine-stage, .iine-stage *")) for(const a of el.getAnimations()) {
+          if(a instanceof CSSAnimation) a.play(); else a.finish();
+        }
+        document.querySelector(".iine-stage").classList.remove("sending");
+      });
+      console.log(`PASS send motion ${width}px ${colorScheme}: ${JSON.stringify(samples)}`);
+    };
     assert.equal(await send.isDisabled(),true); await checkHeart(0); await check("send-0");
+    await checkSendMotion("idle",0);
     for (let n=1;n<=10;n++) {
-      await page.locator("[data-tap]").click();
+      await checkSendMotion("tap",n);
       assert.equal(await page.locator("[data-count]").innerText(),String(n));
+      await checkSendMotion("idle",n);
+      await checkSendMotion("sending",n);
       if ([1,3,5,10].includes(n)) {
         const emoji={1:"👍",3:"✨",5:"💖",10:"🌾"}[n];
         assert.equal(await page.locator("[data-emoji]").innerText(),emoji);
@@ -482,7 +558,28 @@ try {
       }
     }
     assert.ok(scales[0]<.5 && scales[0]<scales[1] && scales[1]<scales[2],"heart grows from 0 through 5 to 10 taps");
-    await page.locator("[data-tap]").click(); assert.equal(await page.locator("[data-count]").innerText(),"10");
+    await page.emulateMedia({reducedMotion:"reduce"});
+    for(const sending of [false,true]) {
+      await page.evaluate(sending=>document.querySelector(".iine-stage").classList.toggle("sending",sending),sending);
+      assert.deepEqual(await page.locator(".send-mascot, .receive-mascot").evaluateAll(els=>els.map(el=>[el.getAnimations().length,getComputedStyle(el).transform])),[[0,"none"],[0,"none"]]);
+    }
+    await check("send-reduced");
+    await page.evaluate(()=>document.querySelector(".iine-stage").classList.remove("sending"));
+    await page.emulateMedia({reducedMotion:"no-preference"});
+    const bump=await page.evaluate(()=>{
+      document.querySelector("[data-tap]").click();
+      const stage=document.querySelector(".iine-stage"), animation=stage.getAnimations()[0];
+      if(!animation) throw Error("missing cap bump");
+      animation.pause();
+      for(let step=0;step<=40;step++) {
+        animation.currentTime=180*step/40;
+        if(document.documentElement.scrollWidth>innerWidth) throw Error(`cap overflow at ${step}`);
+      }
+      animation.finish();
+      return [...document.querySelectorAll(".send-mascot, .receive-mascot")].every(el=>el.getAnimations().every(a=>a instanceof CSSAnimation));
+    });
+    assert.ok(bump,"cap retains stage feedback without mascot tap reactions");
+    assert.equal(await page.locator("[data-count]").innerText(),"10");
     await send.click(); await page.getByRole("dialog").waitFor();
     assert.match(await page.getByRole("dialog").innerText(),/公開する絵文字：🌾/);
     await page.keyboard.press("Escape");
