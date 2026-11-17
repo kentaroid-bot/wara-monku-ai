@@ -81,8 +81,9 @@ export function bindIineGame(form, { initial = 0, remaining = 10, member = true,
   let count = clampCount(initial, remaining);
   const stage = form.querySelector(".iine-stage"), emoji = form.querySelector("[data-emoji]");
   const tap = form.querySelector("[data-tap]"), confirm = form.querySelector('[type="submit"]');
+  const sender = stage.querySelector(".send-mascot"), receiver = stage.querySelector(".receive-mascot");
   const reduced = () => globalThis.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
-  const animate = (el, frames, duration) => { if (!reduced()) el.animate?.(frames, {duration}); };
+  const animate = (el, frames, duration) => { if (!reduced() && el?.animate) el.animate(frames, {duration}); };
   const vibrate = pattern => { try { globalThis.navigator?.vibrate?.(pattern); } catch {} };
   function render() {
     const tier = getTier(count);
@@ -112,17 +113,30 @@ export function bindIineGame(form, { initial = 0, remaining = 10, member = true,
   }
   soundButton.onclick = () => { sound.toggle(); renderSound(); sound.play("tap"); };
   tap.onclick = () => {
-    if (form.dataset.busy || !member) return;
+    if (form.dataset.busy || !member || Number(remaining) === 0) return;
     const next = clampCount(count + 1, remaining);
     if (next === count) {
       sound.play("bump"); vibrate([20, 25, 20]);
-      animate(stage, [{transform:"translateX(0)"},{transform:"translateX(-5px)"},{transform:"translateX(5px)"},{transform:"translateX(0)"}], 180);
+      animate(stage, [{transform:"translateY(0)"},{transform:"translateY(-2px)"},{transform:"translateY(2px)"},{transform:"translateY(0)"}], 180);
       return;
     }
     const previous = getTier(count).emoji;
     count = next; render();
     sound.play("tap", count, previous !== getTier(count).emoji); vibrate(12);
     animate(tap, [{transform:"scale(.85)"},{transform:"scale(1.22)"},{transform:"scale(1)"}], 220);
+    animate(sender, [
+      {transform:"skewY(0deg) scaleY(1) scaleX(1)"},
+      {transform:"skewY(5.5deg) scaleY(.9) scaleX(1.04)",offset:.35},
+      {transform:"skewY(-2deg) scaleY(.98) scaleX(.99)",offset:.72},
+      {transform:"skewY(0deg) scaleY(1) scaleX(1)"},
+    ], 280);
+    // Compress inward from the right edge, leaving room for the heart's pulse.
+    animate(receiver, [
+      {transform:"translateY(0) skewY(0deg) scaleY(1) scaleX(1)"},
+      {transform:"translateY(-1px) skewY(2deg) scaleY(.86) scaleX(.96)",offset:.35},
+      {transform:"translateY(-1px) skewY(.5deg) scaleY(.94) scaleX(.99)",offset:.72},
+      {transform:"translateY(0) skewY(0deg) scaleY(1) scaleX(1)"},
+    ], 320);
     if (!reduced()) {
       const particle = document.createElement("span"); particle.textContent = getTier(count).emoji;
       particle.style.left = (25 + Math.random() * 50) + "%";

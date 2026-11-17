@@ -1,10 +1,43 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { getTier, clampCount, createIineSound } from "../mainstream/iine-game.mjs";
+import { getTier, clampCount, createIineSound, bindIineGame } from "../mainstream/iine-game.mjs";
 import { twinCards } from "../mainstream/balances.mjs";
 import { invoiceAmount, storeInvoiceUrl, paperCardCode } from "../mainstream/scan.mjs";
 import { paymentReaction, thankYouChips, paymentMemo } from "../shared/payment-memo.mjs";
 import { soundKey } from "../mainstream/storage-keys.mjs";
+
+test("partial stages and missing animation APIs still accept taps; disabled and capped gifts do not react", t => {
+  let reduced=false;
+  for(const [name,value] of Object.entries({
+    matchMedia:()=>({matches:reduced}),
+    document:{createElement:()=>({style:{},remove(){}})},
+  })) {
+    const descriptor=Object.getOwnPropertyDescriptor(globalThis,name);
+    Object.defineProperty(globalThis,name,{value,configurable:true});
+    t.after(()=>descriptor ? Object.defineProperty(globalThis,name,descriptor) : delete globalThis[name]);
+  }
+  t.mock.method(globalThis,"setTimeout",fn=>{fn();return 0;});
+  const sound={enabled:false,play(){},unlock(){}};
+  for(const kind of ["absent","no-api","animated"]) {
+    for(const options of [{},{initial:10},{remaining:0},{member:false},{busy:true},{reduced:true}]) {
+      reduced=!!options.reduced;
+      const calls=[];
+      const mascots=[0,1].map(i=>kind==="absent" ? null : kind==="no-api" ? {} : {animate:()=>calls.push(i)});
+      const nodes=new Map();
+      const node=selector=>{
+        if(!nodes.has(selector)) nodes.set(selector,{dataset:{},style:{setProperty(){}},setAttribute(){},append(){},childElementCount:0});
+        return nodes.get(selector);
+      };
+      node(".iine-stage").querySelector=selector=>mascots[selector===".send-mascot" ? 0 : 1];
+      const form={dataset:options.busy ? {busy:"1"} : {},elements:{ina:{}},querySelector:node};
+      bindIineGame(form,{...options,sound});
+      assert.doesNotThrow(()=>node("[data-tap]").onclick());
+      const allowed=!options.busy && options.member!==false && options.remaining!==0 && !options.initial;
+      assert.equal(form.elements.ina.value,allowed ? 1 : options.initial || 0);
+      assert.deepEqual(calls,kind==="animated" && allowed && !reduced ? [0,1] : []);
+    }
+  }
+});
 
 test("iine evolves at every tier and all gift reactions remain valid", () => {
   const emojis = ["🌱","👍","👍","✨","✨","💖","🎉","🔥","🌟","👑","🌾"];
